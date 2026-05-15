@@ -1,0 +1,148 @@
+@import "tailwindcss";
+
+/* ─── Custom theme vars ─── */
+@theme inline {
+  --color-blue:      #1AAFFF;
+  --color-blue-soft: #E6F5FF;
+  --color-ink:       #0F172A;
+  --color-muted:     #94A3B8;
+}
+
+/* ─── Base ─── */
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body {
+  margin: 0; padding: 0;
+  font-family: var(--font-inter), system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: 'cv11', 'ss01', 'ss03';
+  background: #050B17;
+  overflow: hidden;
+}
+
+input, button, textarea { font-family: inherit; }
+button { -webkit-tap-highlight-color: transparent; }
+
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-thumb { background: rgba(15,23,42,0.18); border-radius: 3px; }
+::-webkit-scrollbar-track { background: transparent; }
+
+.font-display { font-family: var(--font-space-grotesk), system-ui, sans-serif !important; }
+.font-mono    { font-family: var(--font-jetbrains-mono), ui-monospace, monospace !important; }
+
+/* ─── Keyframes ─── */
+@keyframes evo-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes evo-slide-up {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes evo-pop {
+  0%   { opacity: 0; transform: scale(0.94); }
+  60%  { opacity: 1; transform: scale(1.02); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes evo-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+@keyframes evo-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.55; transform: scale(0.92); }
+}
+
+@keyframes evo-pulse-ring {
+  0%   { box-shadow: 0 0 0 0 rgba(26,175,255,0.45); }
+  70%  { box-shadow: 0 0 0 14px rgba(26,175,255,0); }
+  100% { box-shadow: 0 0 0 0 rgba(26,175,255,0); }
+}
+
+@keyframes evo-marquee {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+
+@keyframes evo-shimmer {
+  0%   { left: -40%; }
+  100% { left: 100%; }
+}
+
+@keyframes evo-float {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-6px); }
+}
+
+@keyframes evo-rise {
+  from { opacity: 0; transform: translateY(20px) scale(0.96); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes evo-ball-fall {
+  0%   { top: -8%;  transform: translateX(-50%) rotate(0deg);   opacity: 0; }
+  5%   { opacity: 1; }
+  55%  { top: 75%;  transform: translateX(-50%) rotate(540deg); }
+  65%  { top: 62%;  transform: translateX(-50%) rotate(640deg); }
+  75%  { top: 80%;  transform: translateX(-50%) rotate(720deg); }
+  82%  { top: 72%;  transform: translateX(-50%) rotate(770deg); }
+  88%  { top: 80%;  transform: translateX(-50%) rotate(810deg); }
+  100% { top: 80%;  transform: translateX(-50%) rotate(900deg); opacity: 0; }
+}
+
+@keyframes evo-ball-spin-tilt {
+  0%   { transform: rotate(0deg); }
+  100% { transform: rotate(720deg); }
+}
+
+@keyframes evo-ball-drift {
+  0%   { transform: translateY(0) rotate(0deg); }
+  50%  { transform: translateY(-12px) rotate(180deg); }
+  100% { transform: translateY(0) rotate(360deg); }
+}
+
+@keyframes evo-bob {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-3px); }
+}
+
+/* ─── Animation classes ─── */
+.evo-fade-in  { animation: evo-fade-in 350ms ease both; }
+.evo-slide-up { animation: evo-slide-up 420ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+.evo-pop      { animation: evo-pop 360ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+.evo-rise     { animation: evo-rise 480ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+.evo-stagger > * { animation: evo-slide-up 420ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+.evo-stagger > *:nth-child(1) { animation-delay: 40ms;  }
+.evo-stagger > *:nth-child(2) { animation-delay: 90ms;  }
+.evo-stagger > *:nth-child(3) { animation-delay: 140ms; }
+.evo-stagger > *:nth-child(4) { animation-delay: 190ms; }
+.evo-stagger > *:nth-child(5) { animation-delay: 240ms; }
+.evo-stagger > *:nth-child(6) { animation-delay: 290ms; }
+.evo-stagger > *:nth-child(7) { animation-delay: 340ms; }
+.evo-stagger > *:nth-child(8) { animation-delay: 390ms; }
+
+/* ─── Background patterns ─── */
+.evo-grid-bg {
+  background-image:
+    linear-gradient(rgba(26,175,255,0.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(26,175,255,0.07) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+.evo-dot-bg {
+  background-image: radial-gradient(rgba(255,255,255,0.10) 1px, transparent 1px);
+  background-size: 18px 18px;
+}
+
+.evo-glow-blue {
+  box-shadow:
+    0 0 0 1px rgba(26,175,255,0.20),
+    0 8px 24px rgba(26,175,255,0.28),
+    0 0 60px rgba(26,175,255,0.20);
+}
