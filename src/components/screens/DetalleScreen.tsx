@@ -13,38 +13,38 @@ interface Props {
   fireToast: (msg: string, color?: string, textColor?: string) => void;
 }
 
+type EditMode = 'empty' | 'editing' | 'saved';
+
 export function DetalleScreen({ goto, tweaks, fireToast }: Props) {
   const match = MATCHES[0];
-  const saved = loadPrediction(match.id);
 
-  const [innerTab, setInnerTab] = useState<'partido' | 'prody'>('partido');
+  // Initialise from localStorage (or tweaks.filled for demo)
+  const [mode, setMode] = useState<EditMode>(() => {
+    if (tweaks.filled) return 'saved';
+    return loadPrediction(match.id) ? 'saved' : 'empty';
+  });
   const [homeScore, setHomeScore] = useState<string>(() => {
     if (tweaks.filled) return '2';
-    const s = loadPrediction(match.id);
-    return s ? String(s.home) : '';
+    return String(loadPrediction(match.id)?.home ?? '');
   });
   const [awayScore, setAwayScore] = useState<string>(() => {
     if (tweaks.filled) return '1';
-    const s = loadPrediction(match.id);
-    return s ? String(s.away) : '';
+    return String(loadPrediction(match.id)?.away ?? '');
   });
-  const [savedAt, setSavedAt] = useState<string | null>(saved?.savedAt ?? null);
+  const [savedAt, setSavedAt] = useState<string | null>(() => loadPrediction(match.id)?.savedAt ?? null);
   const [focusedScore, setFocusedScore] = useState<'home' | 'away' | null>(null);
+  const [innerTab, setInnerTab] = useState<'partido' | 'prody'>('partido');
   const [modal, setModal] = useState<null | 'double' | 'late' | 'spy'>(null);
   const [usedPowers, setUsedPowers] = useState<Set<string>>(new Set(tweaks.premium ? [] : ['spy']));
 
-  const hasPrediction = homeScore !== '' && awayScore !== '';
-  const currentSaved = loadPrediction(match.id);
-  const isDirty = hasPrediction && (
-    !currentSaved ||
-    String(currentSaved.home) !== homeScore ||
-    String(currentSaved.away) !== awayScore
-  );
+  const isLocked = mode !== 'editing';
+  const hasValues = homeScore !== '' && awayScore !== '';
 
   const handleSave = () => {
-    if (!hasPrediction) return;
+    if (!hasValues) return;
     const pred = savePrediction(match.id, Number(homeScore), Number(awayScore));
     setSavedAt(pred.savedAt);
+    setMode('saved');
     fireToast('¡Predicción guardada! ✓', T.emerald, '#fff');
   };
 
@@ -55,13 +55,19 @@ export function DetalleScreen({ goto, tweaks, fireToast }: Props) {
     fireToast('¡Poder activado!', T.bgInk, '#fff');
   };
 
-  const scoreStyle = (side: 'home' | 'away'): React.CSSProperties => ({
+  const scoreBoxStyle = (side: 'home' | 'away'): React.CSSProperties => ({
     width: 64, height: 64, borderRadius: 14,
-    border: `2.5px solid ${focusedScore === side ? T.blue : isDirty ? T.amber : hasPrediction ? T.lime : T.border}`,
-    background: focusedScore === side ? T.blueSoft : T.bgSoft,
-    textAlign: 'center', fontSize: 28, fontWeight: 800, color: T.ink,
-    outline: 'none', WebkitAppearance: 'none' as React.CSSProperties['WebkitAppearance'],
+    border: `2.5px solid ${
+      isLocked
+        ? (hasValues ? T.lime : T.border)
+        : focusedScore === side ? T.blue : T.amber
+    }`,
+    background: isLocked ? (hasValues ? T.limeSoft : T.bgSoft) : T.bgSoft,
+    textAlign: 'center', fontSize: 28, fontWeight: 800, color: isLocked ? T.limeDeep : T.ink,
+    outline: 'none',
+    WebkitAppearance: 'none' as React.CSSProperties['WebkitAppearance'],
     fontFamily: 'var(--font-jetbrains), monospace',
+    cursor: isLocked ? 'default' : 'text',
     transition: 'border-color 200ms, background 200ms',
   });
 
@@ -95,15 +101,11 @@ export function DetalleScreen({ goto, tweaks, fireToast }: Props) {
         </Card>
 
         {/* Inner tab bar */}
-        <div style={{
-          display: 'flex', background: '#fff', borderRadius: 12,
-          border: `1px solid ${T.border}`, marginBottom: 12, overflow: 'hidden',
-        }}>
+        <div style={{ display: 'flex', background: '#fff', borderRadius: 12, border: `1px solid ${T.border}`, marginBottom: 12, overflow: 'hidden' }}>
           {[{ key: 'partido' as const, icon: '⚽', label: 'Partido' }, { key: 'prody' as const, icon: '✨', label: 'Prody' }].map(tab => (
             <button key={tab.key} onClick={() => setInnerTab(tab.key)} style={{
               flex: 1, padding: '12px 8px', background: innerTab === tab.key ? T.blueSoft : 'transparent',
-              border: 'none', cursor: 'pointer',
-              fontSize: 13, fontWeight: 600,
+              border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600,
               color: innerTab === tab.key ? T.blueDeep : T.muted,
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
               transition: 'all 150ms',
@@ -115,50 +117,78 @@ export function DetalleScreen({ goto, tweaks, fireToast }: Props) {
 
         {innerTab === 'partido' && (
           <div>
-            {/* Prediction card */}
             <Card accent={T.blue} style={{ marginBottom: 12 }}>
               <div style={{ paddingLeft: 12 }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                {/* Header row */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
                   <Eyebrow>Tu predicción</Eyebrow>
-                  {hasPrediction && !isDirty && (
-                    <span style={{ fontSize: 10.5, fontWeight: 700, color: T.emerald }}>✓ Guardado</span>
+                  {mode === 'saved' && (
+                    <span style={{ fontSize: 11, fontWeight: 700, color: T.emerald }}>✓ Guardado</span>
                   )}
-                  {isDirty && (
-                    <span style={{ fontSize: 10.5, fontWeight: 700, color: T.amber }}>Sin guardar</span>
+                  {mode === 'editing' && (
+                    <span style={{ fontSize: 11, fontWeight: 700, color: T.amber }}>Editando…</span>
                   )}
                 </div>
 
-                {/* Score inputs */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16, marginBottom: 14 }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-                    <Flag code={match.home.code} size={28}/>
-                    <input
-                      type="number" min={0} max={99} placeholder="–"
-                      value={homeScore}
-                      onChange={e => setHomeScore(e.target.value)}
-                      onFocus={() => setFocusedScore('home')}
-                      onBlur={() => setFocusedScore(null)}
-                      style={scoreStyle('home')}
-                    />
+                {/* Score section — visible in all modes */}
+                {mode === 'empty' ? (
+                  // Placeholder when no prediction yet
+                  <div style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    gap: 16, marginBottom: 16, opacity: 0.4,
+                  }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                      <Flag code={match.home.code} size={28}/>
+                      <div style={{
+                        width: 64, height: 64, borderRadius: 14, border: `2px dashed ${T.border}`,
+                        background: T.bgSoft, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: 22, color: T.muted, fontWeight: 700,
+                      }}>–</div>
+                    </div>
+                    <div style={{ fontSize: 22, fontWeight: 700, color: T.muted, marginTop: 24 }}>–</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                      <Flag code={match.away.code} size={28}/>
+                      <div style={{
+                        width: 64, height: 64, borderRadius: 14, border: `2px dashed ${T.border}`,
+                        background: T.bgSoft, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: 22, color: T.muted, fontWeight: 700,
+                      }}>–</div>
+                    </div>
                   </div>
-
-                  <div style={{ fontSize: 22, fontWeight: 700, color: T.muted, marginTop: 24 }}>–</div>
-
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-                    <Flag code={match.away.code} size={28}/>
-                    <input
-                      type="number" min={0} max={99} placeholder="–"
-                      value={awayScore}
-                      onChange={e => setAwayScore(e.target.value)}
-                      onFocus={() => setFocusedScore('away')}
-                      onBlur={() => setFocusedScore(null)}
-                      style={scoreStyle('away')}
-                    />
+                ) : (
+                  // Score inputs (enabled when editing, disabled when saved)
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16, marginBottom: mode === 'saved' && savedAt ? 4 : 16 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                      <Flag code={match.home.code} size={28}/>
+                      <input
+                        type="number" min={0} max={99} placeholder="0"
+                        value={homeScore}
+                        readOnly={isLocked}
+                        onChange={e => !isLocked && setHomeScore(e.target.value)}
+                        onFocus={() => !isLocked && setFocusedScore('home')}
+                        onBlur={() => setFocusedScore(null)}
+                        style={scoreBoxStyle('home')}
+                      />
+                    </div>
+                    <div style={{ fontSize: 22, fontWeight: 700, color: T.muted, marginTop: 24 }}>–</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                      <Flag code={match.away.code} size={28}/>
+                      <input
+                        type="number" min={0} max={99} placeholder="0"
+                        value={awayScore}
+                        readOnly={isLocked}
+                        onChange={e => !isLocked && setAwayScore(e.target.value)}
+                        onFocus={() => !isLocked && setFocusedScore('away')}
+                        onBlur={() => setFocusedScore(null)}
+                        style={scoreBoxStyle('away')}
+                      />
+                    </div>
                   </div>
-                </div>
+                )}
 
-                {savedAt && !isDirty && (
-                  <div style={{ fontSize: 10.5, color: T.muted, textAlign: 'center', marginBottom: 12 }}>
+                {/* Saved timestamp */}
+                {mode === 'saved' && savedAt && (
+                  <div style={{ fontSize: 10.5, color: T.muted, textAlign: 'center', marginBottom: 16 }}>
                     Guardado el {savedAt}
                   </div>
                 )}
@@ -170,23 +200,39 @@ export function DetalleScreen({ goto, tweaks, fireToast }: Props) {
                   ))}
                 </div>
 
-                {isDirty ? (
-                  <button onClick={handleSave} style={{
-                    width: '100%', padding: '12px', background: T.lime,
+                {/* CTA button — changes per mode */}
+                {mode === 'empty' && (
+                  <button onClick={() => setMode('editing')} style={{
+                    width: '100%', padding: '13px', background: T.lime,
                     border: 'none', borderRadius: 10, fontWeight: 700, fontSize: 14,
                     cursor: 'pointer', color: T.ink,
                   }}>
+                    Agregar mi predicción
+                  </button>
+                )}
+                {mode === 'editing' && (
+                  <button
+                    onClick={handleSave}
+                    disabled={!hasValues}
+                    style={{
+                      width: '100%', padding: '13px',
+                      background: hasValues ? T.lime : T.bgSoft,
+                      border: hasValues ? 'none' : `1px solid ${T.border}`,
+                      borderRadius: 10, fontWeight: 700, fontSize: 14,
+                      cursor: hasValues ? 'pointer' : 'not-allowed',
+                      color: hasValues ? T.ink : T.muted,
+                    }}
+                  >
                     Guardar predicción ✓
                   </button>
-                ) : (
-                  <button
-                    onClick={() => { setFocusedScore('home'); }}
-                    style={{
-                      width: '100%', padding: '12px', background: 'transparent',
-                      border: `1.5px solid ${T.ink}`, borderRadius: 10,
-                      fontWeight: 600, fontSize: 13, cursor: 'pointer', color: T.ink,
-                    }}>
-                    {hasPrediction ? 'Editar predicción' : 'Añadir predicción'}
+                )}
+                {mode === 'saved' && (
+                  <button onClick={() => setMode('editing')} style={{
+                    width: '100%', padding: '13px', background: 'transparent',
+                    border: `1.5px solid ${T.ink}`, borderRadius: 10,
+                    fontWeight: 600, fontSize: 14, cursor: 'pointer', color: T.ink,
+                  }}>
+                    Editar predicción
                   </button>
                 )}
               </div>

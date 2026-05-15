@@ -1,8 +1,8 @@
 'use client';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { theme as T } from '@/lib/theme';
 import { MATCHES, RANKING, GOLEADORES, SELECCIONES, USER, type Match } from '@/lib/data';
-import { loadPrediction, savePrediction } from '@/lib/predictions';
+import { loadPrediction } from '@/lib/predictions';
 import {
   Header, Avatar, Pill, Chip, Card,
   PowerIcon, FAB, BottomSheet, Modal, Eyebrow,
@@ -81,18 +81,37 @@ export function TorneoScreen({ goto, tweaks, fireToast }: Props) {
   );
 }
 
+type SortMode = 'fecha' | 'pais';
+
 // ──────── Tab: Predicciones ────────
 function TabPredicciones({ goto, tweaks, fireToast }: Props) {
   const [filter, setFilter] = useState('Todos');
+  const [sortMode, setSortMode] = useState<SortMode>('fecha');
   const [modal, setModal] = useState<null | { kind: 'double' | 'late' | 'spy'; match: Match }>(null);
   const [usedPowers, setUsedPowers] = useState<Set<string>>(new Set(tweaks.premium ? [] : ['spy']));
 
   const filters = ['Todos', 'Grupo A', 'Grupo B', 'Grupo C', 'Grupo D', 'Grupo E', 'Grupo F', 'Grupo G', 'Grupo H', 'Grupo I', 'Grupo J', 'Grupo K', 'Grupo L'];
-  const matches = tweaks.filled
+  const allMatches = tweaks.filled
     ? MATCHES.map(m => ({ ...m, prediction: m.prediction ?? [1, 0] as [number, number] }))
     : MATCHES;
 
-  const filtered = filter === 'Todos' ? matches : matches.filter(m => m.group.toLowerCase().includes(filter.toLowerCase().replace('grupo ', '')));
+  const filtered = filter === 'Todos' ? allMatches : allMatches.filter(m =>
+    m.group.toLowerCase().includes(filter.toLowerCase().replace('grupo ', ''))
+  );
+
+  type MatchGroup = { label: string | null; matches: Match[] };
+  const groups: MatchGroup[] = useMemo(() => {
+    if (sortMode === 'fecha') return [{ label: null, matches: filtered }];
+    const map = new Map<string, Match[]>();
+    for (const m of filtered) {
+      const country = m.stadium.split(' · ')[1] ?? 'Sin sede';
+      if (!map.has(country)) map.set(country, []);
+      map.get(country)!.push(m);
+    }
+    return Array.from(map.entries())
+      .sort(([a], [b]) => a.localeCompare(b, 'es'))
+      .map(([label, matches]) => ({ label, matches }));
+  }, [filtered, sortMode]);
 
   const confirmPower = () => {
     if (!modal) return;
@@ -120,21 +139,48 @@ function TabPredicciones({ goto, tweaks, fireToast }: Props) {
         </div>
       </div>
 
-      {/* Filters */}
+      {/* Sort toggle */}
+      <div style={{ display: 'flex', gap: 8, padding: '0 14px 10px' }}>
+        {(['fecha', 'pais'] as SortMode[]).map(mode => (
+          <button key={mode} onClick={() => setSortMode(mode)} style={{
+            padding: '6px 14px', borderRadius: 20, border: 'none', cursor: 'pointer',
+            background: sortMode === mode ? T.bgInk : T.bgSoft,
+            color: sortMode === mode ? '#fff' : T.muted,
+            fontSize: 11.5, fontWeight: 600,
+            transition: 'all 150ms',
+          }}>
+            {mode === 'fecha' ? '📅 Por fecha' : '🌎 Por país sede'}
+          </button>
+        ))}
+      </div>
+
+      {/* Group filter chips */}
       <div style={{ display: 'flex', gap: 8, overflowX: 'auto', padding: '0 14px 12px', scrollbarWidth: 'none' }}>
         {filters.map(f => <Chip key={f} active={filter === f} onClick={() => setFilter(f)}>{f}</Chip>)}
       </div>
 
       {/* Match cards */}
-      <div style={{ padding: '0 14px', display: 'flex', flexDirection: 'column', gap: 12 }} className="evo-stagger">
-        {filtered.map(match => (
-          <MatchCard key={match.id} match={match} usedPowers={usedPowers}
-            onPower={(kind) => setModal({ kind, match })}
-            onView={() => goto('detalle')}
-            fireToast={fireToast}
-          />
-        ))}
-      </div>
+      {groups.map(group => (
+        <div key={group.label ?? '__all'}>
+          {group.label && (
+            <div style={{ padding: '4px 14px 8px', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <div style={{ height: 1, flex: 1, background: T.border }}/>
+              <span style={{ fontSize: 10.5, fontWeight: 700, color: T.muted, textTransform: 'uppercase', letterSpacing: 1, whiteSpace: 'nowrap' }}>
+                🌎 {group.label}
+              </span>
+              <div style={{ height: 1, flex: 1, background: T.border }}/>
+            </div>
+          )}
+          <div style={{ padding: '0 14px', display: 'flex', flexDirection: 'column', gap: 12, marginBottom: group.label ? 16 : 0 }} className="evo-stagger">
+            {group.matches.map(match => (
+              <MatchCard key={match.id} match={match} usedPowers={usedPowers}
+                onPower={(kind) => setModal({ kind, match })}
+                onView={() => goto('detalle')}
+              />
+            ))}
+          </div>
+        </div>
+      ))}
 
       {/* Power modal */}
       <Modal open={!!modal} onClose={() => setModal(null)}>
@@ -144,47 +190,28 @@ function TabPredicciones({ goto, tweaks, fireToast }: Props) {
   );
 }
 
-function MatchCard({ match, usedPowers, onPower, onView, fireToast }: {
+function MatchCard({ match, usedPowers, onPower, onView }: {
   match: Match;
   usedPowers: Set<string>;
   onPower: (kind: 'double' | 'late' | 'spy') => void;
   onView: () => void;
-  fireToast: Props['fireToast'];
 }) {
   const saved = loadPrediction(match.id);
-  const [homeScore, setHomeScore] = useState<string>(() => {
-    const s = loadPrediction(match.id);
-    if (s) return String(s.home);
-    return match.prediction != null ? String(match.prediction[0]) : '';
-  });
-  const [awayScore, setAwayScore] = useState<string>(() => {
-    const s = loadPrediction(match.id);
-    if (s) return String(s.away);
-    return match.prediction != null ? String(match.prediction[1]) : '';
-  });
-  const [savedAt, setSavedAt] = useState<string | null>(saved?.savedAt ?? null);
-  const [focusedScore, setFocusedScore] = useState<'home' | 'away' | null>(null);
+  const hasPrediction = saved !== null;
 
-  const hasPrediction = homeScore !== '' && awayScore !== '';
-  const isDirty = hasPrediction && (
-    !saved || String(saved.home) !== homeScore || String(saved.away) !== awayScore
+  const ScoreBox = ({ value }: { value: number | null }) => (
+    <div style={{
+      width: 48, height: 48, borderRadius: 10,
+      border: `2px solid ${hasPrediction ? T.lime : T.border}`,
+      background: hasPrediction ? T.limeSoft : T.bgSoft,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      fontSize: 22, fontWeight: 800,
+      color: hasPrediction ? T.limeDeep : T.muted,
+      fontFamily: 'var(--font-jetbrains), monospace',
+    }}>
+      {value !== null ? value : '–'}
+    </div>
   );
-
-  const handleSave = () => {
-    if (!hasPrediction) return;
-    const pred = savePrediction(match.id, Number(homeScore), Number(awayScore));
-    setSavedAt(pred.savedAt);
-    fireToast('¡Predicción guardada! ✓', T.emerald, '#fff');
-  };
-
-  const scoreInputStyle = (side: 'home' | 'away'): React.CSSProperties => ({
-    width: 48, height: 48, borderRadius: 10,
-    border: `2px solid ${focusedScore === side ? T.blue : isDirty ? T.amber : T.border}`,
-    background: focusedScore === side ? T.blueSoft : T.bgSoft,
-    textAlign: 'center', fontSize: 22, fontWeight: 700, color: T.ink,
-    outline: 'none', WebkitAppearance: 'none' as React.CSSProperties['WebkitAppearance'],
-    fontFamily: 'var(--font-jetbrains), monospace',
-  });
 
   return (
     <Card accent={T.blue} style={{ padding: '16px 16px 14px' }}>
@@ -194,46 +221,29 @@ function MatchCard({ match, usedPowers, onPower, onView, fireToast }: {
           <div style={{ fontSize: 11, color: T.muted }}>{match.date}</div>
           <div style={{ fontSize: 11, color: T.muted, fontStyle: 'italic' }}>{match.stadium}</div>
         </div>
-        {hasPrediction && !isDirty && (
-          <Pill color={T.limeSoft} textColor={T.limeDeep} size="sm">✓ Guardado</Pill>
-        )}
-        {isDirty && (
-          <Pill color={T.amberSoft} textColor={T.amberDeep} size="sm">Sin guardar</Pill>
-        )}
+        {hasPrediction
+          ? <Pill color={T.limeSoft} textColor={T.limeDeep} size="sm">✓ Guardado</Pill>
+          : <Pill color={T.bgSoft} textColor={T.muted} size="sm">Sin predicción</Pill>}
       </div>
 
-      {/* Teams + Score */}
+      {/* Teams + Score (read-only) */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-around', padding: '8px 0' }}>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, flex: 1 }}>
           <Flag code={match.home.code} size={56}/>
           <div style={{ fontSize: 12, fontWeight: 700, color: T.ink, textAlign: 'center' }}>{match.home.name}</div>
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, flex: 0 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, flex: 0 }}>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <input
-              type="number" min={0} max={99} placeholder="–"
-              value={homeScore}
-              onChange={e => setHomeScore(e.target.value)}
-              onFocus={() => setFocusedScore('home')}
-              onBlur={() => setFocusedScore(null)}
-              style={scoreInputStyle('home')}
-            />
+            <ScoreBox value={saved?.home ?? null}/>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
               <SoccerBall size={18} spinning="2s" style={{ opacity: 0.7 }}/>
               <span style={{ fontSize: 9, fontWeight: 600, color: T.muted, letterSpacing: 0.5 }}>VS</span>
             </div>
-            <input
-              type="number" min={0} max={99} placeholder="–"
-              value={awayScore}
-              onChange={e => setAwayScore(e.target.value)}
-              onFocus={() => setFocusedScore('away')}
-              onBlur={() => setFocusedScore(null)}
-              style={scoreInputStyle('away')}
-            />
+            <ScoreBox value={saved?.away ?? null}/>
           </div>
-          {savedAt && (
-            <div style={{ fontSize: 9.5, color: T.muted }}>Guardado: {savedAt}</div>
+          {saved?.savedAt && (
+            <div style={{ fontSize: 9.5, color: T.muted }}>Guardado: {saved.savedAt}</div>
           )}
         </div>
 
@@ -253,22 +263,14 @@ function MatchCard({ match, usedPowers, onPower, onView, fireToast }: {
         </div>
       </div>
 
-      {isDirty && (
-        <button onClick={handleSave} style={{
-          width: '100%', padding: '10px', background: T.lime, border: 'none',
-          borderRadius: 10, fontWeight: 700, fontSize: 13, cursor: 'pointer',
-          color: T.ink, marginBottom: 8,
-          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-        }}>
-          Guardar predicción ✓
-        </button>
-      )}
       <button onClick={onView} style={{
-        width: '100%', padding: '10px', background: T.bgInk, color: '#fff',
-        border: 'none', borderRadius: 10, fontWeight: 600, fontSize: 13,
+        width: '100%', padding: '10px',
+        background: hasPrediction ? T.bgInk : T.lime,
+        color: hasPrediction ? '#fff' : T.ink,
+        border: 'none', borderRadius: 10, fontWeight: 700, fontSize: 13,
         cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
       }}>
-        Ver partido
+        {hasPrediction ? 'Editar predicción' : 'Agregar mi predicción'}
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
           <path d="M5 12h14m-7-7 7 7-7 7"/>
         </svg>
