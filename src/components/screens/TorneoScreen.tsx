@@ -1,7 +1,8 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { theme as T } from '@/lib/theme';
 import { MATCHES, RANKING, GOLEADORES, SELECCIONES, USER, type Match } from '@/lib/data';
+import { loadPrediction, savePrediction } from '@/lib/predictions';
 import {
   Header, Avatar, Pill, Chip, Card,
   PowerIcon, FAB, BottomSheet, Modal, Eyebrow,
@@ -130,6 +131,7 @@ function TabPredicciones({ goto, tweaks, fireToast }: Props) {
           <MatchCard key={match.id} match={match} usedPowers={usedPowers}
             onPower={(kind) => setModal({ kind, match })}
             onView={() => goto('detalle')}
+            fireToast={fireToast}
           />
         ))}
       </div>
@@ -142,20 +144,42 @@ function TabPredicciones({ goto, tweaks, fireToast }: Props) {
   );
 }
 
-function MatchCard({ match, usedPowers, onPower, onView }: {
+function MatchCard({ match, usedPowers, onPower, onView, fireToast }: {
   match: Match;
   usedPowers: Set<string>;
   onPower: (kind: 'double' | 'late' | 'spy') => void;
   onView: () => void;
+  fireToast: Props['fireToast'];
 }) {
-  const [homeScore, setHomeScore] = useState<string>(match.prediction != null ? String(match.prediction[0]) : '');
-  const [awayScore, setAwayScore] = useState<string>(match.prediction != null ? String(match.prediction[1]) : '');
+  const saved = loadPrediction(match.id);
+  const [homeScore, setHomeScore] = useState<string>(() => {
+    const s = loadPrediction(match.id);
+    if (s) return String(s.home);
+    return match.prediction != null ? String(match.prediction[0]) : '';
+  });
+  const [awayScore, setAwayScore] = useState<string>(() => {
+    const s = loadPrediction(match.id);
+    if (s) return String(s.away);
+    return match.prediction != null ? String(match.prediction[1]) : '';
+  });
+  const [savedAt, setSavedAt] = useState<string | null>(saved?.savedAt ?? null);
   const [focusedScore, setFocusedScore] = useState<'home' | 'away' | null>(null);
+
   const hasPrediction = homeScore !== '' && awayScore !== '';
+  const isDirty = hasPrediction && (
+    !saved || String(saved.home) !== homeScore || String(saved.away) !== awayScore
+  );
+
+  const handleSave = () => {
+    if (!hasPrediction) return;
+    const pred = savePrediction(match.id, Number(homeScore), Number(awayScore));
+    setSavedAt(pred.savedAt);
+    fireToast('¡Predicción guardada! ✓', T.emerald, '#fff');
+  };
 
   const scoreInputStyle = (side: 'home' | 'away'): React.CSSProperties => ({
     width: 48, height: 48, borderRadius: 10,
-    border: `2px solid ${focusedScore === side ? T.blue : T.border}`,
+    border: `2px solid ${focusedScore === side ? T.blue : isDirty ? T.amber : T.border}`,
     background: focusedScore === side ? T.blueSoft : T.bgSoft,
     textAlign: 'center', fontSize: 22, fontWeight: 700, color: T.ink,
     outline: 'none', WebkitAppearance: 'none' as React.CSSProperties['WebkitAppearance'],
@@ -170,8 +194,11 @@ function MatchCard({ match, usedPowers, onPower, onView }: {
           <div style={{ fontSize: 11, color: T.muted }}>{match.date}</div>
           <div style={{ fontSize: 11, color: T.muted, fontStyle: 'italic' }}>{match.stadium}</div>
         </div>
-        {hasPrediction && (
-          <Pill color={T.blueSoft} textColor={T.blueDeep} size="sm">Predicho</Pill>
+        {hasPrediction && !isDirty && (
+          <Pill color={T.limeSoft} textColor={T.limeDeep} size="sm">✓ Guardado</Pill>
+        )}
+        {isDirty && (
+          <Pill color={T.amberSoft} textColor={T.amberDeep} size="sm">Sin guardar</Pill>
         )}
       </div>
 
@@ -205,8 +232,8 @@ function MatchCard({ match, usedPowers, onPower, onView }: {
               style={scoreInputStyle('away')}
             />
           </div>
-          {match.lastUpdate && (
-            <div style={{ fontSize: 9.5, color: T.muted }}>Actualizado: {match.lastUpdate}</div>
+          {savedAt && (
+            <div style={{ fontSize: 9.5, color: T.muted }}>Guardado: {savedAt}</div>
           )}
         </div>
 
@@ -226,6 +253,16 @@ function MatchCard({ match, usedPowers, onPower, onView }: {
         </div>
       </div>
 
+      {isDirty && (
+        <button onClick={handleSave} style={{
+          width: '100%', padding: '10px', background: T.lime, border: 'none',
+          borderRadius: 10, fontWeight: 700, fontSize: 13, cursor: 'pointer',
+          color: T.ink, marginBottom: 8,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+        }}>
+          Guardar predicción ✓
+        </button>
+      )}
       <button onClick={onView} style={{
         width: '100%', padding: '10px', background: T.bgInk, color: '#fff',
         border: 'none', borderRadius: 10, fontWeight: 600, fontSize: 13,
@@ -521,6 +558,7 @@ function TabBonus({ fireToast }: { fireToast: Props['fireToast'] }) {
 // ──────── Tab: Detalles ────────
 function TabDetalles({ goto }: { goto: (s: string) => void }) {
   const [pointsSheet, setPointsSheet] = useState(false);
+  const ptrDownY = useRef<number | null>(null);
 
   const prizes = [
     { icon: '🥇', label: '1er Lugar', sub: 'Ganador absoluto', val: '$15,000 MXN' },
@@ -589,13 +627,26 @@ function TabDetalles({ goto }: { goto: (s: string) => void }) {
       </Card>
 
       {/* Points system */}
-      <Card onClick={() => setPointsSheet(true)} style={{ cursor: 'pointer' }}>
+      <Card>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
             <div className="font-display" style={{ fontSize: 14, fontWeight: 700, color: T.ink }}>Sistema de Puntos</div>
             <div style={{ fontSize: 11.5, color: T.muted, marginTop: 2 }}>Cómo se calculan los puntos por fase</div>
           </div>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={T.muted} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+          <button
+            onPointerDown={e => { ptrDownY.current = e.clientY; }}
+            onClick={e => {
+              if (ptrDownY.current !== null && Math.abs(e.clientY - ptrDownY.current) > 8) return;
+              setPointsSheet(true);
+            }}
+            style={{
+              width: 36, height: 36, borderRadius: 8, border: `1px solid ${T.border}`,
+              background: T.bgSoft, cursor: 'pointer', display: 'flex',
+              alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+            }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={T.muted} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+          </button>
         </div>
       </Card>
 
