@@ -23,6 +23,9 @@ html, body {
 
 input, button, textarea { font-family: inherit; }
 button { -webkit-tap-highlight-color: transparent; }
+input[type=number]::-webkit-inner-spin-button,
+input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+input[type=number] { -moz-appearance: textfield; }
 
 ::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-thumb { background: rgba(15,23,42,0.18); border-radius: 3px; }

@@ -9,6 +9,8 @@ const FLAG_MAP: Record<string, string> = {
   POL: 'pl', POR: 'pt', QAT: 'qa', ROU: 'ro', RSA: 'za', SCO: 'gb-sct',
   SEN: 'sn', SRB: 'rs', SUI: 'ch', SWE: 'se', TUR: 'tr', UKR: 'ua',
   URU: 'uy', VEN: 've', KOR: 'kr', GER: 'de', CZE: 'cz', TUN: 'tn',
+  HTI: 'ht', BIH: 'ba', CUW: 'cw', CIV: 'ci', ECU: 'ec', CPV: 'cv',
+  IRQ: 'iq', ALG: 'dz', JOR: 'jo', UZB: 'uz', COD: 'cd', AUT: 'at',
 };
 
 interface FlagProps {

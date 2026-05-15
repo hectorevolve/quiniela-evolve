@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { theme as T } from '@/lib/theme';
 import { MATCHES, RANKING, GOLEADORES, SELECCIONES, USER, type Match } from '@/lib/data';
 import {
-  Header, Avatar, Pill, Chip, Card, ScoreBox,
+  Header, Avatar, Pill, Chip, Card,
   PowerIcon, FAB, BottomSheet, Modal, Eyebrow,
 } from '@/components/ui';
 import { EvolveMark } from '@/components/brand/EvolveMark';
@@ -46,7 +46,7 @@ export function TorneoScreen({ goto, tweaks, fireToast }: Props) {
           }}>
             <EvolveMark size={28} color={T.lime}/>
           </div>
-          <div style={{ fontSize: 8, fontWeight: 700, color: T.ink, textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 4, textAlign: 'center', lineHeight: 1.2, whiteSpace: 'nowrap' }}>Club de<br/>Ganadores</div>
+          <div style={{ fontSize: 8, fontWeight: 700, color: T.ink, textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 4, textAlign: 'center', lineHeight: 1.2, whiteSpace: 'nowrap' }}>Grupo<br/>Evolve</div>
         </div>
       </div>
 
@@ -86,7 +86,7 @@ function TabPredicciones({ goto, tweaks, fireToast }: Props) {
   const [modal, setModal] = useState<null | { kind: 'double' | 'late' | 'spy'; match: Match }>(null);
   const [usedPowers, setUsedPowers] = useState<Set<string>>(new Set(tweaks.premium ? [] : ['spy']));
 
-  const filters = ['Todos', 'Grupo A', 'Grupo D', 'Grupo G'];
+  const filters = ['Todos', 'Grupo A', 'Grupo B', 'Grupo C', 'Grupo D', 'Grupo E', 'Grupo F', 'Grupo G', 'Grupo H', 'Grupo I', 'Grupo J', 'Grupo K', 'Grupo L'];
   const matches = tweaks.filled
     ? MATCHES.map(m => ({ ...m, prediction: m.prediction ?? [1, 0] as [number, number] }))
     : MATCHES;
@@ -148,7 +148,19 @@ function MatchCard({ match, usedPowers, onPower, onView }: {
   onPower: (kind: 'double' | 'late' | 'spy') => void;
   onView: () => void;
 }) {
+  const [homeScore, setHomeScore] = useState<string>(match.prediction != null ? String(match.prediction[0]) : '');
+  const [awayScore, setAwayScore] = useState<string>(match.prediction != null ? String(match.prediction[1]) : '');
   const [focusedScore, setFocusedScore] = useState<'home' | 'away' | null>(null);
+  const hasPrediction = homeScore !== '' && awayScore !== '';
+
+  const scoreInputStyle = (side: 'home' | 'away'): React.CSSProperties => ({
+    width: 48, height: 48, borderRadius: 10,
+    border: `2px solid ${focusedScore === side ? T.blue : T.border}`,
+    background: focusedScore === side ? T.blueSoft : T.bgSoft,
+    textAlign: 'center', fontSize: 22, fontWeight: 700, color: T.ink,
+    outline: 'none', WebkitAppearance: 'none' as React.CSSProperties['WebkitAppearance'],
+    fontFamily: 'var(--font-jetbrains), monospace',
+  });
 
   return (
     <Card accent={T.blue} style={{ padding: '16px 16px 14px' }}>
@@ -158,7 +170,7 @@ function MatchCard({ match, usedPowers, onPower, onView }: {
           <div style={{ fontSize: 11, color: T.muted }}>{match.date}</div>
           <div style={{ fontSize: 11, color: T.muted, fontStyle: 'italic' }}>{match.stadium}</div>
         </div>
-        {match.prediction && (
+        {hasPrediction && (
           <Pill color={T.blueSoft} textColor={T.blueDeep} size="sm">Predicho</Pill>
         )}
       </div>
@@ -172,12 +184,26 @@ function MatchCard({ match, usedPowers, onPower, onView }: {
 
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, flex: 0 }}>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <ScoreBox value={match.prediction?.[0] ?? null} focused={focusedScore === 'home'} onFocus={() => setFocusedScore('home')}/>
+            <input
+              type="number" min={0} max={99} placeholder="–"
+              value={homeScore}
+              onChange={e => setHomeScore(e.target.value)}
+              onFocus={() => setFocusedScore('home')}
+              onBlur={() => setFocusedScore(null)}
+              style={scoreInputStyle('home')}
+            />
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
               <SoccerBall size={18} spinning="2s" style={{ opacity: 0.7 }}/>
               <span style={{ fontSize: 9, fontWeight: 600, color: T.muted, letterSpacing: 0.5 }}>VS</span>
             </div>
-            <ScoreBox value={match.prediction?.[1] ?? null} focused={focusedScore === 'away'} onFocus={() => setFocusedScore('away')}/>
+            <input
+              type="number" min={0} max={99} placeholder="–"
+              value={awayScore}
+              onChange={e => setAwayScore(e.target.value)}
+              onFocus={() => setFocusedScore('away')}
+              onBlur={() => setFocusedScore(null)}
+              style={scoreInputStyle('away')}
+            />
           </div>
           {match.lastUpdate && (
             <div style={{ fontSize: 9.5, color: T.muted }}>Actualizado: {match.lastUpdate}</div>
@@ -438,7 +464,7 @@ function TabDetalles({ goto }: { goto: (s: string) => void }) {
         }}>
           <EvolveMark size={44} color={T.lime}/>
         </div>
-        <div style={{ fontSize: 18, fontWeight: 700, color: '#fff', marginBottom: 8 }}>Club de Ganadores</div>
+        <div style={{ fontSize: 18, fontWeight: 700, color: '#fff', marginBottom: 8 }}>Grupo Evolve</div>
         <Pill color={`${T.lime}25`} textColor={T.lime}>Miembros: 2,761</Pill>
         <button style={{
           marginTop: 14, padding: '10px 20px', background: 'transparent',
@@ -454,7 +480,7 @@ function TabDetalles({ goto }: { goto: (s: string) => void }) {
       <Card accent={T.lime}>
         <div style={{ paddingLeft: 10 }}>
           <div className="font-display" style={{ fontSize: 14, fontWeight: 700, color: T.ink, marginBottom: 6 }}>Descripción del grupo</div>
-          <div style={{ fontSize: 13, color: T.slate, lineHeight: 1.6 }}>Quiniela oficial del programa Club de Ganadores para el Torneo 2026</div>
+          <div style={{ fontSize: 13, color: T.slate, lineHeight: 1.6 }}>Quiniela oficial del programa Grupo Evolve para el Torneo 2026</div>
         </div>
       </Card>
 
