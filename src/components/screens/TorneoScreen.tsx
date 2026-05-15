@@ -68,7 +68,7 @@ export function TorneoScreen({ goto, tweaks, fireToast }: Props) {
       </div>
 
       {/* Content */}
-      <div style={{ flex: 1, overflowY: 'auto', position: 'relative' }}>
+      <div style={{ flex: 1, overflowY: 'auto' }}>
         {tab === 'predicciones' && <TabPredicciones goto={goto} tweaks={tweaks} fireToast={fireToast}/>}
         {tab === 'ranking'      && <TabRanking/>}
         {tab === 'bonus'        && <TabBonus fireToast={fireToast}/>}
