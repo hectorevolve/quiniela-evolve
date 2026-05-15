@@ -4,8 +4,8 @@ export const USER = {
   mayorista: 'DECASA',
   region: 'Centro',
   avatar: 'JP',
-  points: 124,
-  rank: 47,
+  points: 348,
+  rank: 1,
 };
 
 export interface Match {
@@ -118,14 +118,14 @@ export const MATCHES: Match[] = [
 ];
 
 export const RANKING = [
-  { pos: 1, name: 'Prodefy',        country: 'MEX', pts: 318 },
-  { pos: 2, name: 'Carzoncabval90', country: 'MEX', pts: 296 },
-  { pos: 3, name: 'THE RUDAS',      country: 'VEN', pts: 281 },
-  { pos: 4, name: 'pollo',          country: 'COL', pts: 274 },
-  { pos: 5, name: 'Blackleo',       country: 'VEN', pts: 263 },
-  { pos: 6, name: 'EL_MEXAS',       country: 'MEX', pts: 251 },
-  { pos: 7, name: 'patito99',       country: 'MEX', pts: 244 },
-  { pos: 8, name: 'lacomadre',      country: 'MEX', pts: 232 },
+  { pos: 1, name: 'Juan Pérez',     country: 'MEX', pts: 348 },
+  { pos: 2, name: 'Ricardo M.',     country: 'MEX', pts: 318 },
+  { pos: 3, name: 'Mariana S.',     country: 'VEN', pts: 296 },
+  { pos: 4, name: 'Eduardo V.',     country: 'VEN', pts: 281 },
+  { pos: 5, name: 'Paola H.',       country: 'VEN', pts: 274 },
+  { pos: 6, name: 'Sebastián R.',   country: 'MEX', pts: 263 },
+  { pos: 7, name: 'Gabriela F.',    country: 'MEX', pts: 251 },
+  { pos: 8, name: 'Carlos B.',      country: 'COL', pts: 244 },
 ];
 
 export const GOLEADORES = [

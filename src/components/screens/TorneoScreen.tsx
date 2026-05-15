@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { theme as T } from '@/lib/theme';
 import { MATCHES, RANKING, GOLEADORES, SELECCIONES, USER, type Match } from '@/lib/data';
 import {
@@ -278,32 +278,40 @@ function PowerModal({ kind, matchName, onConfirm, onCancel }: {
 // ──────── Tab: Ranking ────────
 function TabRanking() {
   const [subTab, setSubTab] = useState('General');
+  const [podiumVisible, setPodiumVisible] = useState(false);
   const subTabs = ['General', 'Mayorista', 'Región'];
 
-  const medalColors = [
-    'linear-gradient(135deg, #F59E0B 0%, #FBBF24 50%, #D97706 100%)',
-    'linear-gradient(135deg, #94A3B8 0%, #CBD5E1 50%, #64748B 100%)',
-    'linear-gradient(135deg, #CD7C2F 0%, #E8A45A 50%, #A0522D 100%)',
-  ];
+  useEffect(() => {
+    // Show animation only if rank changed since last visit (sessionStorage tracks it)
+    const prev = sessionStorage.getItem('evo-last-rank');
+    const curr = String(USER.rank);
+    if (prev !== curr) {
+      const t = setTimeout(() => setPodiumVisible(true), 200);
+      sessionStorage.setItem('evo-last-rank', curr);
+      return () => clearTimeout(t);
+    } else {
+      setPodiumVisible(true);
+    }
+  }, []);
+
+  const top3 = RANKING.slice(0, 3);
+  // rows 4+ only (top3 shown in podium)
+  const rest = RANKING.slice(3);
 
   return (
     <div style={{ padding: '12px 14px 80px' }}>
+      <RankingPodium top3={top3} visible={podiumVisible}/>
+
       {/* Sub-tabs */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
         {subTabs.map(s => <Chip key={s} active={subTab === s} onClick={() => setSubTab(s)}>{s}</Chip>)}
       </div>
+      <div style={{ fontSize: 11, color: T.muted, marginBottom: 12, paddingLeft: 2 }}>5,487 jugadores compiten</div>
 
-      {/* My rank pill */}
-      <div style={{ background: T.limeSoft, borderRadius: 999, padding: '8px 20px', display: 'inline-flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-        <span style={{ fontSize: 12, fontWeight: 700, color: T.ink }}>Tu ranking es <strong>#{USER.rank}</strong> con <strong>{USER.points} pts</strong></span>
-      </div>
-      <div style={{ fontSize: 11, color: T.muted, marginBottom: 16, paddingLeft: 2 }}>5,487 jugadores compiten</div>
-
-      {/* Rows */}
+      {/* Rows #4+ */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {RANKING.map((player) => {
+        {rest.map((player) => {
           const isMe = player.pos === USER.rank;
-          const isTop3 = player.pos <= 3;
           return (
             <div key={player.pos} style={{
               display: 'flex', alignItems: 'center', gap: 12,
@@ -313,11 +321,9 @@ function TabRanking() {
               boxShadow: isMe ? `0 0 0 2px ${T.lime}30` : T.shadowSm,
             }}>
               <div style={{
-                width: isTop3 ? 40 : 32, height: isTop3 ? 40 : 32, borderRadius: '50%',
-                background: isTop3 ? medalColors[player.pos - 1] : T.blueSoft,
+                width: 32, height: 32, borderRadius: '50%', background: T.blueSoft,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontWeight: 700, fontSize: isTop3 ? 15 : 12,
-                color: isTop3 ? '#fff' : T.blueDeep, flexShrink: 0,
+                fontWeight: 700, fontSize: 12, color: T.blueDeep, flexShrink: 0,
               }}>#{player.pos}</div>
               <Avatar initials={player.name.slice(0, 2).toUpperCase()} size={32} style={{ flexShrink: 0 }}/>
               <div style={{ flex: 1, minWidth: 0 }}>
@@ -328,22 +334,93 @@ function TabRanking() {
             </div>
           );
         })}
+      </div>
+    </div>
+  );
+}
 
-        {/* My row if not in list */}
-        <div style={{ height: 1, background: T.border, margin: '4px 0' }}/>
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 12,
-          background: T.limeSoft, borderRadius: 12, padding: '10px 14px',
-          border: `2px solid ${T.lime}`,
-        }}>
-          <div style={{ width: 32, height: 32, borderRadius: '50%', background: T.lime, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 12, color: T.ink, flexShrink: 0 }}>#{USER.rank}</div>
-          <Avatar initials={USER.avatar} size={32} ring={T.lime} style={{ flexShrink: 0 }}/>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: T.ink }}>Tú · {USER.mayorista}</div>
-            <Flag code="MEX" size={14} style={{ display: 'inline-block', marginTop: 2 }}/>
+function RankingPodium({ top3, visible }: { top3: typeof RANKING; visible: boolean }) {
+  // Podium order: 2nd (left) · 1st (center) · 3rd (right)
+  const order   = [top3[1], top3[0], top3[2]];
+  const heights = [96, 132, 72];
+  const colors  = ['#94A3B8', '#F59E0B', '#CD7C2F'];
+  const ranks   = [2, 1, 3];
+  const delays  = ['120ms', '0ms', '240ms'];
+  const crowDelay = '480ms';
+
+  return (
+    <div style={{
+      background: T.bgInk, borderRadius: 20, marginBottom: 16,
+      border: `1px solid ${T.borderInk}`, overflow: 'hidden',
+    }}>
+      {/* Header */}
+      <div style={{ padding: '18px 20px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div>
+          <div style={{ fontSize: 9.5, fontWeight: 700, color: T.muted, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 6 }}>Tu posición</div>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
+            <span className="font-display" style={{ fontSize: 44, fontWeight: 900, color: T.lime, lineHeight: 1, fontStyle: 'italic' }}>#{USER.rank}</span>
+            <span style={{ fontSize: 15, fontWeight: 600, color: 'rgba(255,255,255,0.65)' }}>{USER.points} pts</span>
           </div>
-          <div className="font-mono" style={{ fontSize: 13, fontWeight: 700, color: T.ink }}>{USER.points} pts</div>
         </div>
+        <Pill color={`${T.lime}22`} textColor={T.lime} style={{ fontSize: 13, fontWeight: 700, padding: '8px 14px' }}>🏆 ¡#{USER.rank}!</Pill>
+      </div>
+
+      {/* Podium stage */}
+      <div style={{ display: 'flex', alignItems: 'flex-end', padding: '0 16px' }}>
+        {order.map((player, i) => {
+          const isCenter = i === 1;
+          return (
+            <div key={player.pos} style={{
+              flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
+              transform: visible ? 'translateY(0)' : 'translateY(64px)',
+              opacity: visible ? 1 : 0,
+              transition: `transform 700ms cubic-bezier(0.34, 1.45, 0.64, 1) ${delays[i]}, opacity 350ms ease ${delays[i]}`,
+            }}>
+              {/* Crown (center only) */}
+              <div style={{
+                fontSize: 22, lineHeight: 1, marginBottom: 4,
+                opacity: isCenter ? (visible ? 1 : 0) : 0,
+                transform: isCenter ? (visible ? 'translateY(0) rotate(-8deg)' : 'translateY(-20px) rotate(-8deg)') : 'none',
+                transition: `opacity 400ms ease ${crowDelay}, transform 500ms cubic-bezier(0.34, 1.7, 0.64, 1) ${crowDelay}`,
+              }}>👑</div>
+
+              {/* Avatar */}
+              <Avatar
+                initials={player.name.slice(0, 2).toUpperCase()}
+                size={isCenter ? 54 : 42}
+                ring={colors[i]}
+                style={{ marginBottom: 6 }}
+              />
+
+              {/* Name */}
+              <div style={{
+                fontSize: isCenter ? 11.5 : 10, fontWeight: 700, color: '#fff',
+                marginBottom: 8, textAlign: 'center',
+                maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                padding: '0 4px',
+              }}>
+                {player.name.split(' ')[0]}
+                {player.pos === USER.rank ? <span style={{ color: T.lime }}> (tú)</span> : null}
+              </div>
+
+              {/* Platform */}
+              <div style={{
+                width: '100%', height: heights[i], borderRadius: '8px 8px 0 0',
+                background: `linear-gradient(180deg, ${colors[i]}55 0%, ${colors[i]}22 100%)`,
+                border: `1px solid ${colors[i]}66`, borderBottom: 'none',
+                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3,
+              }}>
+                <div className="font-display" style={{
+                  fontSize: isCenter ? 28 : 22, fontWeight: 900,
+                  color: colors[i], lineHeight: 1, fontStyle: 'italic',
+                }}>#{ranks[i]}</div>
+                <div className="font-mono" style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.6)' }}>
+                  {player.pts} pts
+                </div>
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -446,10 +523,9 @@ function TabDetalles({ goto }: { goto: (s: string) => void }) {
   const [pointsSheet, setPointsSheet] = useState(false);
 
   const prizes = [
-    { icon: '🥇', label: 'Hero',         n: 107,   val: '$15,000' },
-    { icon: '🥈', label: 'Aspiracional', n: 193,   val: '$4,000' },
-    { icon: '🥉', label: 'Medio',        n: 496,   val: '$2,000' },
-    { icon: '🎖️', label: 'Simbólico',    n: 1932,  val: '$500' },
+    { icon: '🥇', label: '1er Lugar', sub: 'Ganador absoluto', val: '$15,000 MXN' },
+    { icon: '🥈', label: '2do Lugar', sub: 'Segundo lugar',    val: '$10,000 MXN' },
+    { icon: '🥉', label: '3er Lugar', sub: 'Tercer lugar',     val: '$5,000 MXN'  },
   ];
 
   return (
@@ -487,21 +563,21 @@ function TabDetalles({ goto }: { goto: (s: string) => void }) {
       {/* Prizes */}
       <Card>
         <div className="font-display" style={{ fontSize: 14, fontWeight: 700, color: T.ink, marginBottom: 12 }}>Premios</div>
-        {prizes.map(p => (
-          <div key={p.label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0', borderBottom: `1px solid ${T.borderSoft}` }}>
+        {prizes.map((p, i) => (
+          <div key={p.label} style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: '10px 0', borderBottom: i < prizes.length - 1 ? `1px solid ${T.borderSoft}` : 'none',
+          }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ fontSize: 16 }}>{p.icon}</span>
+              <span style={{ fontSize: 20 }}>{p.icon}</span>
               <div>
-                <div style={{ fontSize: 13, fontWeight: 600, color: T.ink }}>{p.label}</div>
-                <div style={{ fontSize: 11, color: T.muted }}>{p.n} ganadores</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: T.ink }}>{p.label}</div>
+                <div style={{ fontSize: 11, color: T.muted }}>{p.sub}</div>
               </div>
             </div>
-            <div style={{ fontSize: 13, fontWeight: 700, color: T.ink }}>{p.val} c/u</div>
+            <div className="font-mono" style={{ fontSize: 14, fontWeight: 800, color: T.ink }}>{p.val}</div>
           </div>
         ))}
-        <button onClick={() => goto('premios')} style={{ marginTop: 12, width: '100%', padding: '10px', background: 'transparent', border: `1.5px solid ${T.border}`, borderRadius: 10, color: T.ink, fontWeight: 600, fontSize: 12, cursor: 'pointer' }}>
-          Ver catálogo completo →
-        </button>
       </Card>
 
       {/* Powers */}
