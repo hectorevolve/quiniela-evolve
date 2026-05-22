@@ -161,7 +161,7 @@ function ViewDashboard({ liveUsers, setView }: { liveUsers: LiveUser[]; setView:
       <SectionHeader title="Dashboard" sub="Resumen general del torneo"/>
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 24 }}>
         <StatCard label="Usuarios"    value={nonAdmins.length}  sub="Registrados"   color={c.blue}/>
-        <StatCard label="Grupos"      value={groups.length}     sub="Activos"/>
+        <StatCard label="Grupos"      value={ALL_GROUPS.length} sub="Activos"/>
         <StatCard label="Partidos"    value={MATCHES.length}    sub="En el torneo"/>
         <StatCard label="Jugados"     value={MATCHES.filter(m => m.result).length} sub="Con resultado"/>
       </div>
@@ -189,9 +189,9 @@ function ViewDashboard({ liveUsers, setView }: { liveUsers: LiveUser[]; setView:
           ))}
         </div>
 
-        {/* Group cards */}
+        {/* Group cards — always show all groups */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, alignContent: 'start' }}>
-          {groups.filter(g => g !== 'Sin grupo').map(g => {
+          {ALL_GROUPS.map(g => {
             const members = liveUsers.filter(u => u.group_name === g && u.role !== 'admin');
             const col = GROUP_COLORS[g] ?? c.blue;
             return (
@@ -205,11 +205,6 @@ function ViewDashboard({ liveUsers, setView }: { liveUsers: LiveUser[]; setView:
               </div>
             );
           })}
-          {groups.filter(g => g !== 'Sin grupo').length === 0 && (
-            <div style={{ gridColumn: '1/-1', padding: '24px', textAlign: 'center', color: c.muted, fontSize: 13, background: c.card, borderRadius: 12, border: `1px solid ${c.border}` }}>
-              Los grupos aparecerán cuando agregues usuarios.
-            </div>
-          )}
         </div>
       </div>
     </div>
