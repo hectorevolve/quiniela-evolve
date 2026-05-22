@@ -1,13 +1,14 @@
 'use client';
 import { useState, useMemo, useEffect } from 'react';
 import Link from 'next/link';
-import { RANKING, MATCHES, KNOCKOUT_MATCHES, USER_PREDICTIONS, GROUP_MATCH_IDS } from '@/lib/data';
+import { MATCHES, KNOCKOUT_MATCHES, USER_PREDICTIONS, GROUP_MATCH_IDS } from '@/lib/data';
 import { EvolveMark } from '@/components/brand/EvolveMark';
 import { Avatar } from '@/components/ui';
 import { supabase } from '@/lib/supabase';
+import { getRankings, type RankingEntry } from '@/lib/db';
 
 type View = 'dashboard' | 'usuarios' | 'rankings' | 'predicciones' | 'partidos' | 'grupos';
-type AdminUser = typeof RANKING[number];
+type AdminUser = { name: string; pts: number; group: string; city: string; pos: number; country: string };
 type AdminMatch = typeof MATCHES[number];
 
 const NAV: { id: View; label: string }[] = [
@@ -529,61 +530,63 @@ function ViewUsuarios({ users, updateUser, deleteUser, groupFilter, setGroupFilt
 }
 
 // ─── Rankings ─────────────────────────────────────────────────────────────────
-function ViewRankings({ users, updateUser }: { users: AdminUser[]; updateUser: (name: string, patch: Partial<AdminUser>) => void }) {
+function ViewRankings() {
   const isMobile = useIsMobile();
-  const allGroups = useMemo(() => Array.from(new Set(users.map(u => u.group))), [users]);
   const [tab, setTab] = useState('nacional');
-
-  // Edit modal state
-  const [editing, setEditing] = useState<AdminUser | null>(null);
-  const [editPts, setEditPts] = useState(0);
-  const [editGroup, setEditGroup] = useState('');
-  const [editCity, setEditCity] = useState('');
-  const [predViewUser, setPredViewUser] = useState<AdminUser | null>(null);
-  const [predViewPreds, setPredViewPreds] = useState<Record<string, [number,number]>>({});
-  const [predSearch, setPredSearch] = useState('');
-  const [predGroupFilter, setPredGroupFilter] = useState('Todos');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
-  const [predViewMode, setPredViewMode] = useState<'list' | 'grid'>('list');
+  const [rankings, setRankings] = useState<RankingEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    getRankings()
+      .then(setRankings)
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, []);
 
   const list = useMemo(() => {
-    if (tab === 'nacional') return users;
-    return users.filter(u => u.group === tab).map((u, i) => ({ ...u, pos: i + 1 }));
-  }, [tab, users]);
-
-  const openEdit = (u: AdminUser) => { setEditing(u); setEditPts(u.pts); setEditGroup(u.group); setEditCity(u.city); };
-  const saveEdit = () => { if (!editing) return; updateUser(editing.name, { pts: editPts, group: editGroup, city: editCity }); setEditing(null); };
-  const openPredView = (u: AdminUser) => { setEditing(null); setPredViewUser(u); setPredViewPreds({ ...(USER_PREDICTIONS[u.name] ?? {}) }); setPredSearch(''); setPredGroupFilter('Todos'); setPredViewMode('list'); };
-  const setLocalPred = (matchId: string, idx: 0 | 1, val: number) => {
-    setPredViewPreds(prev => { const curr = prev[matchId] ?? [0,0]; const next: [number,number] = [curr[0],curr[1]]; next[idx] = val; return { ...prev, [matchId]: next }; });
-  };
+    if (tab === 'nacional') return rankings;
+    return rankings
+      .filter(u => u.group_name === tab)
+      .map((u, i) => ({ ...u, pos: i + 1 }));
+  }, [tab, rankings]);
 
   return (
     <div>
       <SectionHeader title="Rankings" sub="Clasificaciones por grupo y nacional"/>
       <div style={{ display: 'flex', gap: 6, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center' }}>
         <button onClick={() => setTab('nacional')} style={{ padding: '8px 16px', borderRadius: 8, border: `1px solid ${tab === 'nacional' ? c.blue : c.border}`, background: tab === 'nacional' ? `${c.blue}22` : c.card, color: tab === 'nacional' ? c.blue : c.muted, fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>Nacional</button>
-        {allGroups.map(g => {
+        {ALL_GROUPS.map(g => {
           const col = GROUP_COLORS[g] ?? c.blue;
           return <button key={g} onClick={() => setTab(g)} style={{ padding: '8px 14px', borderRadius: 8, border: `1px solid ${tab === g ? col : c.border}`, background: tab === g ? `${col}22` : c.card, color: tab === g ? col : c.muted, fontWeight: 700, fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap' }}>{g}</button>;
         })}
         <div style={{ marginLeft: 'auto' }}><ViewToggle mode={viewMode} onChange={setViewMode}/></div>
       </div>
 
-      {viewMode === 'list' ? (
+      {loading ? (
+        <div style={{ padding: '40px', textAlign: 'center', color: c.muted, fontSize: 14 }}>Cargando ranking…</div>
+      ) : list.length === 0 ? (
+        <div style={{ padding: '40px', textAlign: 'center', color: c.muted, fontSize: 14, background: c.card, borderRadius: 12, border: `1px solid ${c.border}` }}>
+          {tab === 'nacional'
+            ? 'No hay usuarios registrados aún.'
+            : `No hay usuarios en el grupo ${tab} aún.`}
+          <br/><span style={{ fontSize: 12, opacity: 0.7 }}>Los puntos se calcularán cuando el admin ingrese resultados de partidos.</span>
+        </div>
+      ) : viewMode === 'list' ? (
         <div style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 14, overflow: 'hidden' }}>
           <TableWrap>
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 500 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 400 }}>
               <thead>
                 <tr style={{ borderBottom: `1px solid ${c.border}` }}>
-                  {['#','Usuario','Grupo','Ciudad','Puntos','Acciones'].map(h => (
+                  {['#','Usuario','Grupo','Puntos'].map(h => (
                     <th key={h} style={{ padding: '12px 14px', textAlign: h === 'Puntos' ? 'right' : 'left', fontSize: 11, fontWeight: 600, color: c.muted, letterSpacing: 0.8, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {list.map((u, i) => (
-                  <tr key={u.name} style={{ borderBottom: i < list.length - 1 ? `1px solid ${c.border}` : 'none', transition: 'background 100ms' }}
+                  <tr key={u.userId} style={{ borderBottom: i < list.length - 1 ? `1px solid ${c.border}` : 'none', transition: 'background 100ms' }}
                     onMouseEnter={e => (e.currentTarget.style.background = c.rowHov)}
                     onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
                     <td style={{ padding: '11px 14px', fontSize: 13, fontWeight: 700, color: u.pos <= 3 ? c.amber : c.dim }}>#{u.pos}</td>
@@ -593,12 +596,8 @@ function ViewRankings({ users, updateUser }: { users: AdminUser[]; updateUser: (
                         <span style={{ fontSize: 13, fontWeight: 600, color: c.text, whiteSpace: 'nowrap' }}>{u.name}</span>
                       </div>
                     </td>
-                    <td style={{ padding: '11px 14px' }}><GroupBadge group={u.group}/></td>
-                    <td style={{ padding: '11px 14px', fontSize: 13, color: c.muted, whiteSpace: 'nowrap' }}>{u.city}</td>
-                    <td style={{ padding: '11px 14px', fontSize: 14, fontWeight: 700, color: c.lime, textAlign: 'right' }}>{u.pts}</td>
-                    <td style={{ padding: '11px 14px' }}>
-                      <button onClick={() => openEdit(u)} style={{ padding: '5px 10px', borderRadius: 6, border: `1px solid ${c.border}`, background: 'none', color: c.blue, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>Detalles</button>
-                    </td>
+                    <td style={{ padding: '11px 14px' }}>{u.group_name ? <GroupBadge group={u.group_name}/> : <span style={{ color: c.dim, fontSize: 12 }}>—</span>}</td>
+                    <td style={{ padding: '11px 14px', fontSize: 14, fontWeight: 700, color: c.lime, textAlign: 'right' }}>{u.points}</td>
                   </tr>
                 ))}
               </tbody>
@@ -608,145 +607,18 @@ function ViewRankings({ users, updateUser }: { users: AdminUser[]; updateUser: (
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(280px, 1fr))', gap: 10 }}>
           {list.map((u) => (
-            <div key={u.name} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', background: c.card, border: `1px solid ${u.pos <= 3 ? c.amber + '55' : c.border}`, borderRadius: 12 }}>
+            <div key={u.userId} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', background: c.card, border: `1px solid ${u.pos <= 3 ? c.amber + '55' : c.border}`, borderRadius: 12 }}>
               <div style={{ width: 34, height: 34, borderRadius: '50%', background: u.pos === 1 ? '#F59E0B33' : u.pos === 2 ? '#94A3B833' : u.pos === 3 ? '#CD7C2F33' : 'rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 12, color: u.pos <= 3 ? c.amber : c.muted, flexShrink: 0 }}>
                 {u.pos <= 3 ? ['🥇','🥈','🥉'][u.pos - 1] : `#${u.pos}`}
               </div>
               <Avatar initials={u.name.slice(0,2).toUpperCase()} size={30} style={{ flexShrink: 0 }}/>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 600, color: c.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.name}</div>
-                <div style={{ fontSize: 11, color: c.muted }}>{u.group} · {u.city}</div>
+                <div style={{ fontSize: 11, color: c.muted }}>{u.group_name ?? '—'}</div>
               </div>
-              <div style={{ fontSize: 14, fontWeight: 800, color: c.lime, flexShrink: 0, marginRight: 4 }}>{u.pts}</div>
-              <button onClick={() => openEdit(u)} style={{ padding: '5px 10px', borderRadius: 6, border: `1px solid ${c.border}`, background: 'none', color: c.blue, fontSize: 11, fontWeight: 600, cursor: 'pointer', flexShrink: 0 }}>Detalles</button>
+              <div style={{ fontSize: 14, fontWeight: 800, color: c.lime, flexShrink: 0 }}>{u.points} pts</div>
             </div>
           ))}
-        </div>
-      )}
-
-      {/* Edit modal */}
-      {editing && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 16 }} onClick={() => setEditing(null)}>
-          <div style={{ background: '#0D1829', border: `1px solid ${c.border}`, borderRadius: 18, padding: isMobile ? 20 : 28, width: '100%', maxWidth: 440, maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 22 }}>
-              <Avatar initials={editing.name.slice(0,2).toUpperCase()} size={40}/>
-              <div>
-                <div style={{ fontSize: 16, fontWeight: 700, color: c.text }}>{editing.name}</div>
-                <div style={{ fontSize: 12, color: c.muted }}>#{editing.pos} · {editing.pts} pts</div>
-              </div>
-            </div>
-            <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: c.muted, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>Puntos</label>
-            <input type="number" value={editPts} onChange={e => setEditPts(Number(e.target.value))}
-              style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.06)', color: c.text, fontSize: 22, fontWeight: 800, textAlign: 'center', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box', marginBottom: 8 }}/>
-            <button onClick={() => openPredView(editing)} style={{ width: '100%', padding: '10px', borderRadius: 8, border: `1px solid ${c.blue}44`, background: `${c.blue}11`, color: c.blue, fontWeight: 700, fontSize: 13, cursor: 'pointer', marginBottom: 20 }}>
-              🎯 Ver predicciones
-            </button>
-            <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: c.muted, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>Grupo</label>
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 18 }}>
-              {allGroups.map(g => { const col = GROUP_COLORS[g] ?? c.blue; return <button key={g} onClick={() => setEditGroup(g)} style={{ flex: '1 1 auto', padding: '8px 10px', borderRadius: 8, border: `1px solid ${editGroup === g ? col : c.border}`, background: editGroup === g ? `${col}22` : 'none', color: editGroup === g ? col : c.muted, fontWeight: 700, fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap' }}>{g}</button>; })}
-            </div>
-            <ModalInput label="Ciudad" value={editCity} onChange={setEditCity}/>
-            <div style={{ display: 'flex', gap: 10 }}>
-              <button onClick={saveEdit} style={{ flex: 1, padding: '12px', borderRadius: 10, border: 'none', background: c.blue, color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>Guardar</button>
-              <button onClick={() => setEditing(null)} style={{ flex: 1, padding: '12px', borderRadius: 10, border: `1px solid ${c.border}`, background: 'none', color: c.muted, fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>Cancelar</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Predictions modal */}
-      {predViewUser && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 16 }} onClick={() => setPredViewUser(null)}>
-          <div style={{ background: '#0D1829', border: `1px solid ${c.border}`, borderRadius: 18, width: '100%', maxWidth: 560, maxHeight: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }} onClick={e => e.stopPropagation()}>
-            <div style={{ padding: '16px 20px', borderBottom: `1px solid ${c.border}`, flexShrink: 0 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-                <Avatar initials={predViewUser.name.slice(0,2).toUpperCase()} size={34}/>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: c.text }}>{predViewUser.name}</div>
-                  <div style={{ fontSize: 11, color: c.muted }}>{predViewUser.group} · Fase de grupos</div>
-                </div>
-                <ViewToggle mode={predViewMode} onChange={setPredViewMode}/>
-                <button onClick={() => setPredViewUser(null)} style={{ background: 'none', border: 'none', color: c.muted, fontSize: 18, cursor: 'pointer', padding: '4px 8px', lineHeight: 1 }}>✕</button>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, padding: '7px 12px', marginBottom: 10 }}>
-                <span style={{ color: c.dim, fontSize: 13 }}>🔍</span>
-                <input value={predSearch} onChange={e => setPredSearch(e.target.value)} placeholder="Buscar equipo o partido…"
-                  style={{ flex: 1, background: 'none', border: 'none', outline: 'none', color: c.text, fontSize: 12, fontFamily: 'inherit' }}/>
-                {predSearch && <button onClick={() => setPredSearch('')} style={{ background: 'none', border: 'none', color: c.dim, cursor: 'pointer', fontSize: 13, lineHeight: 1, padding: 0 }}>✕</button>}
-              </div>
-              <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
-                {['Todos', ...Array.from(new Set(MATCHES.map(m => m.group)))].map(g => (
-                  <button key={g} onClick={() => setPredGroupFilter(g)} style={{ padding: '4px 9px', borderRadius: 6, border: `1px solid ${predGroupFilter === g ? c.blue : c.border}`, background: predGroupFilter === g ? `${c.blue}22` : 'none', color: predGroupFilter === g ? c.blue : c.muted, fontSize: 10, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>{g}</button>
-                ))}
-              </div>
-            </div>
-            <div style={{ flex: 1, overflowY: 'auto', padding: predViewMode === 'grid' ? '12px 16px' : '8px 20px' }}>
-              {(() => {
-                const filteredMatches = GROUP_MATCH_IDS.filter(matchId => {
-                  const match = MATCHES.find(m => m.id === matchId);
-                  if (!match) return false;
-                  if (predGroupFilter !== 'Todos' && match.group !== predGroupFilter) return false;
-                  if (predSearch) { const q = predSearch.toLowerCase(); return match.home.name.toLowerCase().includes(q) || match.away.name.toLowerCase().includes(q) || match.home.code.toLowerCase().includes(q) || match.away.code.toLowerCase().includes(q) || matchId.toLowerCase().includes(q); }
-                  return true;
-                });
-                if (predViewMode === 'grid') {
-                  return (
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                      {filteredMatches.map(matchId => {
-                        const match = MATCHES.find(m => m.id === matchId);
-                        if (!match) return null;
-                        const pred = predViewPreds[matchId];
-                        return (
-                          <div key={matchId} style={{ background: 'rgba(255,255,255,0.04)', border: `1px solid ${c.border}`, borderRadius: 10, padding: '10px 12px' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                              <span style={{ fontSize: 10, fontWeight: 700, color: c.blue }}>{matchId.toUpperCase()}</span>
-                              <span style={{ fontSize: 9, color: c.muted }}>Gp. {match.group}</span>
-                            </div>
-                            <div style={{ fontSize: 11, fontWeight: 600, color: c.text, textAlign: 'center', marginBottom: 8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                              {match.home.code} <span style={{ color: c.muted }}>vs</span> {match.away.code}
-                            </div>
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
-                              <input type="number" min={0} max={20} value={pred?.[0] ?? ''} onChange={e => setLocalPred(matchId, 0, Number(e.target.value))} placeholder="–"
-                                style={{ width: 36, padding: '4px', borderRadius: 6, border: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.06)', color: c.text, fontSize: 13, fontWeight: 700, textAlign: 'center', fontFamily: 'inherit', outline: 'none' }}/>
-                              <span style={{ color: c.muted, fontSize: 11 }}>–</span>
-                              <input type="number" min={0} max={20} value={pred?.[1] ?? ''} onChange={e => setLocalPred(matchId, 1, Number(e.target.value))} placeholder="–"
-                                style={{ width: 36, padding: '4px', borderRadius: 6, border: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.06)', color: c.text, fontSize: 13, fontWeight: 700, textAlign: 'center', fontFamily: 'inherit', outline: 'none' }}/>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  );
-                }
-                return (
-                  <>
-                    {filteredMatches.map(matchId => {
-                      const match = MATCHES.find(m => m.id === matchId);
-                      if (!match) return null;
-                      const pred = predViewPreds[matchId];
-                      return (
-                        <div key={matchId} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 0', borderBottom: `1px solid ${c.border}` }}>
-                          <div style={{ width: 34, fontSize: 11, fontWeight: 700, color: c.blue, flexShrink: 0 }}>{matchId.toUpperCase()}</div>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: 10, color: c.muted }}>Grupo {match.group}</div>
-                            <div style={{ fontSize: 12, fontWeight: 600, color: c.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{match.home.name} <span style={{ color: c.muted, fontWeight: 400 }}>vs</span> {match.away.name}</div>
-                          </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
-                            <input type="number" min={0} max={20} value={pred?.[0] ?? ''} onChange={e => setLocalPred(matchId, 0, Number(e.target.value))} placeholder="–" style={{ width: 42, padding: '5px 6px', borderRadius: 7, border: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.06)', color: c.text, fontSize: 14, fontWeight: 700, textAlign: 'center', fontFamily: 'inherit', outline: 'none' }}/>
-                            <span style={{ color: c.muted, fontWeight: 700 }}>–</span>
-                            <input type="number" min={0} max={20} value={pred?.[1] ?? ''} onChange={e => setLocalPred(matchId, 1, Number(e.target.value))} placeholder="–" style={{ width: 42, padding: '5px 6px', borderRadius: 7, border: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.06)', color: c.text, fontSize: 14, fontWeight: 700, textAlign: 'center', fontFamily: 'inherit', outline: 'none' }}/>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </>
-                );
-              })()}
-            </div>
-            <div style={{ padding: '14px 20px', borderTop: `1px solid ${c.border}`, flexShrink: 0 }}>
-              <button onClick={() => setPredViewUser(null)} style={{ width: '100%', padding: '12px', borderRadius: 10, border: 'none', background: c.blue, color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>Guardar y cerrar</button>
-            </div>
-          </div>
         </div>
       )}
     </div>
@@ -1237,7 +1109,7 @@ export default function AdminPage() {
   const isMobile = useIsMobile();
   const [view, setView] = useState<View>('dashboard');
   const [menuOpen, setMenuOpen] = useState(false);
-  const [users, setUsers] = useState<AdminUser[]>([...RANKING]);
+  const [users, setUsers] = useState<AdminUser[]>([]);
   const [groupFilter, setGroupFilter] = useState('Todos');
   const [liveUsers, setLiveUsers] = useState<LiveUser[]>([]);
   const [authState, setAuthState] = useState<'checking' | 'allowed' | 'denied'>('checking');
@@ -1368,7 +1240,7 @@ export default function AdminPage() {
       <div style={{ flex: 1, overflow: isMobile ? 'visible' : 'auto', padding: isMobile ? 16 : 32 }}>
         {view === 'dashboard'    && <ViewDashboard liveUsers={liveUsers} setView={setView}/>}
         {view === 'usuarios'     && <ViewUsuariosAdmin liveUsers={liveUsers} onUserCreated={u => setLiveUsers(prev => [...prev, u])}/>}
-        {view === 'rankings'     && <ViewRankings users={users} updateUser={updateUser}/>}
+        {view === 'rankings'     && <ViewRankings/>}
         {view === 'predicciones' && <ViewPredicciones users={users}/>}
         {view === 'partidos'     && <ViewPartidos/>}
         {view === 'grupos'       && <ViewGrupos users={users} onSelectGroup={goToGroup}/>}
