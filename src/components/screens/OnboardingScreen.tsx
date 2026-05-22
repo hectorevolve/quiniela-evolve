@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { theme as T } from '@/lib/theme';
+import { RANKING } from '@/lib/data';
 import { Button } from '@/components/ui';
 import { EvolveMark } from '@/components/brand/EvolveMark';
 
@@ -51,7 +52,7 @@ const SLIDES = [
     ),
     color: T.amber,
     title: 'Escala en los rankings',
-    text: 'Compite con tu mayorista y a nivel nacional. Mira cómo te ubicas frente a los 3,347 vendedores participantes.',
+    text: `Compite con tu mayorista y a nivel nacional. Mira cómo te ubicas frente a los ${RANKING.length.toLocaleString('es-MX')} vendedores participantes.`,
   },
   {
     icon: (

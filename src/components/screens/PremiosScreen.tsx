@@ -1,11 +1,11 @@
 'use client';
 import { theme as T } from '@/lib/theme';
-import { USER } from '@/lib/data';
 import { Header, Pill, Card } from '@/components/ui';
 
 interface Props {
   goto: (s: string) => void;
   fireToast: (msg: string, color?: string, textColor?: string) => void;
+  rank: number;
 }
 
 const PRIZES = [
@@ -29,8 +29,8 @@ const PRIZES = [
   },
 ];
 
-export function PremiosScreen({ goto }: Props) {
-  const userPrize = PRIZES.find(p => p.rank === USER.rank);
+export function PremiosScreen({ goto, rank }: Props) {
+  const userPrize = PRIZES.find(p => p.rank === rank);
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: T.bgSubtle, overflow: 'hidden' }}>
@@ -49,14 +49,14 @@ export function PremiosScreen({ goto }: Props) {
             Los tres participantes con más puntos al finalizar el Torneo 2026 se llevan un premio en efectivo.
           </div>
           <Pill color={`${T.lime}22`} textColor={T.lime} style={{ fontSize: 13, fontWeight: 700 }}>
-            ⚡ Tu posición actual: #{USER.rank}
+            ⚡ Tu posición actual: #{rank}
           </Pill>
         </div>
 
         {/* Prize cards */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 20 }}>
           {PRIZES.map(p => {
-            const isMe = p.rank === USER.rank;
+            const isMe = p.rank === rank;
             return (
               <div key={p.rank} style={{
                 borderRadius: 16, overflow: 'hidden',
@@ -115,7 +115,7 @@ export function PremiosScreen({ goto }: Props) {
               <div>
                 <div className="font-display" style={{ fontSize: 15, fontWeight: 700, color: T.ink }}>Sigue compitiendo</div>
                 <div style={{ fontSize: 12, color: T.slate, marginTop: 2 }}>
-                  Estás en el lugar #{USER.rank}. Necesitas entrar al top 3 para ganar.
+                  Estás en el lugar #{rank}. Necesitas entrar al top 3 para ganar.
                 </div>
               </div>
             </div>

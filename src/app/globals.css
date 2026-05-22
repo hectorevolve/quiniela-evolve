@@ -87,6 +87,19 @@ input[type=number] { -moz-appearance: textfield; }
   to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 
+@keyframes banner-exit {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to   { opacity: 0; transform: translateY(-14px) scale(0.97); }
+}
+
+@keyframes banner-enter {
+  from { opacity: 0; transform: translateY(14px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.banner-exit  { animation: banner-exit  320ms cubic-bezier(0.4, 0, 0.6, 1) both; }
+.banner-enter { animation: banner-enter 380ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+
 @keyframes evo-ball-fall {
   0%   { top: -8%;  transform: translateX(-50%) rotate(0deg);   opacity: 0; }
   5%   { opacity: 1; }

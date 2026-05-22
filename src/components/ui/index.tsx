@@ -228,21 +228,23 @@ const POWERS = {
 };
 
 export function PowerIcon({
-  kind, size = 44, used = false, onClick, label = false,
+  kind, size = 44, used = false, locked = false, onClick, label = false, allowClickWhenUsed = false,
 }: {
-  kind: 'double' | 'late' | 'spy'; size?: number; used?: boolean;
-  onClick?: () => void; label?: boolean;
+  kind: 'double' | 'late' | 'spy'; size?: number; used?: boolean; locked?: boolean;
+  onClick?: () => void; label?: boolean; allowClickWhenUsed?: boolean;
 }) {
   const p = POWERS[kind];
+  const inactive = used || locked;
+  const clickable = locked ? false : (used ? allowClickWhenUsed : true);
   const body = (
-    <div onClick={used ? undefined : onClick} style={{
+    <div onClick={clickable ? onClick : undefined} style={{
       width: size, height: size, borderRadius: 12,
-      border: `1.5px solid ${used ? T.border : p.color}`,
-      background: used ? T.bgSoft : p.bg,
+      border: `1.5px solid ${inactive ? T.border : p.color}`,
+      background: inactive ? T.bgSoft : p.bg,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      cursor: used ? 'default' : (onClick ? 'pointer' : 'default'),
-      opacity: used ? 0.45 : 1, position: 'relative',
-      transition: 'transform 120ms', boxShadow: used ? 'none' : T.shadowSm,
+      cursor: clickable && onClick ? 'pointer' : 'default',
+      opacity: inactive ? 0.45 : 1, position: 'relative',
+      transition: 'transform 120ms', boxShadow: inactive ? 'none' : T.shadowSm,
     }}>
       {p.icon === 'x2' && (
         <span className="font-display" style={{ fontSize: size * 0.42, fontWeight: 700, color: p.stroke, letterSpacing: -1, fontStyle: 'italic' }}>×2</span>
@@ -266,6 +268,18 @@ export function PowerIcon({
         }}>
           <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="20 6 9 17 4 12"/>
+          </svg>
+        </div>
+      )}
+      {locked && !used && (
+        <div style={{
+          position: 'absolute', top: -6, right: -6, width: 18, height: 18,
+          background: T.muted, borderRadius: '50%', display: 'flex',
+          alignItems: 'center', justifyContent: 'center', border: '2px solid #fff',
+        }}>
+          <svg width="8" height="8" viewBox="0 0 24 24" fill="#fff">
+            <rect x="3" y="11" width="18" height="11" rx="2"/>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4" stroke="#fff" strokeWidth="2.5" fill="none"/>
           </svg>
         </div>
       )}

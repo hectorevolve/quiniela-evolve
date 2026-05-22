@@ -16,6 +16,32 @@ export function loadPrediction(matchId: string): SavedPrediction | null {
   }
 }
 
+// ── Bonus predictions ──────────────────────────────────────────────────────────
+export interface BonusPrediction {
+  champCode?: string;
+  subCode?: string;
+  thirdCode?: string;
+  goalPlayer?: string;
+}
+
+const BONUS_KEY = 'evo_bonus';
+
+export function loadBonus(): BonusPrediction | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(BONUS_KEY);
+    return raw ? (JSON.parse(raw) as BonusPrediction) : null;
+  } catch { return null; }
+}
+
+export function saveBonus(data: Partial<BonusPrediction>): void {
+  // TODO: replace with Supabase upsert when auth is wired up:
+  // await supabase.from('bonus_predictions').upsert({ user_id, ...data })
+  const existing = loadBonus() ?? {};
+  localStorage.setItem(BONUS_KEY, JSON.stringify({ ...existing, ...data }));
+}
+
+// ── Match predictions ──────────────────────────────────────────────────────────
 export function savePrediction(
   matchId: string,
   home: number,

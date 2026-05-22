@@ -1,12 +1,13 @@
 'use client';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { theme as T } from '@/lib/theme';
-import { USER } from '@/lib/data';
-import { Header, Avatar, Card, Pill, PowerIcon, Modal } from '@/components/ui';
+import { USER, MATCHES, isMatchPast, DEMO_PAST_IDS, DEMO_RESULTS, type Match } from '@/lib/data';
+import { Header, Avatar, Card, Chip, Pill, PowerIcon, Modal } from '@/components/ui';
+import { Flag } from '@/components/flags/Flag';
 
 interface Props {
   goto: (s: string) => void;
-  tweaks: { premium: boolean };
+  tweaks: { premium: boolean; pastMatch: boolean };
   fireToast: (msg: string, color?: string, textColor?: string) => void;
 }
 
@@ -22,6 +23,8 @@ const BADGES = [
 export function PerfilScreen({ goto, tweaks, fireToast }: Props) {
   const [logoutModal, setLogoutModal] = useState(false);
   const [badgeModal, setBadgeModal] = useState<null | typeof BADGES[number]>(null);
+  const [view, setView] = useState<'main' | 'past'>('main');
+  const [pastFilter, setPastFilter] = useState('Todos');
 
   const months = [
     { label: 'May', pct: 100, color: T.emerald },
@@ -34,6 +37,65 @@ export function PerfilScreen({ goto, tweaks, fireToast }: Props) {
     { kind: 'late'   as const, status: 'Disponible', used: false },
     { kind: 'spy'    as const, status: 'Usado en MEX vs RSA', used: !tweaks.premium },
   ];
+
+  const pastMatches = MATCHES.filter(m =>
+    isMatchPast(m.date) || (tweaks.pastMatch && DEMO_PAST_IDS.has(m.id))
+  ).map(m => {
+    const demo = DEMO_RESULTS[m.id];
+    return demo ? { ...m, result: demo.result as [number, number], userPrediction: demo.userPrediction as [number, number], pointsEarned: demo.pointsEarned } : m;
+  });
+
+  const pastGroups = useMemo(() => {
+    const seen = new Set<string>();
+    const groups: string[] = [];
+    for (const m of pastMatches) {
+      if (!seen.has(m.group)) { seen.add(m.group); groups.push(m.group); }
+    }
+    return groups;
+  }, [pastMatches]);
+
+  const filteredPast = useMemo(() =>
+    pastFilter === 'Todos' ? pastMatches : pastMatches.filter(m => m.group === pastFilter),
+  [pastMatches, pastFilter]);
+
+  const groupLabel = (g: string) => g.startsWith('GRUPO ') ? `Grupo ${g.slice(6)}` : g.charAt(0) + g.slice(1).toLowerCase();
+
+  if (view === 'past') {
+    return (
+      <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: T.bgSubtle, overflow: 'hidden' }}>
+        <Header title="Mis predicciones" onBack={() => { setView('main'); setPastFilter('Todos'); }}/>
+
+        {pastMatches.length > 0 && (
+          <div style={{ padding: '10px 14px 0', flexShrink: 0 }}>
+            <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 10 }}>
+              {['Todos', ...pastGroups].map(g => (
+                <Chip key={g} active={pastFilter === g} onClick={() => setPastFilter(g)}>
+                  {g === 'Todos' ? 'Todos' : groupLabel(g)}
+                </Chip>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div style={{ flex: 1, overflowY: 'auto', padding: '8px 14px 32px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {pastMatches.length === 0 ? (
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '60px 20px', textAlign: 'center' }}>
+              <div style={{ fontSize: 52, marginBottom: 16 }}>⏳</div>
+              <div className="font-display" style={{ fontSize: 17, fontWeight: 700, color: T.ink, marginBottom: 8 }}>El torneo aún no ha comenzado</div>
+              <div style={{ fontSize: 13, color: T.slate, lineHeight: 1.6 }}>Aquí aparecerán tus predicciones una vez que los partidos terminen.</div>
+            </div>
+          ) : filteredPast.length === 0 ? (
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '60px 20px', textAlign: 'center' }}>
+              <div style={{ fontSize: 40, marginBottom: 12 }}>🔍</div>
+              <div style={{ fontSize: 14, color: T.muted }}>No hay partidos en este grupo.</div>
+            </div>
+          ) : (
+            filteredPast.map(m => <PastPredictionCard key={m.id} m={m}/>)
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: T.bgSubtle, overflow: 'hidden' }}>
@@ -103,6 +165,22 @@ export function PerfilScreen({ goto, tweaks, fireToast }: Props) {
           </div>
         </Card>
 
+        {/* Past predictions */}
+        <button onClick={() => setView('past')} style={{
+          width: '100%', background: 'none', border: 'none', padding: 0, cursor: 'pointer', marginBottom: 12,
+        }}>
+          <Card>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 20 }}>📋</span>
+                <div className="font-display" style={{ fontSize: 14, fontWeight: 700, color: T.ink }}>Ver mis predicciones pasadas</div>
+              </div>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={T.blue} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+            </div>
+            <div style={{ fontSize: 12, color: T.slate, marginTop: 6 }}>{pastMatches.length} partido{pastMatches.length !== 1 ? 's' : ''} jugado{pastMatches.length !== 1 ? 's' : ''}</div>
+          </Card>
+        </button>
+
         {/* Badges */}
         <Card style={{ marginBottom: 20 }}>
           <div className="font-display" style={{ fontSize: 14, fontWeight: 700, color: T.ink, marginBottom: 12 }}>Mis Badges</div>
@@ -171,6 +249,80 @@ export function PerfilScreen({ goto, tweaks, fireToast }: Props) {
           </div>
         </div>
       </Modal>
+    </div>
+  );
+}
+
+function PastPredictionCard({ m }: { m: Match }) {
+  const result = m.result;
+  const pred   = m.userPrediction;
+  const pts    = m.pointsEarned ?? 0;
+
+  const won  = result ? result[0] > result[1] : false;
+  const draw = result ? result[0] === result[1] : false;
+  const predWon  = pred ? pred[0] > pred[1] : false;
+  const predDraw = pred ? pred[0] === pred[1] : false;
+  const exact = result && pred && result[0] === pred[0] && result[1] === pred[1];
+  const correctOutcome = result && pred &&
+    ((won && predWon) || (draw && predDraw) || (!won && !draw && !predWon && !predDraw));
+
+  const dateLabel = m.date.split(' ').slice(0, 4).join(' ');
+
+  return (
+    <div style={{
+      background: '#fff', borderRadius: 16, padding: '14px 16px',
+      border: `1px solid ${T.border}`, boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+        <div style={{ fontSize: 10, fontWeight: 700, color: T.muted, textTransform: 'uppercase', letterSpacing: 0.8 }}>{m.group}</div>
+        <div style={{ fontSize: 10, color: T.muted }}>{dateLabel}</div>
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, flex: 1 }}>
+          <Flag code={m.home.code} size={36}/>
+          <div style={{ fontSize: 11, fontWeight: 700, color: T.ink }}>{m.home.code}</div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, justifyContent: 'center' }}>
+          {result ? (
+            <>
+              <div style={{ fontSize: 26, fontWeight: 800, color: T.ink, fontFamily: 'var(--font-mono)' }}>{result[0]}</div>
+              <div style={{ fontSize: 13, color: T.muted }}>–</div>
+              <div style={{ fontSize: 26, fontWeight: 800, color: T.ink, fontFamily: 'var(--font-mono)' }}>{result[1]}</div>
+            </>
+          ) : (
+            <div style={{ fontSize: 12, color: T.muted }}>Resultado pendiente</div>
+          )}
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, flex: 1 }}>
+          <Flag code={m.away.code} size={36}/>
+          <div style={{ fontSize: 11, fontWeight: 700, color: T.ink }}>{m.away.code}</div>
+        </div>
+      </div>
+
+      <div style={{ height: 1, background: T.borderSoft, marginBottom: 10 }}/>
+
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div style={{ fontSize: 11, color: T.muted }}>Tu predicción:</div>
+          {pred ? (
+            <div style={{
+              fontSize: 12, fontWeight: 700,
+              color: correctOutcome ? T.limeDeep : T.slate,
+              background: correctOutcome ? T.limeSoft : T.bgSoft,
+              borderRadius: 8, padding: '3px 10px',
+              fontFamily: 'var(--font-mono)',
+            }}>
+              {pred[0]} – {pred[1]}{exact ? ' ✓' : ''}
+            </div>
+          ) : (
+            <div style={{ fontSize: 12, color: T.muted }}>–</div>
+          )}
+        </div>
+        <div style={{ fontSize: 13, fontWeight: 800, color: pts > 0 ? T.limeDeep : T.muted }}>
+          {pts > 0 ? `+${pts} pts` : '+0 puntos'}
+        </div>
+      </div>
     </div>
   );
 }
