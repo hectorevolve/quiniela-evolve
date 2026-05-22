@@ -8,10 +8,15 @@ import { DetalleScreen } from '@/components/screens/DetalleScreen';
 import { PerfilScreen } from '@/components/screens/PerfilScreen';
 import { PremiosScreen } from '@/components/screens/PremiosScreen';
 import { AdminScreen } from '@/components/screens/AdminScreen';
+import { supabase, type AppUser } from '@/lib/supabase';
+import { getProfile } from '@/lib/db';
+import { syncPredictionsFromDB, syncBonusFromDB } from '@/lib/predictions';
 
 type Screen = 'login' | 'onboarding' | 'torneo' | 'detalle' | 'perfil' | 'premios' | 'admin';
 interface ToastState { id: number; message: string; color?: string; textColor?: string }
 interface Tweaks { premium: boolean; filled: boolean; cumplido: boolean; liveMatch: boolean; liveMinute: number; pastMatch: boolean; rank: number; knockoutSlots: boolean }
+
+const DEV_TWEAKS = process.env.NEXT_PUBLIC_DEV_TWEAKS === '1';
 
 export default function Home() {
   const [screen, setScreen] = useState<Screen>('login');
@@ -23,6 +28,7 @@ export default function Home() {
   const [usedPowers, setUsedPowers] = useState<Set<string>>(new Set());
   const [lateActiveMatchId, setLateActiveMatchId] = useState<string | null>(null);
   const [spyMatchId, setSpyMatchId] = useState<string | null>(null);
+  const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
 
   useEffect(() => {
     setUsedPowers(new Set(tweaks.premium ? [] : ['double', 'late', 'spy']));
@@ -30,9 +36,48 @@ export default function Home() {
     setSpyMatchId(null);
   }, [tweaks.premium]);
 
+  // ── Auth init: check existing session, then show splash for at least 1.4s ──
   useEffect(() => {
-    const tid = setTimeout(() => setLoading(false), 1400);
-    return () => clearTimeout(tid);
+    let minTimerDone = false;
+    let authDone = false;
+
+    const maybeHideLoader = () => {
+      if (minTimerDone && authDone) setLoading(false);
+    };
+
+    const minTimer = setTimeout(() => { minTimerDone = true; maybeHideLoader(); }, 1400);
+
+    (async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          const profile = await getProfile(session.user.id);
+          if (profile) {
+            setCurrentUser(profile);
+            setScreen('torneo');
+            // Sync predictions in the background
+            syncPredictionsFromDB(session.user.id).catch(console.error);
+            syncBonusFromDB(session.user.id).catch(console.error);
+          }
+        }
+      } catch (err) {
+        console.error('[auth] session check failed:', err);
+      } finally {
+        authDone = true;
+        maybeHideLoader();
+      }
+    })();
+
+    // Listen for sign-out events
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_OUT') {
+        setCurrentUser(null);
+        setScreen('login');
+      }
+    });
+
+    return () => { clearTimeout(minTimer); subscription.unsubscribe(); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const goto = useCallback((next: string, matchId?: string) => {
@@ -47,15 +92,42 @@ export default function Home() {
     setTimeout(() => setToast(null), 3000);
   }, []);
 
+  const handleLogin = useCallback((user: AppUser) => {
+    setCurrentUser(user);
+    goto('torneo');
+  }, [goto]);
+
+  const handleLogout = useCallback(async () => {
+    await supabase.auth.signOut();
+    setCurrentUser(null);
+    goto('login');
+  }, [goto]);
+
   const renderScreen = () => {
     switch (screen) {
-      case 'login':      return <LoginScreen onLogin={() => goto('onboarding')} blocked={!tweaks.cumplido}/>;
-      case 'onboarding': return <OnboardingScreen onDone={() => goto('torneo')}/>;
-      case 'torneo':     return <TorneoScreen goto={goto} tweaks={tweaks} fireToast={fireToast} usedPowers={usedPowers} setUsedPowers={setUsedPowers} lateActiveMatchId={lateActiveMatchId} setLateActiveMatchId={setLateActiveMatchId} spyMatchId={spyMatchId} setSpyMatchId={setSpyMatchId}/>;
-      case 'detalle':    return <DetalleScreen goto={goto} tweaks={tweaks} fireToast={fireToast} matchId={selectedMatchId} usedPowers={usedPowers} setUsedPowers={setUsedPowers} lateActiveMatchId={lateActiveMatchId} setLateActiveMatchId={setLateActiveMatchId} spyMatchId={spyMatchId} setSpyMatchId={setSpyMatchId}/>;
-      case 'perfil':     return <PerfilScreen goto={goto} tweaks={tweaks} fireToast={fireToast}/>;
-      case 'premios': return <PremiosScreen goto={goto} fireToast={fireToast} rank={tweaks.rank}/>;
-      case 'admin':   return <AdminScreen goto={goto}/>;
+      case 'login':
+        return <LoginScreen onLogin={handleLogin} blocked={DEV_TWEAKS ? !tweaks.cumplido : false}/>;
+      case 'onboarding':
+        return <OnboardingScreen onDone={() => goto('torneo')}/>;
+      case 'torneo':
+        return <TorneoScreen goto={goto} tweaks={tweaks} fireToast={fireToast}
+          usedPowers={usedPowers} setUsedPowers={setUsedPowers}
+          lateActiveMatchId={lateActiveMatchId} setLateActiveMatchId={setLateActiveMatchId}
+          spyMatchId={spyMatchId} setSpyMatchId={setSpyMatchId}
+          currentUser={currentUser}/>;
+      case 'detalle':
+        return <DetalleScreen goto={goto} tweaks={tweaks} fireToast={fireToast}
+          matchId={selectedMatchId}
+          usedPowers={usedPowers} setUsedPowers={setUsedPowers}
+          lateActiveMatchId={lateActiveMatchId} setLateActiveMatchId={setLateActiveMatchId}
+          spyMatchId={spyMatchId} setSpyMatchId={setSpyMatchId}/>;
+      case 'perfil':
+        return <PerfilScreen goto={goto} tweaks={tweaks} fireToast={fireToast}
+          currentUser={currentUser} onLogout={handleLogout}/>;
+      case 'premios':
+        return <PremiosScreen goto={goto} fireToast={fireToast} rank={tweaks.rank}/>;
+      case 'admin':
+        return <AdminScreen goto={goto}/>;
     }
   };
 
@@ -85,8 +157,10 @@ export default function Home() {
           </div>
         </Phone>
 
-        <TweaksPanel tweaks={tweaks} setTweaks={setTweaks} screen={screen} goto={goto}
-          onReplay={() => { setLoading(true); setTimeout(() => setLoading(false), 1400); }}/>
+        {DEV_TWEAKS && (
+          <TweaksPanel tweaks={tweaks} setTweaks={setTweaks} screen={screen} goto={goto}
+            onReplay={() => { setLoading(true); setTimeout(() => setLoading(false), 1400); }}/>
+        )}
       </div>
     </div>
   );

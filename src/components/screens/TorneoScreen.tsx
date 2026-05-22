@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { theme as T } from '@/lib/theme';
 import { MATCHES, KNOCKOUT_MATCHES, MOCK_RESULTS, resolveSlots, computeSlots, isMatchPast, isMatchStarted, isMatchOver45Min, DEMO_LIVE_MATCH, DEMO_PAST_IDS, PREDICTION_DISTRIBUTIONS, RANKING, GOLEADORES, SELECCIONES, USER, STADIUM_ALIASES, TEAM_ALIASES, type Match, type PredictionBucket, type SlotMap, type LiveMatch } from '@/lib/data';
+import { getInitials, type AppUser } from '@/lib/supabase';
 import { useLiveMatch } from '@/hooks/useLiveMatch';
 import { loadPrediction, loadBonus, saveBonus } from '@/lib/predictions';
 import {
@@ -33,6 +34,7 @@ interface Props {
   setLateActiveMatchId?: (id: string | null) => void;
   spyMatchId?: string | null;
   setSpyMatchId?: (id: string | null) => void;
+  currentUser?: AppUser | null;
 }
 
 type SubScreenName = 'puntos' | 'campeon' | 'goleador' | 'subcampeon' | 'tercero' | 'poder-double' | 'poder-late' | 'poder-spy';
@@ -127,7 +129,11 @@ function useMatchTimer(dateStr: string, apiStatus: string, apiDuration: string, 
   return state;
 }
 
-export function TorneoScreen({ goto, tweaks, fireToast, usedPowers, setUsedPowers, lateActiveMatchId, setLateActiveMatchId, spyMatchId, setSpyMatchId }: Props) {
+export function TorneoScreen({ goto, tweaks, fireToast, usedPowers, setUsedPowers, lateActiveMatchId, setLateActiveMatchId, spyMatchId, setSpyMatchId, currentUser }: Props) {
+  const displayUser = currentUser ?? USER;
+  const displayName     = currentUser?.name       ?? USER.name;
+  const displayGroup    = currentUser?.group_name  ?? USER.group;
+  const displayInitials = currentUser ? getInitials(currentUser.name) : USER.avatar;
   const [tab, setTab] = useState<Tab>('predicciones');
   const [subScreen, setSubScreen] = useState<SubScreenName | null>(null);
 
@@ -174,7 +180,7 @@ export function TorneoScreen({ goto, tweaks, fireToast, usedPowers, setUsedPower
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: T.bgSubtle, overflow: 'hidden' }}>
       <Header
         title="Torneo 2026"
-        right={<Avatar initials={USER.avatar} size={34} ring={T.lime} onClick={() => goto('perfil')}/>}
+        right={<Avatar initials={displayInitials} size={34} ring={T.lime} onClick={() => goto('perfil')}/>}
       />
 
       {/* Group strip */}
@@ -212,7 +218,7 @@ export function TorneoScreen({ goto, tweaks, fireToast, usedPowers, setUsedPower
       {/* Content */}
       <div style={{ flex: 1, overflowY: 'auto' }}>
         {tab === 'predicciones' && <TabPredicciones goto={goto} tweaks={tweaks} fireToast={fireToast} usedPowers={usedPowers} setUsedPowers={setUsedPowers} lateActiveMatchId={lateActiveMatchId} setLateActiveMatchId={setLateActiveMatchId} spyMatchId={spyMatchId} setSpyMatchId={setSpyMatchId}/>}
-        {tab === 'ranking'      && <TabRanking userRank={tweaks.rank ?? USER.rank}/>}
+        {tab === 'ranking'      && <TabRanking userRank={tweaks.rank ?? USER.rank} userName={displayName} userGroup={displayGroup} userCity={USER.city} userPoints={USER.points}/>}
         {tab === 'bonus'        && (
           <TabBonus
             fireToast={fireToast}
@@ -222,7 +228,7 @@ export function TorneoScreen({ goto, tweaks, fireToast, usedPowers, setUsedPower
             openSub={openSub}
           />
         )}
-        {tab === 'detalles'     && <TabDetalles goto={goto} openSub={openSub}/>}
+        {tab === 'detalles'     && <TabDetalles goto={goto} openSub={openSub} userGroup={displayGroup}/>}
       </div>
 
     </div>
@@ -915,7 +921,9 @@ function GroupLogo({ group, size }: { group: string; size: number }) {
   );
 }
 
-function TabRanking({ userRank }: { userRank: number }) {
+function TabRanking({ userRank, userName, userGroup, userCity, userPoints }: {
+  userRank: number; userName: string; userGroup: string; userCity: string; userPoints: number;
+}) {
   const [subTab, setSubTab] = useState('Grupo');
   const [podiumVisible, setPodiumVisible] = useState(false);
   const subTabs = ['Grupo', 'Nacional'];
@@ -928,8 +936,8 @@ function TabRanking({ userRank }: { userRank: number }) {
 
   // Grupo: only MY group, re-ranked 1..N
   const grupoList = useMemo(() =>
-    RANKING.filter(p => p.group === USER.group).map((p, i) => ({ ...p, pos: i + 1 }))
-  , []);
+    RANKING.filter(p => p.group === userGroup).map((p, i) => ({ ...p, pos: i + 1 }))
+  , [userGroup]);
 
   // Nacional: all users
   const nacionalList = RANKING;
@@ -957,10 +965,10 @@ function TabRanking({ userRank }: { userRank: number }) {
         {subTabs.map(s => <Chip key={s} active={subTab === s} onClick={() => setSubTab(s)}>{s}</Chip>)}
       </div>
 
-      <RankingPodium top3={top3} visible={podiumVisible} userRank={activeRank}/>
+      <RankingPodium top3={top3} visible={podiumVisible} userRank={activeRank} userName={userName} userPoints={userPoints}/>
 
       <div style={{ fontSize: 11, color: T.muted, marginBottom: 12, paddingLeft: 2 }}>
-        {total.toLocaleString('es-MX')} {subTab === 'Grupo' ? `en ${USER.group}` : 'jugadores en total'}
+        {total.toLocaleString('es-MX')} {subTab === 'Grupo' ? `en ${userGroup}` : 'jugadores en total'}
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -969,9 +977,9 @@ function TabRanking({ userRank }: { userRank: number }) {
         )}
         {windowRows.map((player) => {
           const isMe = player.pos === activeRank;
-          const displayName  = isMe ? USER.name  : player.name;
-          const displayGroup = isMe ? USER.group  : player.group;
-          const displayCity  = isMe ? USER.city   : player.city;
+          const displayName  = isMe ? userName  : player.name;
+          const displayGroup = isMe ? userGroup : player.group;
+          const displayCity  = isMe ? userCity  : player.city;
           return (
             <div key={`${subTab}-${player.pos}`} style={{
               display: 'flex', alignItems: 'center', gap: 12,
@@ -1003,7 +1011,7 @@ function TabRanking({ userRank }: { userRank: number }) {
   );
 }
 
-function RankingPodium({ top3, visible, userRank }: { top3: typeof RANKING; visible: boolean; userRank: number }) {
+function RankingPodium({ top3, visible, userRank, userName, userPoints }: { top3: typeof RANKING; visible: boolean; userRank: number; userName: string; userPoints: number }) {
   // Podium order: 2nd (left) · 1st (center) · 3rd (right)
   const order   = [top3[1], top3[0], top3[2]];
   const heights = [96, 132, 72];
@@ -1023,7 +1031,7 @@ function RankingPodium({ top3, visible, userRank }: { top3: typeof RANKING; visi
           <div style={{ fontSize: 9.5, fontWeight: 700, color: T.muted, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 6 }}>Tu posición</div>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
             <span className="font-display" style={{ fontSize: 44, fontWeight: 900, color: T.lime, lineHeight: 1, fontStyle: 'italic' }}>#{userRank}</span>
-            <span style={{ fontSize: 15, fontWeight: 600, color: 'rgba(255,255,255,0.65)' }}>{USER.points} pts</span>
+            <span style={{ fontSize: 15, fontWeight: 600, color: 'rgba(255,255,255,0.65)' }}>{userPoints} pts</span>
           </div>
         </div>
         <Pill color={`${T.lime}22`} textColor={T.lime} style={{ fontSize: 13, fontWeight: 700, padding: '8px 14px' }}>🏆 ¡#{userRank}!</Pill>
@@ -1063,7 +1071,7 @@ function RankingPodium({ top3, visible, userRank }: { top3: typeof RANKING; visi
                 maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                 padding: '0 4px',
               }}>
-                {player.pos === userRank ? USER.name.split(' ')[0] : player.name.split(' ')[0]}
+                {player.pos === userRank ? userName.split(' ')[0] : player.name.split(' ')[0]}
                 {player.pos === userRank ? <span style={{ color: T.lime }}> (tú)</span> : null}
               </div>
 
@@ -1156,7 +1164,7 @@ function TabBonus({ fireToast, champSelected, setChampSelected, subSelected, set
 }
 
 // ──────── Tab: Detalles ────────
-function TabDetalles({ goto, openSub }: { goto: (s: string) => void; openSub: (name: SubScreenName) => void }) {
+function TabDetalles({ goto, openSub, userGroup }: { goto: (s: string) => void; openSub: (name: SubScreenName) => void; userGroup: string }) {
 
   const prizes = [
     { icon: '🥇', label: '1er Lugar', sub: 'Ganador absoluto', val: '$15,000 MXN' },
@@ -1177,7 +1185,7 @@ function TabDetalles({ goto, openSub }: { goto: (s: string) => void; openSub: (n
           <EvolveMark size={44} color={T.lime}/>
         </div>
         <div style={{ fontSize: 18, fontWeight: 700, color: '#fff', marginBottom: 8 }}>Grupo Evolve</div>
-        <Pill color={`${T.lime}25`} textColor={T.lime}>Miembros: {RANKING.filter(p => p.group === USER.group).length}</Pill>
+        <Pill color={`${T.lime}25`} textColor={T.lime}>Miembros: {RANKING.filter(p => p.group === userGroup).length}</Pill>
       </div>
 
       {/* Description */}

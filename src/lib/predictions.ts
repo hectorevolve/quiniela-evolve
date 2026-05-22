@@ -1,3 +1,12 @@
+import { upsertPrediction, loadAllPredictions, upsertBonusPicks, loadBonusPicks } from './db';
+
+// ─── Current user session (set after login) ───────────────────────────────────
+let _userId: string | null = null;
+
+export function setCurrentUserId(id: string | null): void {
+  _userId = id;
+}
+
 export interface SavedPrediction {
   home: number;
   away: number;
@@ -13,6 +22,55 @@ export function loadPrediction(matchId: string): SavedPrediction | null {
     return raw ? (JSON.parse(raw) as SavedPrediction) : null;
   } catch {
     return null;
+  }
+}
+
+export function savePrediction(
+  matchId: string,
+  home: number,
+  away: number,
+): SavedPrediction {
+  const pred: SavedPrediction = {
+    home,
+    away,
+    savedAt: new Date().toLocaleString('es-MX', {
+      day: '2-digit', month: '2-digit', year: 'numeric',
+      hour: '2-digit', minute: '2-digit',
+    }),
+  };
+  // 1. Write to localStorage for immediate synchronous access
+  if (typeof window !== 'undefined') {
+    localStorage.setItem(storageKey(matchId), JSON.stringify(pred));
+  }
+  // 2. Also persist to Supabase if user is logged in
+  if (_userId) {
+    upsertPrediction(_userId, matchId, home, away).catch(console.error);
+  }
+  return pred;
+}
+
+/**
+ * After login, load all predictions from Supabase and hydrate localStorage.
+ * Call this once immediately after setting the current user.
+ */
+export async function syncPredictionsFromDB(userId: string): Promise<void> {
+  setCurrentUserId(userId);
+  if (typeof window === 'undefined') return;
+  try {
+    const preds = await loadAllPredictions(userId);
+    for (const [matchId, { home, away }] of Object.entries(preds)) {
+      const pred: SavedPrediction = {
+        home,
+        away,
+        savedAt: new Date().toLocaleString('es-MX', {
+          day: '2-digit', month: '2-digit', year: 'numeric',
+          hour: '2-digit', minute: '2-digit',
+        }),
+      };
+      localStorage.setItem(storageKey(matchId), JSON.stringify(pred));
+    }
+  } catch (err) {
+    console.error('[predictions] syncPredictionsFromDB:', err);
   }
 }
 
@@ -35,28 +93,37 @@ export function loadBonus(): BonusPrediction | null {
 }
 
 export function saveBonus(data: Partial<BonusPrediction>): void {
-  // TODO: replace with Supabase upsert when auth is wired up:
-  // await supabase.from('bonus_predictions').upsert({ user_id, ...data })
   const existing = loadBonus() ?? {};
-  localStorage.setItem(BONUS_KEY, JSON.stringify({ ...existing, ...data }));
+  const merged = { ...existing, ...data };
+  if (typeof window !== 'undefined') {
+    localStorage.setItem(BONUS_KEY, JSON.stringify(merged));
+  }
+  // Sync to Supabase if logged in
+  if (_userId) {
+    upsertBonusPicks(_userId, {
+      champ_code:    merged.champCode,
+      runner_up_code: merged.subCode,
+      third_code:    merged.thirdCode,
+      top_scorer:    merged.goalPlayer,
+    }).catch(console.error);
+  }
 }
 
-// ── Match predictions ──────────────────────────────────────────────────────────
-export function savePrediction(
-  matchId: string,
-  home: number,
-  away: number,
-): SavedPrediction {
-  const pred: SavedPrediction = {
-    home,
-    away,
-    savedAt: new Date().toLocaleString('es-MX', {
-      day: '2-digit', month: '2-digit', year: 'numeric',
-      hour: '2-digit', minute: '2-digit',
-    }),
-  };
-  // TODO: replace with Supabase upsert when auth is wired up:
-  // await supabase.from('predictions').upsert({ user_id, match_id: matchId, home, away })
-  localStorage.setItem(storageKey(matchId), JSON.stringify(pred));
-  return pred;
+/** Load bonus picks from Supabase and hydrate localStorage. */
+export async function syncBonusFromDB(userId: string): Promise<void> {
+  try {
+    const picks = await loadBonusPicks(userId);
+    if (!picks) return;
+    const bonus: BonusPrediction = {
+      champCode:  picks.champ_code    ?? undefined,
+      subCode:    picks.runner_up_code ?? undefined,
+      thirdCode:  picks.third_code    ?? undefined,
+      goalPlayer: picks.top_scorer    ?? undefined,
+    };
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(BONUS_KEY, JSON.stringify(bonus));
+    }
+  } catch (err) {
+    console.error('[predictions] syncBonusFromDB:', err);
+  }
 }

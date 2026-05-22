@@ -4,9 +4,12 @@ import { theme as T } from '@/lib/theme';
 import { Button, Pill } from '@/components/ui';
 import { EvolveLogo, QELockup, ChevronMotif } from '@/components/brand/EvolveMark';
 import { FallingBall } from '@/components/ball/SoccerBall';
+import { supabase, type AppUser } from '@/lib/supabase';
+import { getProfile } from '@/lib/db';
+import { syncPredictionsFromDB, syncBonusFromDB } from '@/lib/predictions';
 
 interface Props {
-  onLogin: () => void;
+  onLogin: (user: AppUser) => void;
   blocked?: boolean;
 }
 
@@ -14,6 +17,46 @@ export function LoginScreen({ onLogin, blocked = false }: Props) {
   const [showPass, setShowPass] = useState(false);
   const [email, setEmail] = useState('');
   const [pass, setPass] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleLogin = async () => {
+    if (!email.trim() || !pass.trim()) {
+      setError('Ingresa tu correo y contraseña.');
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const { data, error: authError } = await supabase.auth.signInWithPassword({
+        email: email.trim().toLowerCase(),
+        password: pass,
+      });
+      if (authError) {
+        setError('Correo o contraseña incorrectos.');
+        return;
+      }
+      const profile = await getProfile(data.user.id);
+      if (!profile) {
+        setError('No se encontró tu perfil. Contacta al administrador.');
+        return;
+      }
+      // Sync predictions and bonus picks from DB to localStorage
+      await Promise.all([
+        syncPredictionsFromDB(data.user.id),
+        syncBonusFromDB(data.user.id),
+      ]);
+      onLogin(profile);
+    } catch {
+      setError('Error de conexión. Inténtalo de nuevo.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') handleLogin();
+  };
 
   if (blocked) {
     return (
@@ -64,11 +107,9 @@ export function LoginScreen({ onLogin, blocked = false }: Props) {
         <div className="evo-grid-bg" style={{ position: 'absolute', inset: 0, opacity: 0.5 }}/>
         <div style={{ position: 'absolute', top: '30%', left: '50%', transform: 'translateX(-50%)', width: 260, height: 260, background: 'radial-gradient(circle, rgba(26,175,255,0.25) 0%, transparent 65%)', filter: 'blur(16px)', pointerEvents: 'none' }}/>
 
-        {/* Decorative chevrons */}
         <ChevronMotif size={180} opacity={0.06} style={{ position: 'absolute', top: -20, right: -30, pointerEvents: 'none' }}/>
         <ChevronMotif size={100} opacity={0.04} style={{ position: 'absolute', bottom: -10, left: -20, pointerEvents: 'none' }}/>
 
-        {/* Falling balls */}
         <FallingBall size={52} delay={0}   duration={4.5} x="22%"  glow />
         <FallingBall size={36} delay={1.2} duration={5.5} x="68%"  />
         <FallingBall size={28} delay={2.4} duration={4.0} x="50%"  />
@@ -98,7 +139,9 @@ export function LoginScreen({ onLogin, blocked = false }: Props) {
         <div style={{ marginBottom: 14 }}>
           <label style={{ fontSize: 12, fontWeight: 600, color: T.slate, letterSpacing: 0.3, display: 'block', marginBottom: 6 }}>Correo electrónico</label>
           <input
-            type="email" placeholder="tu@correo.com" value={email} onChange={e => setEmail(e.target.value)}
+            type="email" placeholder="tu@correo.com" value={email}
+            onChange={e => setEmail(e.target.value)} onKeyDown={handleKeyDown}
+            disabled={loading}
             style={{
               width: '100%', height: 48, padding: '0 14px',
               border: `1.5px solid ${T.border}`, borderRadius: 12,
@@ -115,7 +158,9 @@ export function LoginScreen({ onLogin, blocked = false }: Props) {
           <label style={{ fontSize: 12, fontWeight: 600, color: T.slate, letterSpacing: 0.3, display: 'block', marginBottom: 6 }}>Contraseña</label>
           <div style={{ position: 'relative' }}>
             <input
-              type={showPass ? 'text' : 'password'} placeholder="••••••••" value={pass} onChange={e => setPass(e.target.value)}
+              type={showPass ? 'text' : 'password'} placeholder="••••••••" value={pass}
+              onChange={e => setPass(e.target.value)} onKeyDown={handleKeyDown}
+              disabled={loading}
               style={{
                 width: '100%', height: 48, padding: '0 44px 0 14px',
                 border: `1.5px solid ${T.border}`, borderRadius: 12,
@@ -144,25 +189,26 @@ export function LoginScreen({ onLogin, blocked = false }: Props) {
           </div>
         </div>
 
+        {/* Error message */}
+        {error && (
+          <div style={{
+            marginBottom: 14, padding: '10px 14px',
+            background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 10,
+            fontSize: 13, color: '#DC2626', lineHeight: 1.4,
+          }}>
+            {error}
+          </div>
+        )}
+
         <button style={{ alignSelf: 'flex-end', background: 'none', border: 'none', fontSize: 12, color: T.blue, cursor: 'pointer', marginBottom: 20, padding: '4px 0' }}>
           ¿Olvidaste tu contraseña?
         </button>
 
-        <Button variant="ink" fullWidth onClick={onLogin} size="lg" style={{ marginBottom: 14 }}>
-          Entrar
-        </Button>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
-          <div style={{ flex: 1, height: 1, background: T.border }}/>
-          <span style={{ fontSize: 12, color: T.muted }}>o</span>
-          <div style={{ flex: 1, height: 1, background: T.border }}/>
-        </div>
-
-        <Button variant="outlineBlue" fullWidth onClick={onLogin} size="lg">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
-          </svg>
-          Entrar con Club de Ganadores
+        <Button
+          variant="ink" fullWidth onClick={handleLogin} size="lg"
+          style={{ marginBottom: 14, opacity: loading ? 0.7 : 1 }}
+        >
+          {loading ? 'Ingresando…' : 'Entrar'}
         </Button>
       </div>
     </div>

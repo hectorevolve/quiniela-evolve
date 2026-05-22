@@ -4,11 +4,14 @@ import { theme as T } from '@/lib/theme';
 import { USER, MATCHES, isMatchPast, DEMO_PAST_IDS, DEMO_RESULTS, type Match } from '@/lib/data';
 import { Header, Avatar, Card, Chip, Pill, PowerIcon, Modal } from '@/components/ui';
 import { Flag } from '@/components/flags/Flag';
+import { getInitials, type AppUser } from '@/lib/supabase';
 
 interface Props {
   goto: (s: string) => void;
   tweaks: { premium: boolean; pastMatch: boolean };
   fireToast: (msg: string, color?: string, textColor?: string) => void;
+  currentUser?: AppUser | null;
+  onLogout?: () => Promise<void> | void;
 }
 
 const BADGES = [
@@ -20,7 +23,10 @@ const BADGES = [
   { icon: '🏆', label: 'Profeta Final',     unlocked: false, req: 'Acerta el resultado de la final.' },
 ];
 
-export function PerfilScreen({ goto, tweaks, fireToast }: Props) {
+export function PerfilScreen({ goto, tweaks, fireToast, currentUser, onLogout }: Props) {
+  const displayName    = currentUser?.name     ?? USER.name;
+  const displayGroup   = currentUser?.group_name ?? USER.mayorista;
+  const displayInitials = currentUser ? getInitials(currentUser.name) : USER.avatar;
   const [logoutModal, setLogoutModal] = useState(false);
   const [badgeModal, setBadgeModal] = useState<null | typeof BADGES[number]>(null);
   const [view, setView] = useState<'main' | 'past'>('main');
@@ -104,9 +110,9 @@ export function PerfilScreen({ goto, tweaks, fireToast }: Props) {
 
         {/* User hero */}
         <div style={{ textAlign: 'center', padding: '20px 0 16px' }}>
-          <Avatar initials={USER.avatar} size={80} ring={T.lime} style={{ margin: '0 auto 12px' }}/>
-          <div className="font-display" style={{ fontSize: 20, fontWeight: 700, color: T.ink }}>{USER.name}</div>
-          <div style={{ fontSize: 13, color: T.muted, marginTop: 4 }}>{USER.mayorista} · {USER.region}</div>
+          <Avatar initials={displayInitials} size={80} ring={T.lime} style={{ margin: '0 auto 12px' }}/>
+          <div className="font-display" style={{ fontSize: 20, fontWeight: 700, color: T.ink }}>{displayName}</div>
+          <div style={{ fontSize: 13, color: T.muted, marginTop: 4 }}>{displayGroup}</div>
         </div>
 
         {/* Estatus */}
@@ -155,7 +161,7 @@ export function PerfilScreen({ goto, tweaks, fireToast }: Props) {
               { label: 'Predicciones', value: '24' },
               { label: 'Aciertos', value: '16 (67%)' },
               { label: 'Marcadores exactos', value: '3' },
-              { label: 'Puntos totales', value: String(USER.points) },
+              { label: 'Puntos totales', value: String(USER.points) }, // TODO: real points from DB
             ].map(s => (
               <div key={s.label} style={{ background: T.bgSoft, borderRadius: 12, padding: '12px 14px', border: `1px solid ${T.border}` }}>
                 <div style={{ fontSize: 10.5, color: T.muted, marginBottom: 4 }}>{s.label}</div>
@@ -244,7 +250,7 @@ export function PerfilScreen({ goto, tweaks, fireToast }: Props) {
           <div className="font-display" style={{ fontSize: 20, fontWeight: 700, color: T.ink, marginBottom: 8 }}>¿Cerrar sesión?</div>
           <div style={{ fontSize: 13.5, color: T.slate, marginBottom: 20, lineHeight: 1.6 }}>Tendrás que volver a iniciar sesión para acceder a la quiniela.</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <button onClick={() => { setLogoutModal(false); goto('login'); }} style={{ width: '100%', padding: '14px', background: T.rose, color: '#fff', border: 'none', borderRadius: 12, fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>Sí, cerrar sesión</button>
+            <button onClick={() => { setLogoutModal(false); onLogout ? onLogout() : goto('login'); }} style={{ width: '100%', padding: '14px', background: T.rose, color: '#fff', border: 'none', borderRadius: 12, fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>Sí, cerrar sesión</button>
             <button onClick={() => setLogoutModal(false)} style={{ width: '100%', padding: '14px', background: 'transparent', color: T.ink, border: `1.5px solid ${T.border}`, borderRadius: 12, fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>Cancelar</button>
           </div>
         </div>
