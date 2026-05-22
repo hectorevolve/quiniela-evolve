@@ -152,44 +152,47 @@ function ViewToggle({ mode, onChange }: { mode: 'grid' | 'list'; onChange: (m: '
 }
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
-function ViewDashboard({ users, setView }: { users: AdminUser[]; setView: (v: View) => void }) {
+function ViewDashboard({ liveUsers, setView }: { liveUsers: LiveUser[]; setView: (v: View) => void }) {
   const isMobile = useIsMobile();
-  const groups = useMemo(() => Array.from(new Set(users.map(u => u.group))), [users]);
+  const groups = useMemo(() => Array.from(new Set(liveUsers.map(u => u.group_name ?? 'Sin grupo'))), [liveUsers]);
+  const nonAdmins = liveUsers.filter(u => u.role !== 'admin');
   return (
     <div>
       <SectionHeader title="Dashboard" sub="Resumen general del torneo"/>
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 24 }}>
-        <StatCard label="Usuarios"     value={users.length}     sub="Registrados"  color={c.blue}/>
-        <StatCard label="Grupos"       value={groups.length}    sub="Activos"/>
-        <StatCard label="Pts promedio" value={avg(users)}       sub="Nacional"     color={c.lime}/>
-        <StatCard label="Mejor puntaje" value={users[0]?.pts ?? 0} sub={users[0]?.name} color={c.green}/>
-        <StatCard label="Partidos"     value={MATCHES.length}   sub="En el torneo"/>
+        <StatCard label="Usuarios"    value={nonAdmins.length}  sub="Registrados"   color={c.blue}/>
+        <StatCard label="Grupos"      value={groups.length}     sub="Activos"/>
+        <StatCard label="Partidos"    value={MATCHES.length}    sub="En el torneo"/>
+        <StatCard label="Jugados"     value={MATCHES.filter(m => m.result).length} sub="Con resultado"/>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '3fr 2fr', gap: 20 }}>
-        {/* Top 10 */}
+        {/* Users list */}
         <div style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 14, overflow: 'hidden' }}>
           <div style={{ padding: '14px 18px', borderBottom: `1px solid ${c.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: 13, fontWeight: 700, color: c.text }}>Top 10 Nacional</span>
-            <button onClick={() => setView('rankings')} style={{ background: 'none', border: 'none', color: c.blue, fontSize: 12, cursor: 'pointer', fontWeight: 600 }}>Ver todo →</button>
+            <span style={{ fontSize: 13, fontWeight: 700, color: c.text }}>Usuarios registrados</span>
+            <button onClick={() => setView('usuarios')} style={{ background: 'none', border: 'none', color: c.blue, fontSize: 12, cursor: 'pointer', fontWeight: 600 }}>Ver todo →</button>
           </div>
-          {users.slice(0, 10).map((u, i) => (
-            <div key={u.name} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 18px', borderBottom: i < 9 ? `1px solid ${c.border}` : 'none' }}>
-              <span style={{ width: 26, fontSize: 12, fontWeight: 700, color: i < 3 ? c.amber : c.dim, textAlign: 'right' }}>#{i + 1}</span>
-              <Avatar initials={u.name.slice(0,2).toUpperCase()} size={28}/>
+          {liveUsers.length === 0 ? (
+            <div style={{ padding: '32px 18px', textAlign: 'center', color: c.muted, fontSize: 13 }}>
+              Aún no hay usuarios. Créalos en la sección Usuarios.
+            </div>
+          ) : liveUsers.slice(0, 10).map((u, i) => (
+            <div key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 18px', borderBottom: i < Math.min(liveUsers.length, 10) - 1 ? `1px solid ${c.border}` : 'none' }}>
+              <Avatar initials={u.name.split(' ').map((w: string) => w[0]).slice(0,2).join('').toUpperCase()} size={28}/>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 600, color: c.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.name}</div>
-                <GroupBadge group={u.group}/>
+                {u.group_name && <GroupBadge group={u.group_name}/>}
               </div>
-              <span style={{ fontSize: 13, fontWeight: 700, color: c.lime, flexShrink: 0 }}>{u.pts}</span>
+              {u.role === 'admin' && <span style={{ fontSize: 10, fontWeight: 700, color: c.rose, background: `${c.rose}22`, border: `1px solid ${c.rose}44`, padding: '2px 8px', borderRadius: 6 }}>ADMIN</span>}
             </div>
           ))}
         </div>
 
         {/* Group cards */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, alignContent: 'start' }}>
-          {groups.map(g => {
-            const members = users.filter(u => u.group === g);
+          {groups.filter(g => g !== 'Sin grupo').map(g => {
+            const members = liveUsers.filter(u => u.group_name === g && u.role !== 'admin');
             const col = GROUP_COLORS[g] ?? c.blue;
             return (
               <div key={g} style={{ background: c.card, border: `1px solid ${col}33`, borderRadius: 12, padding: '14px 16px' }}>
@@ -198,10 +201,15 @@ function ViewDashboard({ users, setView }: { users: AdminUser[]; setView: (v: Vi
                   <span style={{ fontSize: 12, fontWeight: 700, color: c.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{g}</span>
                 </div>
                 <div style={{ fontSize: 24, fontWeight: 800, color: col, lineHeight: 1, marginBottom: 4 }}>{members.length}</div>
-                <div style={{ fontSize: 11, color: c.muted }}>Prom: {avg(members)} pts</div>
+                <div style={{ fontSize: 11, color: c.muted }}>{members.length === 1 ? '1 usuario' : `${members.length} usuarios`}</div>
               </div>
             );
           })}
+          {groups.filter(g => g !== 'Sin grupo').length === 0 && (
+            <div style={{ gridColumn: '1/-1', padding: '24px', textAlign: 'center', color: c.muted, fontSize: 13, background: c.card, borderRadius: 12, border: `1px solid ${c.border}` }}>
+              Los grupos aparecerán cuando agregues usuarios.
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -1363,7 +1371,7 @@ export default function AdminPage() {
 
       {/* ── Main content ── */}
       <div style={{ flex: 1, overflow: isMobile ? 'visible' : 'auto', padding: isMobile ? 16 : 32 }}>
-        {view === 'dashboard'    && <ViewDashboard users={users} setView={setView}/>}
+        {view === 'dashboard'    && <ViewDashboard liveUsers={liveUsers} setView={setView}/>}
         {view === 'usuarios'     && <ViewUsuariosAdmin liveUsers={liveUsers} onUserCreated={u => setLiveUsers(prev => [...prev, u])}/>}
         {view === 'rankings'     && <ViewRankings users={users} updateUser={updateUser}/>}
         {view === 'predicciones' && <ViewPredicciones users={users}/>}
