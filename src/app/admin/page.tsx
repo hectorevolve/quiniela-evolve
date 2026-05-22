@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { RANKING, MATCHES, KNOCKOUT_MATCHES, USER_PREDICTIONS, GROUP_MATCH_IDS } from '@/lib/data';
 import { EvolveMark } from '@/components/brand/EvolveMark';
 import { Avatar } from '@/components/ui';
+import { supabase } from '@/lib/supabase';
 
 type View = 'dashboard' | 'usuarios' | 'rankings' | 'predicciones' | 'partidos' | 'grupos';
 type AdminUser = typeof RANKING[number];
@@ -11,10 +12,16 @@ type AdminMatch = typeof MATCHES[number];
 
 const NAV: { id: View; label: string }[] = [
   { id: 'dashboard', label: 'Dashboard' },
+  { id: 'usuarios',  label: 'Usuarios' },
   { id: 'rankings',  label: 'Rankings' },
   { id: 'partidos',  label: 'Partidos' },
   { id: 'grupos',    label: 'Grupos' },
 ];
+
+const ALL_GROUPS = Object.keys({
+  'Evolve': 1, 'BEPENSA Spirits': 1, 'ADM': 1, 'Disney': 1,
+  'Ruz': 1, 'Zuru': 1, 'AGEMEX': 1, 'Delongi': 1,
+});
 
 const c = {
   bg:      '#070F1E',
@@ -1081,13 +1088,161 @@ function ViewGrupos({ users, onSelectGroup }: { users: AdminUser[]; onSelectGrou
   );
 }
 
+// ─── Crear / Gestionar Usuarios ──────────────────────────────────────────────
+function ViewUsuariosAdmin({ liveUsers, onUserCreated }: { liveUsers: { id: string; name: string; email: string; role: string; group_name: string | null; premium: boolean }[]; onUserCreated: (u: { id: string; name: string; email: string; role: string; group_name: string | null; premium: boolean }) => void }) {
+  const [showModal, setShowModal]   = useState(false);
+  const [name, setName]             = useState('');
+  const [email, setEmail]           = useState('');
+  const [password, setPassword]     = useState('evo2026');
+  const [group, setGroup]           = useState('Evolve');
+  const [role, setRole]             = useState<'user' | 'admin'>('user');
+  const [premium, setPremium]       = useState(false);
+  const [loading, setLoading]       = useState(false);
+  const [error, setError]           = useState<string | null>(null);
+  const [success, setSuccess]       = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [deleting, setDeleting]     = useState(false);
+
+  const resetForm = () => { setName(''); setEmail(''); setPassword('evo2026'); setGroup('Evolve'); setRole('user'); setPremium(false); setError(null); setSuccess(null); };
+
+  const handleCreate = async () => {
+    if (!name.trim() || !email.trim() || !password.trim()) { setError('Nombre, correo y contraseña son obligatorios.'); return; }
+    setLoading(true); setError(null); setSuccess(null);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) { setError('No hay sesión activa. Inicia sesión primero.'); return; }
+      const res = await fetch('/api/admin/create-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+        body: JSON.stringify({ name: name.trim(), email: email.trim().toLowerCase(), password, group_name: group, role, premium }),
+      });
+      const json = await res.json();
+      if (!res.ok) { setError(json.error ?? 'Error al crear usuario.'); return; }
+      setSuccess(`✓ Usuario "${name.trim()}" creado correctamente.`);
+      onUserCreated({ id: json.userId, name: name.trim(), email: email.trim().toLowerCase(), role, group_name: group, premium });
+      resetForm();
+    } catch { setError('Error de red. Verifica tu conexión.'); }
+    finally { setLoading(false); }
+  };
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
+        <div>
+          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: c.text }}>Usuarios</h2>
+          <p style={{ margin: '4px 0 0', fontSize: 13, color: c.muted }}>{liveUsers.length} usuarios registrados en Supabase</p>
+        </div>
+        <button onClick={() => { resetForm(); setShowModal(true); }} style={{
+          display: 'flex', alignItems: 'center', gap: 8, padding: '10px 18px',
+          background: c.blue, color: '#fff', border: 'none', borderRadius: 10,
+          fontSize: 13, fontWeight: 700, cursor: 'pointer',
+        }}>+ Agregar usuario</button>
+      </div>
+
+      {success && (
+        <div style={{ marginBottom: 16, padding: '12px 16px', background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: 10, fontSize: 13, color: '#22C55E' }}>{success}</div>
+      )}
+
+      {/* User list */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {liveUsers.length === 0 && (
+          <div style={{ textAlign: 'center', padding: '48px 24px', color: c.muted, fontSize: 14 }}>
+            No hay usuarios aún. ¡Crea el primero!
+          </div>
+        )}
+        {liveUsers.map(u => (
+          <div key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', background: c.card, border: `1px solid ${c.border}`, borderRadius: 12 }}>
+            <Avatar initials={(u.name.split(' ').map((w: string) => w[0]).slice(0,2).join('')).toUpperCase()} size={36}/>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: c.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{u.name}</div>
+              <div style={{ fontSize: 11, color: c.muted, marginTop: 2 }}>{u.email}</div>
+            </div>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
+              {u.role === 'admin' && <span style={{ padding: '2px 8px', borderRadius: 6, fontSize: 10, fontWeight: 700, background: `${c.rose}22`, color: c.rose, border: `1px solid ${c.rose}44` }}>ADMIN</span>}
+              {u.premium && <span style={{ padding: '2px 8px', borderRadius: 6, fontSize: 10, fontWeight: 700, background: `${c.amber}22`, color: c.amber, border: `1px solid ${c.amber}44` }}>PRO</span>}
+              {u.group_name && <span style={{ padding: '2px 8px', borderRadius: 6, fontSize: 10, fontWeight: 700, background: `${c.blue}22`, color: c.blue, border: `1px solid ${c.blue}44` }}>{u.group_name}</span>}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Create user modal */}
+      {showModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 20 }}>
+          <div style={{ background: '#0D1829', border: `1px solid ${c.border}`, borderRadius: 18, padding: 28, width: '100%', maxWidth: 440, maxHeight: '90vh', overflowY: 'auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+              <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: c.text }}>Agregar usuario</h3>
+              <button onClick={() => setShowModal(false)} style={{ background: 'none', border: 'none', color: c.muted, fontSize: 20, cursor: 'pointer', lineHeight: 1 }}>✕</button>
+            </div>
+
+            <ModalInput label="Nombre completo" value={name} onChange={setName}/>
+            <ModalInput label="Correo electrónico" value={email} onChange={setEmail}/>
+            <ModalInput label="Contraseña" value={password} onChange={setPassword}/>
+
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: c.muted, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 6 }}>Grupo</label>
+              <select value={group} onChange={e => setGroup(e.target.value)} style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.06)', color: c.text, fontSize: 13, fontFamily: 'inherit', outline: 'none' }}>
+                {ALL_GROUPS.map(g => <option key={g} value={g} style={{ background: '#0D1829' }}>{g}</option>)}
+              </select>
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: c.muted, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 6 }}>Rol</label>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {(['user', 'admin'] as const).map(r => (
+                  <button key={r} onClick={() => setRole(r)} style={{
+                    flex: 1, padding: '9px', borderRadius: 8, border: `1px solid ${role === r ? c.blue : c.border}`,
+                    background: role === r ? `${c.blue}22` : 'transparent', color: role === r ? c.blue : c.muted,
+                    fontSize: 13, fontWeight: 700, cursor: 'pointer', textTransform: 'capitalize',
+                  }}>{r === 'admin' ? 'Admin' : 'Usuario'}</button>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24, padding: '12px 14px', background: 'rgba(255,255,255,0.04)', borderRadius: 10, border: `1px solid ${c.border}` }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: c.text }}>Acceso Premium</div>
+                <div style={{ fontSize: 11, color: c.muted, marginTop: 2 }}>Poderes habilitados (Doble, Tardío, Espía)</div>
+              </div>
+              <button onClick={() => setPremium(v => !v)} style={{
+                width: 44, height: 24, borderRadius: 12, border: 'none', cursor: 'pointer',
+                background: premium ? c.blue : 'rgba(255,255,255,0.15)', position: 'relative', flexShrink: 0, transition: 'background 200ms',
+              }}>
+                <div style={{ width: 18, height: 18, borderRadius: '50%', background: '#fff', position: 'absolute', top: 3, left: premium ? 23 : 3, transition: 'left 200ms' }}/>
+              </button>
+            </div>
+
+            {error && <div style={{ marginBottom: 16, padding: '10px 14px', background: 'rgba(244,63,94,0.1)', border: '1px solid rgba(244,63,94,0.3)', borderRadius: 8, fontSize: 13, color: c.rose }}>{error}</div>}
+
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={() => setShowModal(false)} style={{ flex: 1, padding: '12px', background: 'transparent', border: `1px solid ${c.border}`, borderRadius: 10, color: c.muted, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Cancelar</button>
+              <button onClick={handleCreate} disabled={loading} style={{ flex: 2, padding: '12px', background: loading ? `${c.blue}66` : c.blue, border: 'none', borderRadius: 10, color: '#fff', fontSize: 13, fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer' }}>
+                {loading ? 'Creando…' : 'Crear usuario'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Root ─────────────────────────────────────────────────────────────────────
+type LiveUser = { id: string; name: string; email: string; role: string; group_name: string | null; premium: boolean };
+
 export default function AdminPage() {
   const isMobile = useIsMobile();
   const [view, setView] = useState<View>('dashboard');
   const [menuOpen, setMenuOpen] = useState(false);
   const [users, setUsers] = useState<AdminUser[]>([...RANKING]);
   const [groupFilter, setGroupFilter] = useState('Todos');
+  const [liveUsers, setLiveUsers] = useState<LiveUser[]>([]);
+
+  // Load real users from Supabase on mount
+  useEffect(() => {
+    supabase.from('profiles').select('id, name, email, role, group_name, premium').order('created_at')
+      .then(({ data }) => { if (data) setLiveUsers(data as LiveUser[]); });
+  }, []);
 
   const updateUser = (name: string, patch: Partial<AdminUser>) => {
     setUsers(prev => resortUsers(prev.map(u => u.name === name ? { ...u, ...patch } : u)));
@@ -1172,7 +1327,7 @@ export default function AdminPage() {
       {/* ── Main content ── */}
       <div style={{ flex: 1, overflow: isMobile ? 'visible' : 'auto', padding: isMobile ? 16 : 32 }}>
         {view === 'dashboard'    && <ViewDashboard users={users} setView={setView}/>}
-        {view === 'usuarios'     && <ViewUsuarios users={users} updateUser={updateUser} deleteUser={deleteUser} groupFilter={groupFilter} setGroupFilter={setGroupFilter} onBack={() => navigate('grupos')}/>}
+        {view === 'usuarios'     && <ViewUsuariosAdmin liveUsers={liveUsers} onUserCreated={u => setLiveUsers(prev => [...prev, u])}/>}
         {view === 'rankings'     && <ViewRankings users={users} updateUser={updateUser}/>}
         {view === 'predicciones' && <ViewPredicciones users={users}/>}
         {view === 'partidos'     && <ViewPartidos/>}
