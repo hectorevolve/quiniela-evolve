@@ -1237,12 +1237,49 @@ export default function AdminPage() {
   const [users, setUsers] = useState<AdminUser[]>([...RANKING]);
   const [groupFilter, setGroupFilter] = useState('Todos');
   const [liveUsers, setLiveUsers] = useState<LiveUser[]>([]);
+  const [authState, setAuthState] = useState<'checking' | 'allowed' | 'denied'>('checking');
+
+  // ── Auth guard: only admin users can access this page ──
+  useEffect(() => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (!session) { setAuthState('denied'); return; }
+      const { data } = await supabase
+        .from('profiles').select('role').eq('id', session.user.id).single();
+      setAuthState(data?.role === 'admin' ? 'allowed' : 'denied');
+    });
+  }, []);
 
   // Load real users from Supabase on mount
   useEffect(() => {
+    if (authState !== 'allowed') return;
     supabase.from('profiles').select('id, name, email, role, group_name, premium').order('created_at')
       .then(({ data }) => { if (data) setLiveUsers(data as LiveUser[]); });
-  }, []);
+  }, [authState]);
+
+  // ── Guard screens ──
+  if (authState === 'checking') {
+    return (
+      <div style={{ minHeight: '100vh', background: c.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'var(--font-inter), system-ui, sans-serif' }}>
+        <div style={{ textAlign: 'center', color: c.muted, fontSize: 14 }}>Verificando acceso…</div>
+      </div>
+    );
+  }
+  if (authState === 'denied') {
+    return (
+      <div style={{ minHeight: '100vh', background: c.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'var(--font-inter), system-ui, sans-serif', padding: 24 }}>
+        <div style={{ textAlign: 'center', maxWidth: 340 }}>
+          <div style={{ fontSize: 48, marginBottom: 16 }}>🔒</div>
+          <div style={{ fontSize: 22, fontWeight: 700, color: c.text, marginBottom: 8 }}>Acceso restringido</div>
+          <div style={{ fontSize: 14, color: c.muted, marginBottom: 24, lineHeight: 1.6 }}>
+            Esta área es solo para administradores. Inicia sesión con una cuenta con permisos de admin.
+          </div>
+          <Link href="/" style={{ display: 'inline-block', padding: '12px 24px', background: c.blue, color: '#fff', borderRadius: 10, fontWeight: 600, fontSize: 14, textDecoration: 'none' }}>
+            Ir a la app →
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   const updateUser = (name: string, patch: Partial<AdminUser>) => {
     setUsers(prev => resortUsers(prev.map(u => u.name === name ? { ...u, ...patch } : u)));
