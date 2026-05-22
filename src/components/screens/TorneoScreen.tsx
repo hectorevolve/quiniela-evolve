@@ -1,8 +1,9 @@
 'use client';
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { theme as T } from '@/lib/theme';
-import { MATCHES, KNOCKOUT_MATCHES, MOCK_RESULTS, resolveSlots, computeSlots, isMatchPast, isMatchStarted, isMatchOver45Min, DEMO_LIVE_MATCH, DEMO_PAST_IDS, PREDICTION_DISTRIBUTIONS, RANKING, GOLEADORES, SELECCIONES, USER, STADIUM_ALIASES, TEAM_ALIASES, type Match, type PredictionBucket, type SlotMap, type LiveMatch } from '@/lib/data';
+import { MATCHES, KNOCKOUT_MATCHES, MOCK_RESULTS, resolveSlots, computeSlots, isMatchPast, isMatchStarted, isMatchOver45Min, DEMO_LIVE_MATCH, DEMO_PAST_IDS, PREDICTION_DISTRIBUTIONS, GOLEADORES, SELECCIONES, USER, STADIUM_ALIASES, TEAM_ALIASES, type Match, type PredictionBucket, type SlotMap, type LiveMatch } from '@/lib/data';
 import { getInitials, type AppUser } from '@/lib/supabase';
+import { getRankings, type RankingEntry } from '@/lib/db';
 import { useLiveMatch } from '@/hooks/useLiveMatch';
 import { loadPrediction, loadBonus, saveBonus } from '@/lib/predictions';
 import {
@@ -137,11 +138,22 @@ export function TorneoScreen({ goto, tweaks, fireToast, usedPowers, setUsedPower
   const [tab, setTab] = useState<Tab>('predicciones');
   const [subScreen, setSubScreen] = useState<SubScreenName | null>(null);
 
-  // Bonus selections — initialised from localStorage so they persist across sessions
-  const [champSelected, setChampSelected] = useState(() => loadBonus()?.champCode ?? 'ESP');
-  const [subSelected,   setSubSelected]   = useState(() => loadBonus()?.subCode   ?? 'NED');
+  // Bonus selections — initialised from localStorage (synced from DB on login)
+  const [champSelected, setChampSelected] = useState(() => loadBonus()?.champCode ?? '');
+  const [subSelected,   setSubSelected]   = useState(() => loadBonus()?.subCode   ?? '');
   const [thirdSelected, setThirdSelected] = useState(() => loadBonus()?.thirdCode ?? '');
   const [goalPlayer,    setGoalPlayer]    = useState(() => loadBonus()?.goalPlayer ?? '');
+
+  // Live rankings from Supabase
+  const [liveRankings, setLiveRankings]     = useState<RankingEntry[]>([]);
+  const [rankingsLoading, setRankingsLoading] = useState(false);
+  useEffect(() => {
+    setRankingsLoading(true);
+    getRankings()
+      .then(data => setLiveRankings(data))
+      .catch(console.error)
+      .finally(() => setRankingsLoading(false));
+  }, []);
 
   const openSub = (name: SubScreenName) => setSubScreen(name);
   const closeSub = () => setSubScreen(null);
@@ -218,7 +230,7 @@ export function TorneoScreen({ goto, tweaks, fireToast, usedPowers, setUsedPower
       {/* Content */}
       <div style={{ flex: 1, overflowY: 'auto' }}>
         {tab === 'predicciones' && <TabPredicciones goto={goto} tweaks={tweaks} fireToast={fireToast} usedPowers={usedPowers} setUsedPowers={setUsedPowers} lateActiveMatchId={lateActiveMatchId} setLateActiveMatchId={setLateActiveMatchId} spyMatchId={spyMatchId} setSpyMatchId={setSpyMatchId}/>}
-        {tab === 'ranking'      && <TabRanking userRank={tweaks.rank ?? USER.rank} userName={displayName} userGroup={displayGroup} userCity={USER.city} userPoints={USER.points}/>}
+        {tab === 'ranking'      && <TabRanking rankings={liveRankings} loading={rankingsLoading} userId={currentUser?.id ?? ''} userName={displayName} userGroup={displayGroup}/>}
         {tab === 'bonus'        && (
           <TabBonus
             fireToast={fireToast}
@@ -228,7 +240,7 @@ export function TorneoScreen({ goto, tweaks, fireToast, usedPowers, setUsedPower
             openSub={openSub}
           />
         )}
-        {tab === 'detalles'     && <TabDetalles goto={goto} openSub={openSub} userGroup={displayGroup}/>}
+        {tab === 'detalles'     && <TabDetalles goto={goto} openSub={openSub} userGroup={displayGroup} rankings={liveRankings}/>}
       </div>
 
     </div>
@@ -921,12 +933,31 @@ function GroupLogo({ group, size }: { group: string; size: number }) {
   );
 }
 
-function TabRanking({ userRank, userName, userGroup, userCity, userPoints }: {
-  userRank: number; userName: string; userGroup: string; userCity: string; userPoints: number;
+function TabRanking({ rankings, loading, userId, userName, userGroup }: {
+  rankings: RankingEntry[]; loading: boolean;
+  userId: string; userName: string; userGroup: string;
 }) {
   const [subTab, setSubTab] = useState('Grupo');
   const [podiumVisible, setPodiumVisible] = useState(false);
   const subTabs = ['Grupo', 'Nacional'];
+
+  // Find the current user's entry
+  const myEntry = rankings.find(e => e.userId === userId);
+  const userPoints = myEntry?.points ?? 0;
+
+  // Grupo: only my group, re-ranked 1..N
+  const grupoList = useMemo(() => {
+    const filtered = rankings.filter(p => p.group_name === userGroup);
+    return filtered.map((p, i) => ({ ...p, pos: i + 1 }));
+  }, [rankings, userGroup]);
+
+  // Nacional: all users
+  const activeList = subTab === 'Grupo' ? grupoList : rankings;
+  const total = activeList.length;
+
+  // Find user rank within the active list
+  const userRank = activeList.findIndex(e => e.userId === userId) + 1 || total + 1;
+  const activeRank = userRank;
 
   useEffect(() => {
     setPodiumVisible(false);
@@ -934,17 +965,6 @@ function TabRanking({ userRank, userName, userGroup, userCity, userPoints }: {
     return () => clearTimeout(t);
   }, [userRank, subTab]);
 
-  // Grupo: only MY group, re-ranked 1..N
-  const grupoList = useMemo(() =>
-    RANKING.filter(p => p.group === userGroup).map((p, i) => ({ ...p, pos: i + 1 }))
-  , [userGroup]);
-
-  // Nacional: all users
-  const nacionalList = RANKING;
-
-  const activeList = subTab === 'Grupo' ? grupoList : nacionalList;
-  const total = activeList.length;
-  const activeRank = Math.min(userRank, total);
   const top3 = activeList.slice(0, 3);
   const N = 4;
 
@@ -959,13 +979,29 @@ function TabRanking({ userRank, userName, userGroup, userCity, userPoints }: {
   const windowRows = activeList.filter(p => p.pos >= winStart && p.pos <= winEnd);
   const showEllipsis = winStart > 4;
 
+  if (loading) {
+    return (
+      <div style={{ padding: '40px 14px', textAlign: 'center', color: T.muted, fontSize: 14 }}>
+        Cargando ranking…
+      </div>
+    );
+  }
+
+  if (total === 0) {
+    return (
+      <div style={{ padding: '40px 14px', textAlign: 'center', color: T.muted, fontSize: 14 }}>
+        El ranking estará disponible cuando comiencen los partidos.
+      </div>
+    );
+  }
+
   return (
     <div style={{ padding: '12px 14px 80px' }}>
       <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
         {subTabs.map(s => <Chip key={s} active={subTab === s} onClick={() => setSubTab(s)}>{s}</Chip>)}
       </div>
 
-      <RankingPodium top3={top3} visible={podiumVisible} userRank={activeRank} userName={userName} userPoints={userPoints}/>
+      <RankingPodium top3={top3} visible={podiumVisible} userRank={activeRank} userName={userName} userPoints={userPoints} userId={userId}/>
 
       <div style={{ fontSize: 11, color: T.muted, marginBottom: 12, paddingLeft: 2 }}>
         {total.toLocaleString('es-MX')} {subTab === 'Grupo' ? `en ${userGroup}` : 'jugadores en total'}
@@ -976,10 +1012,9 @@ function TabRanking({ userRank, userName, userGroup, userCity, userPoints }: {
           <div style={{ textAlign: 'center', color: T.muted, fontSize: 18, letterSpacing: 4, padding: '4px 0' }}>···</div>
         )}
         {windowRows.map((player) => {
-          const isMe = player.pos === activeRank;
-          const displayName  = isMe ? userName  : player.name;
-          const displayGroup = isMe ? userGroup : player.group;
-          const displayCity  = isMe ? userCity  : player.city;
+          const isMe = player.userId === userId;
+          const rowName  = isMe ? userName  : player.name;
+          const rowGroup = isMe ? userGroup : (player.group_name ?? '');
           return (
             <div key={`${subTab}-${player.pos}`} style={{
               display: 'flex', alignItems: 'center', gap: 12,
@@ -995,14 +1030,14 @@ function TabRanking({ userRank, userName, userGroup, userCity, userPoints }: {
                 fontWeight: 700, fontSize: 12,
                 color: isMe ? T.limeDeep : T.blueDeep, flexShrink: 0,
               }}>#{player.pos}</div>
-              <Avatar initials={displayName.slice(0, 2).toUpperCase()} size={32} style={{ flexShrink: 0 }}/>
+              <Avatar initials={rowName.slice(0, 2).toUpperCase()} size={32} style={{ flexShrink: 0 }}/>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 13, fontWeight: isMe ? 700 : 600, color: T.ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {displayName}{isMe && <span style={{ fontSize: 10, color: T.limeDeep, marginLeft: 6, fontWeight: 700 }}>TÚ</span>}
+                  {rowName}{isMe && <span style={{ fontSize: 10, color: T.limeDeep, marginLeft: 6, fontWeight: 700 }}>TÚ</span>}
                 </div>
-                <div style={{ fontSize: 10.5, color: T.muted, marginTop: 2 }}>{displayGroup} · {displayCity}</div>
+                <div style={{ fontSize: 10.5, color: T.muted, marginTop: 2 }}>{rowGroup}</div>
               </div>
-              <div className="font-mono" style={{ fontSize: 13, fontWeight: 700, color: T.ink, flexShrink: 0 }}>{player.pts} pts</div>
+              <div className="font-mono" style={{ fontSize: 13, fontWeight: 700, color: T.ink, flexShrink: 0 }}>{player.points} pts</div>
             </div>
           );
         })}
@@ -1011,7 +1046,7 @@ function TabRanking({ userRank, userName, userGroup, userCity, userPoints }: {
   );
 }
 
-function RankingPodium({ top3, visible, userRank, userName, userPoints }: { top3: typeof RANKING; visible: boolean; userRank: number; userName: string; userPoints: number }) {
+function RankingPodium({ top3, visible, userRank, userName, userPoints, userId }: { top3: RankingEntry[]; visible: boolean; userRank: number; userName: string; userPoints: number; userId: string }) {
   // Podium order: 2nd (left) · 1st (center) · 3rd (right)
   const order   = [top3[1], top3[0], top3[2]];
   const heights = [96, 132, 72];
@@ -1071,8 +1106,8 @@ function RankingPodium({ top3, visible, userRank, userName, userPoints }: { top3
                 maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                 padding: '0 4px',
               }}>
-                {player.pos === userRank ? userName.split(' ')[0] : player.name.split(' ')[0]}
-                {player.pos === userRank ? <span style={{ color: T.lime }}> (tú)</span> : null}
+                {player.userId === userId ? userName.split(' ')[0] : player.name.split(' ')[0]}
+                {player.userId === userId ? <span style={{ color: T.lime }}> (tú)</span> : null}
               </div>
 
               {/* Platform */}
@@ -1087,7 +1122,7 @@ function RankingPodium({ top3, visible, userRank, userName, userPoints }: { top3
                   color: colors[i], lineHeight: 1, fontStyle: 'italic',
                 }}>#{ranks[i]}</div>
                 <div className="font-mono" style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.6)' }}>
-                  {player.pts} pts
+                  {player.points} pts
                 </div>
               </div>
             </div>
@@ -1164,7 +1199,7 @@ function TabBonus({ fireToast, champSelected, setChampSelected, subSelected, set
 }
 
 // ──────── Tab: Detalles ────────
-function TabDetalles({ goto, openSub, userGroup }: { goto: (s: string) => void; openSub: (name: SubScreenName) => void; userGroup: string }) {
+function TabDetalles({ goto, openSub, userGroup, rankings }: { goto: (s: string) => void; openSub: (name: SubScreenName) => void; userGroup: string; rankings: RankingEntry[] }) {
 
   const prizes = [
     { icon: '🥇', label: '1er Lugar', sub: 'Ganador absoluto', val: '$15,000 MXN' },
@@ -1185,7 +1220,7 @@ function TabDetalles({ goto, openSub, userGroup }: { goto: (s: string) => void; 
           <EvolveMark size={44} color={T.lime}/>
         </div>
         <div style={{ fontSize: 18, fontWeight: 700, color: '#fff', marginBottom: 8 }}>Grupo Evolve</div>
-        <Pill color={`${T.lime}25`} textColor={T.lime}>Miembros: {RANKING.filter(p => p.group === userGroup).length}</Pill>
+        <Pill color={`${T.lime}25`} textColor={T.lime}>Miembros: {rankings.filter(p => p.group_name === userGroup).length}</Pill>
       </div>
 
       {/* Description */}

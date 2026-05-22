@@ -80,17 +80,17 @@ export interface RankingEntry {
 }
 
 export async function getRankings(): Promise<RankingEntry[]> {
-  // Fetch all predictions and match results together
-  const [predsRes, resultsRes] = await Promise.all([
+  // Fetch all profiles (users only), predictions, and match results in parallel
+  const [profilesRes, predsRes, resultsRes] = await Promise.all([
+    supabase.from('profiles').select('id, name, group_name').eq('role', 'user'),
     supabase.from('predictions').select('user_id, match_id, home_score, away_score'),
     supabase.from('matches').select('id, result_home, result_away').not('result_home', 'is', null),
   ]);
-  if (predsRes.error || resultsRes.error) return [];
 
   const resultMap: Record<string, [number, number]> = {};
   for (const m of resultsRes.data ?? []) resultMap[m.id] = [m.result_home, m.result_away];
 
-  // Sum points per user
+  // Sum points per user (only where match has a result)
   const pointsMap: Record<string, number> = {};
   for (const p of predsRes.data ?? []) {
     const result = resultMap[p.match_id];
@@ -99,16 +99,8 @@ export async function getRankings(): Promise<RankingEntry[]> {
     pointsMap[p.user_id] = (pointsMap[p.user_id] ?? 0) + pts;
   }
 
-  // Fetch profiles for all users who have predictions
-  const userIds = Object.keys(pointsMap);
-  if (userIds.length === 0) return [];
-
-  const { data: profiles } = await supabase
-    .from('profiles')
-    .select('id, name, group_name')
-    .in('id', userIds);
-
-  const entries: RankingEntry[] = (profiles ?? []).map(p => ({
+  // All users get a ranking entry (0 pts if no results yet)
+  const entries: RankingEntry[] = (profilesRes.data ?? []).map(p => ({
     userId: p.id,
     name: p.name,
     group_name: p.group_name,

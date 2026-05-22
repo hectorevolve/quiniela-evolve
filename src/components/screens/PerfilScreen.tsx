@@ -1,10 +1,13 @@
 'use client';
-import { useState, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { theme as T } from '@/lib/theme';
-import { USER, MATCHES, isMatchPast, DEMO_PAST_IDS, DEMO_RESULTS, type Match } from '@/lib/data';
+import { USER, MATCHES, type Match } from '@/lib/data';
 import { Header, Avatar, Card, Chip, Pill, PowerIcon, Modal } from '@/components/ui';
 import { Flag } from '@/components/flags/Flag';
 import { getInitials, type AppUser } from '@/lib/supabase';
+import { getMatchResults } from '@/lib/db';
+import { loadPrediction } from '@/lib/predictions';
+import { calcPoints } from '@/lib/points';
 
 interface Props {
   goto: (s: string) => void;
@@ -32,6 +35,12 @@ export function PerfilScreen({ goto, tweaks, fireToast, currentUser, onLogout }:
   const [view, setView] = useState<'main' | 'past'>('main');
   const [pastFilter, setPastFilter] = useState('Todos');
 
+  // Load match results from Supabase — only show matches where admin entered a result
+  const [dbResults, setDbResults] = useState<Record<string, [number, number]>>({});
+  useEffect(() => {
+    getMatchResults().then(setDbResults).catch(console.error);
+  }, []);
+
   const months = [
     { label: 'May', pct: 100, color: T.emerald },
     { label: 'Jun', pct: 75,  color: T.amber },
@@ -44,12 +53,18 @@ export function PerfilScreen({ goto, tweaks, fireToast, currentUser, onLogout }:
     { kind: 'spy'    as const, status: 'Usado en MEX vs RSA', used: !tweaks.premium },
   ];
 
-  const pastMatches = MATCHES.filter(m =>
-    isMatchPast(m.date) || (tweaks.pastMatch && DEMO_PAST_IDS.has(m.id))
-  ).map(m => {
-    const demo = DEMO_RESULTS[m.id];
-    return demo ? { ...m, result: demo.result as [number, number], userPrediction: demo.userPrediction as [number, number], pointsEarned: demo.pointsEarned } : m;
-  });
+  // Only show matches where admin has entered a result in DB
+  const pastMatches = useMemo(() => {
+    return MATCHES
+      .filter(m => dbResults[m.id] !== undefined)
+      .map(m => {
+        const result = dbResults[m.id];
+        const pred = loadPrediction(m.id);
+        const userPrediction: [number, number] | undefined = pred ? [pred.home, pred.away] : undefined;
+        const pointsEarned = (result && userPrediction) ? calcPoints(userPrediction, result) : 0;
+        return { ...m, result, userPrediction, pointsEarned };
+      });
+  }, [dbResults]);
 
   const pastGroups = useMemo(() => {
     const seen = new Set<string>();
@@ -153,23 +168,33 @@ export function PerfilScreen({ goto, tweaks, fireToast, currentUser, onLogout }:
           </div>
         </Card>
 
-        {/* Stats */}
-        <Card style={{ marginBottom: 12 }}>
-          <div className="font-display" style={{ fontSize: 14, fontWeight: 700, color: T.ink, marginBottom: 12 }}>Estadísticas</div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            {[
-              { label: 'Predicciones', value: '24' },
-              { label: 'Aciertos', value: '16 (67%)' },
-              { label: 'Marcadores exactos', value: '3' },
-              { label: 'Puntos totales', value: String(USER.points) }, // TODO: real points from DB
-            ].map(s => (
-              <div key={s.label} style={{ background: T.bgSoft, borderRadius: 12, padding: '12px 14px', border: `1px solid ${T.border}` }}>
-                <div style={{ fontSize: 10.5, color: T.muted, marginBottom: 4 }}>{s.label}</div>
-                <div className="font-mono" style={{ fontSize: 20, fontWeight: 700, color: T.ink }}>{s.value}</div>
+        {/* Stats — computed from completed matches */}
+        {(() => {
+          const played   = pastMatches.filter(m => m.userPrediction !== undefined);
+          const totalPts = pastMatches.reduce((acc, m) => acc + (m.pointsEarned ?? 0), 0);
+          const hits     = pastMatches.filter(m => (m.pointsEarned ?? 0) > 0).length;
+          const exact    = pastMatches.filter(m => (m.pointsEarned ?? 0) === 3).length;
+          const hitPct   = played.length > 0 ? Math.round(hits / played.length * 100) : 0;
+          const stats = [
+            { label: 'Predicciones jugadas', value: String(played.length) },
+            { label: 'Aciertos', value: played.length > 0 ? `${hits} (${hitPct}%)` : '—' },
+            { label: 'Marcadores exactos', value: String(exact) },
+            { label: 'Puntos totales', value: String(totalPts) },
+          ];
+          return (
+            <Card style={{ marginBottom: 12 }}>
+              <div className="font-display" style={{ fontSize: 14, fontWeight: 700, color: T.ink, marginBottom: 12 }}>Estadísticas</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                {stats.map(s => (
+                  <div key={s.label} style={{ background: T.bgSoft, borderRadius: 12, padding: '12px 14px', border: `1px solid ${T.border}` }}>
+                    <div style={{ fontSize: 10.5, color: T.muted, marginBottom: 4 }}>{s.label}</div>
+                    <div className="font-mono" style={{ fontSize: 20, fontWeight: 700, color: T.ink }}>{s.value}</div>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-        </Card>
+            </Card>
+          );
+        })()}
 
         {/* Past predictions */}
         <button onClick={() => setView('past')} style={{

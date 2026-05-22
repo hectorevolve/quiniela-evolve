@@ -109,11 +109,16 @@ export function saveBonus(data: Partial<BonusPrediction>): void {
   }
 }
 
-/** Load bonus picks from Supabase and hydrate localStorage. */
+/** Load bonus picks from Supabase and hydrate localStorage.
+ *  If the user has no picks in DB yet, clears any stale localStorage data. */
 export async function syncBonusFromDB(userId: string): Promise<void> {
   try {
     const picks = await loadBonusPicks(userId);
-    if (!picks) return;
+    if (!picks) {
+      // No picks saved — wipe any leftover mock/dev data from localStorage
+      if (typeof window !== 'undefined') localStorage.removeItem(BONUS_KEY);
+      return;
+    }
     const bonus: BonusPrediction = {
       champCode:  picks.champ_code    ?? undefined,
       subCode:    picks.runner_up_code ?? undefined,
