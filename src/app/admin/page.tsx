@@ -5,7 +5,7 @@ import { MATCHES, KNOCKOUT_MATCHES, USER_PREDICTIONS, GROUP_MATCH_IDS } from '@/
 import { EvolveMark } from '@/components/brand/EvolveMark';
 import { Avatar } from '@/components/ui';
 import { supabase } from '@/lib/supabase';
-import { getRankings, type RankingEntry } from '@/lib/db';
+import { getRankings, type RankingEntry, getMatchResults, saveMatchResult } from '@/lib/db';
 
 type View = 'dashboard' | 'usuarios' | 'rankings' | 'predicciones' | 'partidos' | 'grupos';
 type AdminUser = { name: string; pts: number; group: string; city: string; pos: number; country: string };
@@ -729,23 +729,26 @@ function ViewPredicciones({ users }: { users: AdminUser[] }) {
 // ─── Partidos + Resultados (fusionados) ───────────────────────────────────────
 function ViewPartidos() {
   const allMatches = [...MATCHES, ...(KNOCKOUT_MATCHES ?? [])];
-  const [matches, setMatches] = useState<AdminMatch[]>(allMatches);
+  const [matches] = useState<AdminMatch[]>(allMatches);
+  // results: loaded from Supabase, updated on save
   const [results, setResults] = useState<Record<string, [number, number]>>({});
   const [drafts, setDrafts] = useState<Record<string, { home: string; away: string }>>(() => {
     const d: Record<string, { home: string; away: string }> = {};
     allMatches.forEach(m => { d[m.id] = { home: '', away: '' }; });
     return d;
   });
-  const [editing, setEditing] = useState<AdminMatch | null>(null);
-  const [editHome, setEditHome] = useState('');
-  const [editAway, setEditAway] = useState('');
-  const [editDate, setEditDate] = useState('');
-  const [editStadium, setEditStadium] = useState('');
-  const [editGroup, setEditGroup] = useState('');
   const [phaseFilter, setPhaseFilter] = useState('Todos');
   const [search, setSearch] = useState('');
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
+  const [syncing, setSyncing] = useState(false);
+  const [syncMsg, setSyncMsg] = useState('');
+  const [saving, setSaving] = useState<string | null>(null);
   const isMobile = useIsMobile();
+
+  // Load existing results from Supabase on mount
+  useEffect(() => {
+    getMatchResults().then(setResults).catch(console.error);
+  }, []);
 
   const phases = useMemo(() => ['Todos', ...Array.from(new Set(matches.map(m => m.group)))], [matches]);
   const filtered = useMemo(() => {
@@ -756,32 +759,65 @@ function ViewPartidos() {
     );
   }, [matches, phaseFilter, search]);
 
-  const openEdit = (m: AdminMatch) => { setEditing(m); setEditHome(m.home.code); setEditAway(m.away.code); setEditDate(m.date); setEditStadium(m.stadium); setEditGroup(m.group); };
-  const saveEdit = () => {
-    if (!editing) return;
-    setMatches(prev => prev.map(m => m.id === editing.id ? { ...m, home: { ...m.home, code: editHome }, away: { ...m.away, code: editAway }, date: editDate, stadium: editStadium, group: editGroup } : m));
-    setEditing(null);
-  };
-  const saveResult = (matchId: string) => {
+  // Save a result to Supabase
+  const saveResult = async (matchId: string) => {
     const h = parseInt(drafts[matchId]?.home ?? '');
     const a = parseInt(drafts[matchId]?.away ?? '');
     if (isNaN(h) || isNaN(a)) return;
+    setSaving(matchId);
+    await saveMatchResult(matchId, h, a);
     setResults(prev => ({ ...prev, [matchId]: [h, a] }));
+    setDrafts(prev => ({ ...prev, [matchId]: { home: '', away: '' } }));
+    setSaving(null);
   };
-  const clearResult = (matchId: string) => {
+
+  const clearResult = async (matchId: string) => {
+    await saveMatchResult(matchId, null, null);
     setResults(prev => { const n = { ...prev }; delete n[matchId]; return n; });
     setDrafts(prev => ({ ...prev, [matchId]: { home: '', away: '' } }));
   };
-  const deleteMatch = (matchId: string) => {
-    if (!confirm(`¿Eliminar partido ${matchId.toUpperCase()}? Esta acción no se puede deshacer.`)) return;
-    setMatches(prev => prev.filter(m => m.id !== matchId));
-    setResults(prev => { const n = { ...prev }; delete n[matchId]; return n; });
-    setDrafts(prev => { const n = { ...prev }; delete n[matchId]; return n; });
+
+  // Call /api/sync-results to pull finished matches from football-data.org
+  const handleSync = async () => {
+    setSyncing(true);
+    setSyncMsg('');
+    try {
+      const res = await fetch('/api/sync-results');
+      const json = await res.json();
+      if (json.error) {
+        setSyncMsg(`⚠ ${json.error}`);
+      } else {
+        setSyncMsg(`✓ ${json.synced} resultado${json.synced !== 1 ? 's' : ''} sincronizado${json.synced !== 1 ? 's' : ''} (${json.total} partidos en la API)`);
+        // Reload results from DB
+        const fresh = await getMatchResults();
+        setResults(fresh);
+      }
+    } catch {
+      setSyncMsg('⚠ Error de red al sincronizar');
+    } finally {
+      setSyncing(false);
+    }
   };
 
   return (
     <div>
       <SectionHeader title="Partidos y Resultados" sub={`${matches.length} partidos en el torneo · ${Object.keys(results).length} resultados registrados`}/>
+
+      {/* Sync bar */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, padding: '12px 16px', background: `${c.lime}0D`, border: `1px solid ${c.lime}33`, borderRadius: 12 }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: c.lime }}>🔄 Sincronizar desde football-data.org</div>
+          <div style={{ fontSize: 11, color: c.muted, marginTop: 2 }}>
+            {syncMsg || 'Descarga automáticamente los resultados de partidos terminados del Mundial.'}
+          </div>
+        </div>
+        <button
+          onClick={handleSync}
+          disabled={syncing}
+          style={{ padding: '8px 18px', borderRadius: 8, border: 'none', background: syncing ? c.border : c.lime, color: syncing ? c.muted : '#000', fontWeight: 700, fontSize: 13, cursor: syncing ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}>
+          {syncing ? 'Sincronizando…' : 'Sincronizar ahora'}
+        </button>
+      </div>
 
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
         <div style={{ flex: 1, minWidth: 160, display: 'flex', alignItems: 'center', gap: 8, background: c.card, border: `1px solid ${c.border}`, borderRadius: 10, padding: '8px 14px' }}>
@@ -823,13 +859,9 @@ function ViewPartidos() {
                     <input type="number" min={0} placeholder="0" value={draft.away}
                       onChange={e => setDrafts(prev => ({ ...prev, [m.id]: { ...prev[m.id], away: e.target.value } }))}
                       style={{ width: 44, padding: '5px 6px', borderRadius: 6, border: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.06)', color: c.text, fontSize: 14, fontWeight: 700, textAlign: 'center', fontFamily: 'inherit', outline: 'none' }}/>
-                    <button onClick={() => saveResult(m.id)} style={{ padding: '5px 10px', borderRadius: 6, border: 'none', background: c.lime, color: '#000', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>Guardar</button>
+                    <button onClick={() => saveResult(m.id)} disabled={saving === m.id} style={{ padding: '5px 10px', borderRadius: 6, border: 'none', background: saving === m.id ? c.border : c.lime, color: saving === m.id ? c.muted : '#000', fontSize: 11, fontWeight: 700, cursor: saving === m.id ? 'not-allowed' : 'pointer' }}>{saving === m.id ? '…' : 'Guardar'}</button>
                   </div>
                 )}
-                <div style={{ display: 'flex', gap: 6 }}>
-                  <button onClick={() => openEdit(m)} style={{ flex: 1, padding: '6px', borderRadius: 7, border: `1px solid ${c.border}`, background: 'none', color: c.blue, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>✏ Editar</button>
-                  <button onClick={() => deleteMatch(m.id)} style={{ padding: '6px 10px', borderRadius: 7, border: `1px solid ${c.rose}44`, background: `${c.rose}11`, color: c.rose, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>🗑</button>
-                </div>
               </div>
             );
           })}
@@ -841,7 +873,7 @@ function ViewPartidos() {
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 680 }}>
               <thead>
                 <tr style={{ borderBottom: `1px solid ${c.border}` }}>
-                  {['ID','Fase/Grupo','Partido','Fecha','Resultado guardado','Registrar resultado',''].map(h => (
+                  {['ID','Fase/Grupo','Partido','Fecha','Resultado guardado','Registrar resultado'].map(h => (
                     <th key={h} style={{ padding: '11px 12px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: c.muted, letterSpacing: 0.8, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{h}</th>
                   ))}
                 </tr>
@@ -880,12 +912,6 @@ function ViewPartidos() {
                           <button onClick={() => saveResult(m.id)} style={{ padding: '4px 9px', borderRadius: 6, border: 'none', background: c.lime, color: '#000', fontSize: 11, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>Guardar</button>
                         </div>
                       </td>
-                      <td style={{ padding: '10px 12px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <button onClick={() => openEdit(m)} style={{ padding: '4px 10px', borderRadius: 6, border: `1px solid ${c.border}`, background: 'none', color: c.blue, fontSize: 11, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>✏ Editar</button>
-                          <button onClick={() => deleteMatch(m.id)} style={{ padding: '4px 10px', borderRadius: 6, border: `1px solid ${c.rose}44`, background: `${c.rose}11`, color: c.rose, fontSize: 11, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>🗑 Eliminar</button>
-                        </div>
-                      </td>
                     </tr>
                   );
                 })}
@@ -896,25 +922,6 @@ function ViewPartidos() {
         </div>
       )}
 
-      {editing && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 16 }} onClick={() => setEditing(null)}>
-          <div style={{ background: '#0D1829', border: `1px solid ${c.border}`, borderRadius: 18, padding: isMobile ? 20 : 28, width: '100%', maxWidth: 420 }} onClick={e => e.stopPropagation()}>
-            <div style={{ fontSize: 15, fontWeight: 700, color: c.text, marginBottom: 4 }}>Editar partido</div>
-            <div style={{ fontSize: 12, color: c.muted, marginBottom: 20 }}>{editing.id.toUpperCase()}</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-              <ModalInput label="Local (código)" value={editHome} onChange={setEditHome}/>
-              <ModalInput label="Visitante (código)" value={editAway} onChange={setEditAway}/>
-            </div>
-            <ModalInput label="Fase / Grupo" value={editGroup} onChange={setEditGroup}/>
-            <ModalInput label="Fecha" value={editDate} onChange={setEditDate}/>
-            <ModalInput label="Estadio" value={editStadium} onChange={setEditStadium}/>
-            <div style={{ display: 'flex', gap: 10 }}>
-              <button onClick={saveEdit} style={{ flex: 1, padding: '12px', borderRadius: 10, border: 'none', background: c.blue, color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>Guardar</button>
-              <button onClick={() => setEditing(null)} style={{ flex: 1, padding: '12px', borderRadius: 10, border: `1px solid ${c.border}`, background: 'none', color: c.muted, fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>Cancelar</button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

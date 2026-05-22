@@ -59,8 +59,8 @@ export async function getMatchResults(): Promise<Record<string, [number, number]
 
 export async function saveMatchResult(
   matchId: string,
-  home: number,
-  away: number,
+  home: number | null,
+  away: number | null,
 ): Promise<void> {
   const { error } = await supabase
     .from('matches')
