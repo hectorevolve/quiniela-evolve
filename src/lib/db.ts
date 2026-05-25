@@ -44,6 +44,28 @@ export async function upsertPrediction(
   if (error) console.error('[db] upsertPrediction:', error.message);
 }
 
+// ─── Match schedule (UTC dates from API) ─────────────────────────────────────
+
+/**
+ * Returns a map of matchId → ISO UTC kickoff date (e.g. "2026-06-11T17:00:00Z").
+ * Only includes rows where match_date looks like an ISO date (synced from API).
+ * Falls back to hardcoded data.ts dates when a match hasn't been synced yet.
+ */
+export async function getMatchDates(): Promise<Record<string, string>> {
+  const { data, error } = await supabase
+    .from('matches')
+    .select('id, match_date');
+  if (error) { console.error('[db] getMatchDates:', error.message); return {}; }
+  const out: Record<string, string> = {};
+  for (const row of data ?? []) {
+    // Only use the date if it looks like an ISO date (from API), not the Spanish format
+    if (row.match_date && /^\d{4}-\d{2}-\d{2}T/.test(row.match_date)) {
+      out[row.id] = row.match_date;
+    }
+  }
+  return out;
+}
+
 // ─── Match results ────────────────────────────────────────────────────────────
 
 export async function getMatchResults(): Promise<Record<string, [number, number]>> {

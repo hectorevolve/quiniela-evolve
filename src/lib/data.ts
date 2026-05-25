@@ -58,6 +58,25 @@ export function isMatchPast(dateStr: string): boolean {
   return Date.now() > parseMatchStart(dateStr) + 2 * 60 * 60 * 1000;
 }
 
+// ── ISO-aware helpers (use official UTC time from API when available) ─────────
+// isoDate: "2026-06-11T17:00:00Z" from football-data.org. Falls back to
+// the Spanish date string parsed by parseMatchStart() if no ISO date.
+
+function kickoffMs(isoDate: string | undefined, fallbackDateStr: string): number {
+  if (isoDate) return new Date(isoDate).getTime();
+  return parseMatchStart(fallbackDateStr);
+}
+
+export function isMatchStartedEx(isoDate: string | undefined, fallbackDateStr: string): boolean {
+  return Date.now() > kickoffMs(isoDate, fallbackDateStr);
+}
+export function isMatchOver45MinEx(isoDate: string | undefined, fallbackDateStr: string): boolean {
+  return Date.now() > kickoffMs(isoDate, fallbackDateStr) + 45 * 60 * 1000;
+}
+export function isMatchPastEx(isoDate: string | undefined, fallbackDateStr: string): boolean {
+  return Date.now() > kickoffMs(isoDate, fallbackDateStr) + 2 * 60 * 60 * 1000;
+}
+
 // ── Predicciones del grupo (datos del servidor) ──────────────────────────────
 export interface PredictionBucket { home: number; away: number; count: number }
 

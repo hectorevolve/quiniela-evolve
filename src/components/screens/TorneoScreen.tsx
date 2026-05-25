@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { theme as T } from '@/lib/theme';
-import { MATCHES, KNOCKOUT_MATCHES, MOCK_RESULTS, resolveSlots, computeSlots, isMatchPast, isMatchStarted, isMatchOver45Min, DEMO_LIVE_MATCH, DEMO_PAST_IDS, PREDICTION_DISTRIBUTIONS, GOLEADORES, SELECCIONES, USER, STADIUM_ALIASES, TEAM_ALIASES, type Match, type PredictionBucket, type SlotMap, type LiveMatch } from '@/lib/data';
+import { MATCHES, KNOCKOUT_MATCHES, MOCK_RESULTS, resolveSlots, computeSlots, isMatchPast, isMatchStarted, isMatchOver45Min, isMatchPastEx, isMatchStartedEx, isMatchOver45MinEx, DEMO_LIVE_MATCH, DEMO_PAST_IDS, PREDICTION_DISTRIBUTIONS, GOLEADORES, SELECCIONES, USER, STADIUM_ALIASES, TEAM_ALIASES, type Match, type PredictionBucket, type SlotMap, type LiveMatch } from '@/lib/data';
 import { getInitials, type AppUser } from '@/lib/supabase';
 import { getRankings, type RankingEntry } from '@/lib/db';
 import { useLiveMatch } from '@/hooks/useLiveMatch';
@@ -36,6 +36,7 @@ interface Props {
   spyMatchId?: string | null;
   setSpyMatchId?: (id: string | null) => void;
   currentUser?: AppUser | null;
+  matchDates?: Record<string, string>;
 }
 
 type SubScreenName = 'puntos' | 'campeon' | 'goleador' | 'subcampeon' | 'tercero' | 'poder-double' | 'poder-late' | 'poder-spy';
@@ -130,7 +131,7 @@ function useMatchTimer(dateStr: string, apiStatus: string, apiDuration: string, 
   return state;
 }
 
-export function TorneoScreen({ goto, tweaks, fireToast, usedPowers, setUsedPowers, lateActiveMatchId, setLateActiveMatchId, spyMatchId, setSpyMatchId, currentUser }: Props) {
+export function TorneoScreen({ goto, tweaks, fireToast, usedPowers, setUsedPowers, lateActiveMatchId, setLateActiveMatchId, spyMatchId, setSpyMatchId, currentUser, matchDates }: Props) {
   const displayUser = currentUser ?? USER;
   const displayName     = currentUser?.name       ?? USER.name;
   const displayGroup    = currentUser?.group_name  ?? USER.group;
@@ -229,7 +230,7 @@ export function TorneoScreen({ goto, tweaks, fireToast, usedPowers, setUsedPower
 
       {/* Content */}
       <div style={{ flex: 1, overflowY: 'auto' }}>
-        {tab === 'predicciones' && <TabPredicciones goto={goto} tweaks={tweaks} fireToast={fireToast} usedPowers={usedPowers} setUsedPowers={setUsedPowers} lateActiveMatchId={lateActiveMatchId} setLateActiveMatchId={setLateActiveMatchId} spyMatchId={spyMatchId} setSpyMatchId={setSpyMatchId}/>}
+        {tab === 'predicciones' && <TabPredicciones goto={goto} tweaks={tweaks} fireToast={fireToast} usedPowers={usedPowers} setUsedPowers={setUsedPowers} lateActiveMatchId={lateActiveMatchId} setLateActiveMatchId={setLateActiveMatchId} spyMatchId={spyMatchId} setSpyMatchId={setSpyMatchId} matchDates={matchDates}/>}
         {tab === 'ranking'      && <TabRanking rankings={liveRankings} loading={rankingsLoading} userId={currentUser?.id ?? ''} userName={displayName} userGroup={displayGroup}/>}
         {tab === 'bonus'        && (
           <TabBonus
@@ -248,7 +249,7 @@ export function TorneoScreen({ goto, tweaks, fireToast, usedPowers, setUsedPower
 }
 
 // ──────── Tab: Predicciones ────────
-function TabPredicciones({ goto, tweaks, fireToast, usedPowers: usedPowersFromParent, setUsedPowers: setUsedPowersFromParent, lateActiveMatchId: lateActiveMatchIdFromParent, setLateActiveMatchId: setLateActiveMatchIdFromParent, spyMatchId: spyMatchIdFromParent, setSpyMatchId: setSpyMatchIdFromParent }: Props) {
+function TabPredicciones({ goto, tweaks, fireToast, usedPowers: usedPowersFromParent, setUsedPowers: setUsedPowersFromParent, lateActiveMatchId: lateActiveMatchIdFromParent, setLateActiveMatchId: setLateActiveMatchIdFromParent, spyMatchId: spyMatchIdFromParent, setSpyMatchId: setSpyMatchIdFromParent, matchDates }: Props) {
   const [filter, setFilter] = useState('Todos');
   const [search, setSearch] = useState('');
   const [onlyUnpredicted, setOnlyUnpredicted] = useState(false);
@@ -306,7 +307,7 @@ function TabPredicciones({ goto, tweaks, fireToast, usedPowers: usedPowersFromPa
     const slots: SlotMap = tweaks.knockoutSlots
       ? computeSlots(MATCHES, KNOCKOUT_MATCHES, MOCK_RESULTS)
       : {};
-    const groupMatches = MATCHES.filter(m => !isMatchPast(m.date) && !(tweaks.pastMatch && DEMO_PAST_IDS.has(m.id)));
+    const groupMatches = MATCHES.filter(m => !isMatchPastEx(matchDates?.[m.id], m.date) && !(tweaks.pastMatch && DEMO_PAST_IDS.has(m.id)));
     const knockoutResolved = resolveSlots(KNOCKOUT_MATCHES, slots);
     const groupFilledMatches = tweaks.filled
       ? groupMatches.map(m => ({ ...m, prediction: m.prediction ?? [1, 0] as [number, number] }))
@@ -396,12 +397,12 @@ function TabPredicciones({ goto, tweaks, fireToast, usedPowers: usedPowersFromPa
   const confirmPower = () => {
     if (!modal) return;
     const { kind, match } = modal;
-    if (kind === 'double' && isMatchStarted(match.date) && lateActiveMatchId !== match.id) {
+    if (kind === 'double' && isMatchStartedEx(matchDates?.[match.id], match.date) && lateActiveMatchId !== match.id) {
       setModal(null);
       fireToast('El partido ya inició, no puedes activar ×2', T.rose, '#fff');
       return;
     }
-    if (kind === 'late' && isMatchOver45Min(match.date)) {
+    if (kind === 'late' && isMatchOver45MinEx(matchDates?.[match.id], match.date)) {
       setModal(null);
       fireToast('Ya pasaron los 45 min, no puedes activar Cambio Tardío', T.rose, '#fff');
       return;
@@ -623,8 +624,8 @@ function TabPredicciones({ goto, tweaks, fireToast, usedPowers: usedPowersFromPa
               <MatchCard key={match.id} match={match} usedPowers={usedPowers}
                 lateActiveMatchId={lateActiveMatchId}
                 spyMatchId={spyMatchId}
-                matchStarted={isMatchStarted(match.date) || liveMatch?.matchId === match.id}
-                matchOver45={isMatchOver45Min(match.date) || (liveMatch?.matchId === match.id && (liveMatch?.minute ?? 0) >= 45)}
+                matchStarted={isMatchStartedEx(matchDates?.[match.id], match.date) || liveMatch?.matchId === match.id}
+                matchOver45={isMatchOver45MinEx(matchDates?.[match.id], match.date) || (liveMatch?.matchId === match.id && (liveMatch?.minute ?? 0) >= 45)}
                 onPower={(kind) => {
                   if (kind === 'spy') setSpyModal({ match, phase: spyMatchId === match.id ? 'results' : 'confirm' });
                   else setModal({ kind, match });

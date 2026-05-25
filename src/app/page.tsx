@@ -9,7 +9,7 @@ import { PerfilScreen } from '@/components/screens/PerfilScreen';
 import { PremiosScreen } from '@/components/screens/PremiosScreen';
 import { AdminScreen } from '@/components/screens/AdminScreen';
 import { supabase, type AppUser } from '@/lib/supabase';
-import { getProfile } from '@/lib/db';
+import { getProfile, getMatchDates } from '@/lib/db';
 import { syncPredictionsFromDB, syncBonusFromDB } from '@/lib/predictions';
 
 type Screen = 'login' | 'onboarding' | 'torneo' | 'detalle' | 'perfil' | 'premios' | 'admin';
@@ -29,6 +29,8 @@ export default function Home() {
   const [lateActiveMatchId, setLateActiveMatchId] = useState<string | null>(null);
   const [spyMatchId, setSpyMatchId] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
+  // ISO UTC kickoff times from Supabase (synced from football-data.org API)
+  const [matchDates, setMatchDates] = useState<Record<string, string>>({});
 
   useEffect(() => {
     setUsedPowers(new Set(tweaks.premium ? [] : ['double', 'late', 'spy']));
@@ -55,9 +57,10 @@ export default function Home() {
           if (profile) {
             setCurrentUser(profile);
             setScreen('torneo');
-            // Sync predictions in the background
+            // Sync predictions + dates in the background
             syncPredictionsFromDB(session.user.id).catch(console.error);
             syncBonusFromDB(session.user.id).catch(console.error);
+            getMatchDates().then(setMatchDates).catch(console.error);
           }
         }
       } catch (err) {
@@ -94,6 +97,8 @@ export default function Home() {
 
   const handleLogin = useCallback((user: AppUser) => {
     setCurrentUser(user);
+    // Load official match dates from Supabase (updated by sync-results cron)
+    getMatchDates().then(setMatchDates).catch(console.error);
     goto('torneo');
   }, [goto]);
 
@@ -114,7 +119,7 @@ export default function Home() {
           usedPowers={usedPowers} setUsedPowers={setUsedPowers}
           lateActiveMatchId={lateActiveMatchId} setLateActiveMatchId={setLateActiveMatchId}
           spyMatchId={spyMatchId} setSpyMatchId={setSpyMatchId}
-          currentUser={currentUser}/>;
+          currentUser={currentUser} matchDates={matchDates}/>;
       case 'detalle':
         return <DetalleScreen goto={goto} tweaks={tweaks} fireToast={fireToast}
           matchId={selectedMatchId}
@@ -133,35 +138,27 @@ export default function Home() {
 
   return (
     <div style={{
-      minHeight: '100vh',
-      background: 'radial-gradient(circle at 20% 20%, rgba(26,175,255,0.08) 0%, transparent 50%), radial-gradient(circle at 80% 80%, rgba(26,175,255,0.05) 0%, transparent 50%), #050B17',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      padding: '24px 12px', position: 'relative',
+      width: '100%', height: '100dvh',
+      background: '#fff', overflow: 'hidden', position: 'relative',
       fontFamily: 'var(--font-inter), system-ui, sans-serif',
     }}>
-      <div className="evo-grid-bg" style={{ position: 'absolute', inset: 0, opacity: 0.35, pointerEvents: 'none' }}/>
+      <div style={{
+        width: '100%', height: '100%',
+        overflowY: 'auto', overflowX: 'hidden',
+        opacity: transitioning ? 0 : 1, transition: 'opacity 200ms ease',
+      }}>
+        {renderScreen()}
+      </div>
+      {toast && <Toast key={toast.id} message={toast.message} color={toast.color} textColor={toast.textColor} visible/>}
+      <Preloader visible={loading}/>
+      {transitioning && !loading && <MiniLoader/>}
 
-      <div style={{ display: 'flex', gap: 32, alignItems: 'flex-start', position: 'relative', zIndex: 2, flexWrap: 'wrap', justifyContent: 'center' }}>
-        <Phone>
-          <div style={{ position: 'relative', width: '100%', height: '100%', background: '#fff', overflow: 'hidden' }}>
-            <div style={{
-              position: 'relative', width: '100%', height: '100%',
-              overflowY: 'auto', overflowX: 'hidden',
-              opacity: transitioning ? 0 : 1, transition: 'opacity 200ms ease',
-            }}>
-              {renderScreen()}
-            </div>
-            {toast && <Toast key={toast.id} message={toast.message} color={toast.color} textColor={toast.textColor} visible/>}
-            <Preloader visible={loading}/>
-            {transitioning && !loading && <MiniLoader/>}
-          </div>
-        </Phone>
-
-        {DEV_TWEAKS && (
+      {DEV_TWEAKS && (
+        <div style={{ position: 'fixed', bottom: 16, right: 16, zIndex: 9999 }}>
           <TweaksPanel tweaks={tweaks} setTweaks={setTweaks} screen={screen} goto={goto}
             onReplay={() => { setLoading(true); setTimeout(() => setLoading(false), 1400); }}/>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

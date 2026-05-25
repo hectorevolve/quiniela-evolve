@@ -1,10 +1,11 @@
 /**
  * GET /api/sync-results
  *
- * Fetches FINISHED World Cup matches from football-data.org and writes
- * the full-time scores to the Supabase `matches` table.
+ * Syncs the full WC 2026 schedule + results from football-data.org into Supabase:
+ *  - ALL matches  → updates `match_date` with the official UTC kickoff time
+ *  - FINISHED     → also writes `result_home` / `result_away`
  *
- * Called automatically by Vercel Cron every 30 min (vercel.json).
+ * Called automatically by Vercel Cron every 15 min (vercel.json).
  * Can also be triggered manually from the admin panel.
  */
 
@@ -78,7 +79,6 @@ function toCode(raw: string): string | null {
   return NAME_TO_CODE[raw.toLowerCase().trim()] ?? null;
 }
 
-// ─── Supabase admin client (bypasses RLS) ─────────────────────────────────────
 function getAdminClient() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -87,7 +87,6 @@ function getAdminClient() {
   );
 }
 
-// ─── All known matches (group + knockout) ─────────────────────────────────────
 const ALL_MATCHES = [...MATCHES, ...(KNOCKOUT_MATCHES ?? [])];
 
 // ─── Route handler ────────────────────────────────────────────────────────────
@@ -97,24 +96,27 @@ export async function GET() {
     return NextResponse.json({ error: 'FOOTBALL_DATA_KEY not set' }, { status: 500 });
   }
 
-  // Fetch all FINISHED WC matches from football-data.org v4
-  let apiMatches: Array<{
+  type ApiMatch = {
+    utcDate?: string;
+    status?: string;
     homeTeam?: { name?: string; tla?: string };
     awayTeam?: { name?: string; tla?: string };
     score?: { fullTime?: { home?: number | null; away?: number | null } };
-    status?: string;
-  }> = [];
+  };
+
+  let apiMatches: ApiMatch[] = [];
 
   try {
+    // Fetch ALL WC matches (scheduled + live + finished)
     const res = await fetch(
-      'https://api.football-data.org/v4/competitions/WC/matches?status=FINISHED',
+      'https://api.football-data.org/v4/competitions/WC/matches',
       { headers: { 'X-Auth-Token': fdKey }, cache: 'no-store' },
     );
 
     if (!res.ok) {
       return NextResponse.json(
-        { error: `football-data.org returned ${res.status}`, synced: 0 },
-        { status: 200 }, // return 200 so cron doesn't alarm
+        { error: `football-data.org ${res.status}`, scheduled: 0, results: 0 },
+        { status: 200 }, // 200 so Vercel cron doesn't alarm
       );
     }
 
@@ -122,53 +124,64 @@ export async function GET() {
     apiMatches = data.matches ?? [];
   } catch (err) {
     return NextResponse.json(
-      { error: String(err), synced: 0 },
+      { error: String(err), scheduled: 0, results: 0 },
       { status: 200 },
     );
   }
 
   const supabase = getAdminClient();
-  let synced = 0;
+  let scheduledUpdated = 0;
+  let resultsUpdated = 0;
   const skipped: string[] = [];
 
   for (const m of apiMatches) {
-    // Resolve team codes (try TLA first, then full name)
-    const homeCode =
-      toCode(m.homeTeam?.tla ?? '') ?? toCode(m.homeTeam?.name ?? '');
-    const awayCode =
-      toCode(m.awayTeam?.tla ?? '') ?? toCode(m.awayTeam?.name ?? '');
+    const homeCode = toCode(m.homeTeam?.tla ?? '') ?? toCode(m.homeTeam?.name ?? '');
+    const awayCode = toCode(m.awayTeam?.tla ?? '') ?? toCode(m.awayTeam?.name ?? '');
 
     if (!homeCode || !awayCode) {
-      skipped.push(`${m.homeTeam?.name ?? '?'} vs ${m.awayTeam?.name ?? '?'} (unknown code)`);
+      if (m.homeTeam?.name) {
+        skipped.push(`${m.homeTeam.name} vs ${m.awayTeam?.name ?? '?'}`);
+      }
       continue;
     }
 
-    // Find the match in our local list by team codes (order-agnostic)
     const local = ALL_MATCHES.find(
       x =>
         (x.home.code === homeCode && x.away.code === awayCode) ||
         (x.home.code === awayCode  && x.away.code === homeCode),
     );
-    if (!local) continue; // Not a WC 2026 match we track
+    if (!local) continue;
 
-    const flipped    = local.home.code === awayCode;
-    const homeScore  = m.score?.fullTime?.home ?? null;
-    const awayScore  = m.score?.fullTime?.away ?? null;
-    if (homeScore === null || awayScore === null) continue; // No full-time yet
+    const flipped = local.home.code === awayCode;
+
+    // Always update the official UTC kickoff time
+    const patch: Record<string, unknown> = {};
+    if (m.utcDate) patch.match_date = m.utcDate; // ISO 8601 e.g. "2026-06-11T17:00:00Z"
+
+    // Update full-time result only when match is officially FINISHED
+    if (m.status === 'FINISHED') {
+      const h = m.score?.fullTime?.home ?? null;
+      const a = m.score?.fullTime?.away ?? null;
+      if (h !== null && a !== null) {
+        patch.result_home = flipped ? a : h;
+        patch.result_away = flipped ? h : a;
+        resultsUpdated++;
+      }
+    }
+
+    if (Object.keys(patch).length === 0) continue;
 
     const { error } = await supabase
       .from('matches')
-      .update({
-        result_home: flipped ? awayScore : homeScore,
-        result_away: flipped ? homeScore : awayScore,
-      })
+      .update(patch)
       .eq('id', local.id);
 
-    if (!error) synced++;
+    if (!error && m.utcDate) scheduledUpdated++;
   }
 
   return NextResponse.json({
-    synced,
+    scheduledUpdated,
+    resultsUpdated,
     total: apiMatches.length,
     ...(skipped.length > 0 ? { skipped } : {}),
   });
