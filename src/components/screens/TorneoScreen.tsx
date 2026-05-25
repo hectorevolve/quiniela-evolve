@@ -1199,6 +1199,22 @@ function TabBonus({ fireToast, champSelected, setChampSelected, subSelected, set
   );
 }
 
+// ──────── Group metadata ────────
+interface GroupInfo { label: string; icon: string; description: string }
+const GROUP_INFO: Record<string, GroupInfo> = {
+  'Evolve':          { label: 'Grupo Evolve',          icon: '⚡', description: 'Quiniela oficial del programa Grupo Evolve para el Torneo 2026' },
+  'BEPENSA Spirits': { label: 'BEPENSA Spirits',       icon: '🥃', description: 'Quiniela del equipo BEPENSA Spirits para el Mundial 2026' },
+  'ADM':             { label: 'Grupo ADM',             icon: '🌾', description: 'Quiniela interna ADM — ¿quién se lleva el trofeo?' },
+  'Disney':          { label: 'Disney',                icon: '🏰', description: 'Quiniela Disney para el Mundial 2026 — que gane la magia' },
+  'Ruz':             { label: 'Grupo Ruz',             icon: '🦁', description: 'Quiniela del equipo Ruz para el Torneo 2026' },
+  'Zuru':            { label: 'Zuru',                  icon: '🎯', description: 'Quiniela Zuru — predicciones al máximo nivel' },
+  'AGEMEX':          { label: 'AGEMEX',                icon: '🤝', description: 'Quiniela oficial AGEMEX para el Mundial 2026' },
+  'Delongi':         { label: 'De\'Longhi',            icon: '☕', description: 'Quiniela De\'Longhi — el mejor café, las mejores predicciones' },
+};
+function getGroupInfo(group: string): GroupInfo {
+  return GROUP_INFO[group] ?? { label: group || 'Mi Grupo', icon: '⚽', description: `Quiniela del grupo ${group || 'Evolve'} para el Torneo 2026` };
+}
+
 // ──────── Tab: Detalles ────────
 function TabDetalles({ goto, openSub, userGroup, rankings }: { goto: (s: string) => void; openSub: (name: SubScreenName) => void; userGroup: string; rankings: RankingEntry[] }) {
 
@@ -1207,6 +1223,9 @@ function TabDetalles({ goto, openSub, userGroup, rankings }: { goto: (s: string)
     { icon: '🥈', label: '2do Lugar', sub: 'Segundo lugar',    val: '$10,000 MXN' },
     { icon: '🥉', label: '3er Lugar', sub: 'Tercer lugar',     val: '$5,000 MXN'  },
   ];
+
+  const grp = getGroupInfo(userGroup);
+  const memberCount = rankings.filter(p => p.group_name === userGroup).length;
 
   return (
     <div style={{ padding: '14px 14px 80px', display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -1217,18 +1236,21 @@ function TabDetalles({ goto, openSub, userGroup, rankings }: { goto: (s: string)
           background: T.bgInkRaised, border: `2px solid ${T.lime}`,
           margin: '0 auto 12px',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: 38,
         }}>
-          <EvolveMark size={44} color={T.lime}/>
+          {grp.icon === '⚡' && userGroup === 'Evolve'
+            ? <EvolveMark size={44} color={T.lime}/>
+            : <span>{grp.icon}</span>}
         </div>
-        <div style={{ fontSize: 18, fontWeight: 700, color: '#fff', marginBottom: 8 }}>Grupo Evolve</div>
-        <Pill color={`${T.lime}25`} textColor={T.lime}>Miembros: {rankings.filter(p => p.group_name === userGroup).length}</Pill>
+        <div style={{ fontSize: 18, fontWeight: 700, color: '#fff', marginBottom: 8 }}>{grp.label}</div>
+        <Pill color={`${T.lime}25`} textColor={T.lime}>Miembros: {memberCount}</Pill>
       </div>
 
       {/* Description */}
       <Card accent={T.lime}>
         <div style={{ paddingLeft: 10 }}>
           <div className="font-display" style={{ fontSize: 14, fontWeight: 700, color: T.ink, marginBottom: 6 }}>Descripción del grupo</div>
-          <div style={{ fontSize: 13, color: T.slate, lineHeight: 1.6 }}>Quiniela oficial del programa Grupo Evolve para el Torneo 2026</div>
+          <div style={{ fontSize: 13, color: T.slate, lineHeight: 1.6 }}>{grp.description}</div>
         </div>
       </Card>
 
