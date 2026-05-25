@@ -13,6 +13,13 @@ interface Props {
   blocked?: boolean;
 }
 
+// Days until WC 2026 kick-off (June 11 2026 00:00 local time)
+const WC_START = new Date('2026-06-11T00:00:00');
+function daysUntilWC(): number {
+  const diff = WC_START.getTime() - Date.now();
+  return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+}
+
 export function LoginScreen({ onLogin, blocked = false }: Props) {
   const [showPass, setShowPass] = useState(false);
   const [email, setEmail] = useState('');
@@ -119,7 +126,7 @@ export function LoginScreen({ onLogin, blocked = false }: Props) {
         </div>
         <div style={{ position: 'relative', zIndex: 2, animation: 'evo-fade-in 500ms ease 400ms both' }}>
           <Pill color="rgba(26,175,255,0.15)" textColor={T.blue} style={{ border: `1px solid rgba(26,175,255,0.3)` }}>
-            Torneo 2026 · 39 días
+            {daysUntilWC() > 0 ? `Torneo 2026 · ${daysUntilWC()} días` : 'Torneo 2026 · ¡Ya comenzó!'}
           </Pill>
         </div>
       </div>
