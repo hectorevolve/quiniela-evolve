@@ -1200,19 +1200,39 @@ function TabBonus({ fireToast, champSelected, setChampSelected, subSelected, set
 }
 
 // ──────── Group metadata ────────
-interface GroupInfo { label: string; icon: string; description: string }
+interface GroupInfo { label: string; description: string }
 const GROUP_INFO: Record<string, GroupInfo> = {
-  'Evolve':          { label: 'Grupo Evolve',          icon: '⚡', description: 'Quiniela oficial del programa Grupo Evolve para el Torneo 2026' },
-  'BEPENSA Spirits': { label: 'BEPENSA Spirits',       icon: '🥃', description: 'Quiniela del equipo BEPENSA Spirits para el Mundial 2026' },
-  'ADM':             { label: 'Grupo ADM',             icon: '🌾', description: 'Quiniela interna ADM — ¿quién se lleva el trofeo?' },
-  'Disney':          { label: 'Disney',                icon: '🏰', description: 'Quiniela Disney para el Mundial 2026 — que gane la magia' },
-  'Ruz':             { label: 'Grupo Ruz',             icon: '🦁', description: 'Quiniela del equipo Ruz para el Torneo 2026' },
-  'Zuru':            { label: 'Zuru',                  icon: '🎯', description: 'Quiniela Zuru — predicciones al máximo nivel' },
-  'AGEMEX':          { label: 'AGEMEX',                icon: '🤝', description: 'Quiniela oficial AGEMEX para el Mundial 2026' },
-  'Delongi':         { label: 'De\'Longhi',            icon: '☕', description: 'Quiniela De\'Longhi — el mejor café, las mejores predicciones' },
+  'Evolve':          { label: 'Grupo Evolve',    description: 'Quiniela oficial del programa Grupo Evolve para el Torneo 2026' },
+  'BEPENSA Spirits': { label: 'BEPENSA Spirits', description: 'Quiniela del equipo BEPENSA Spirits para el Mundial 2026' },
+  'ADM':             { label: 'Grupo ADM',       description: 'Quiniela interna ADM — ¿quién se lleva el trofeo?' },
+  'Disney':          { label: 'Disney',          description: 'Quiniela Disney para el Mundial 2026 — que gane la magia' },
+  'Ruz':             { label: 'Grupo Ruz',       description: 'Quiniela del equipo Ruz para el Torneo 2026' },
+  'Zuru':            { label: 'Zuru',            description: 'Quiniela Zuru — predicciones al máximo nivel' },
+  'AGEMEX':          { label: 'AGEMEX',          description: 'Quiniela oficial AGEMEX para el Mundial 2026' },
+  'Delongi':         { label: "De'Longhi",       description: "Quiniela De'Longhi — el mejor café, las mejores predicciones" },
 };
 function getGroupInfo(group: string): GroupInfo {
-  return GROUP_INFO[group] ?? { label: group || 'Mi Grupo', icon: '⚽', description: `Quiniela del grupo ${group || 'Evolve'} para el Torneo 2026` };
+  return GROUP_INFO[group] ?? { label: group || 'Mi Grupo', description: `Quiniela del grupo ${group || 'Evolve'} para el Torneo 2026` };
+}
+
+function GroupAvatar({ group, size = 80 }: { group: string; size?: number }) {
+  const [failed, setFailed] = useState(false);
+  const col = GROUP_COLORS[group] ?? '#A3E635';
+  const logo = GROUP_LOGOS[group];
+  if (group === 'Evolve') return (
+    <div style={{ width: size, height: size, borderRadius: '50%', background: T.bgInkRaised, border: `2px solid ${col}`, margin: '0 auto 12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <EvolveMark size={size * 0.55} color={col}/>
+    </div>
+  );
+  if (logo && !failed) return (
+    <div style={{ width: size, height: size, borderRadius: '50%', background: '#fff', border: `2px solid ${col}44`, margin: '0 auto 12px', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+      <img src={logo} alt={group} onError={() => setFailed(true)} style={{ width: '80%', height: '80%', objectFit: 'contain' }}/>
+    </div>
+  );
+  const initials = group.trim().split(/\s+/).map((w: string) => w[0]).join('').slice(0, 2).toUpperCase();
+  return (
+    <div style={{ width: size, height: size, borderRadius: '50%', background: col, margin: '0 auto 12px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: size * 0.3, fontWeight: 800, color: '#fff' }}>{initials}</div>
+  );
 }
 
 // ──────── Tab: Detalles ────────
@@ -1231,17 +1251,7 @@ function TabDetalles({ goto, openSub, userGroup, rankings }: { goto: (s: string)
     <div style={{ padding: '14px 14px 80px', display: 'flex', flexDirection: 'column', gap: 12 }}>
       {/* Group hero */}
       <div style={{ borderRadius: 18, padding: '24px 20px', background: T.bgInk, border: `1px solid ${T.borderInk}`, textAlign: 'center' }}>
-        <div style={{
-          width: 80, height: 80, borderRadius: '50%',
-          background: T.bgInkRaised, border: `2px solid ${T.lime}`,
-          margin: '0 auto 12px',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 38,
-        }}>
-          {grp.icon === '⚡' && userGroup === 'Evolve'
-            ? <EvolveMark size={44} color={T.lime}/>
-            : <span>{grp.icon}</span>}
-        </div>
+        <GroupAvatar group={userGroup} size={80}/>
         <div style={{ fontSize: 18, fontWeight: 700, color: '#fff', marginBottom: 8 }}>{grp.label}</div>
         <Pill color={`${T.lime}25`} textColor={T.lime}>Miembros: {memberCount}</Pill>
       </div>

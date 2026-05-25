@@ -18,12 +18,12 @@ interface Props {
 }
 
 const BADGES = [
-  { icon: '🔥', label: 'Racha 3',          unlocked: true,  desc: 'Acertaste 3 partidos seguidos.' },
-  { icon: '🎯', label: 'Profeta Inaugural', unlocked: true,  desc: 'Acertaste el primer partido del torneo.' },
+  { icon: '🔥', label: 'Racha 3',          unlocked: false, req: 'Acierta 3 partidos seguidos.' },
+  { icon: '🎯', label: 'Profeta Inaugural', unlocked: false, req: 'Acierta el primer partido del torneo.' },
   { icon: '🥇', label: 'Top Mayorista',     unlocked: false, req: 'Llega al #1 en tu mayorista.' },
-  { icon: '💯', label: 'Exacto ×5',         unlocked: false, req: 'Acerta 5 marcadores exactos.' },
-  { icon: '🚀', label: 'Racha 5',           unlocked: false, req: 'Acerta 5 partidos seguidos.' },
-  { icon: '🏆', label: 'Profeta Final',     unlocked: false, req: 'Acerta el resultado de la final.' },
+  { icon: '💯', label: 'Exacto ×5',         unlocked: false, req: 'Acierta 5 marcadores exactos.' },
+  { icon: '🚀', label: 'Racha 5',           unlocked: false, req: 'Acierta 5 partidos seguidos.' },
+  { icon: '🏆', label: 'Profeta Final',     unlocked: false, req: 'Acierta el resultado de la final.' },
 ];
 
 export function PerfilScreen({ goto, tweaks, fireToast, currentUser, onLogout }: Props) {
@@ -42,9 +42,9 @@ export function PerfilScreen({ goto, tweaks, fireToast, currentUser, onLogout }:
   }, []);
 
   const months = [
-    { label: 'May', pct: 100, color: T.emerald },
-    { label: 'Jun', pct: 75,  color: T.amber },
-    { label: 'Jul', pct: 0,   color: T.muted },
+    { label: 'May', pct: 0, color: T.muted },
+    { label: 'Jun', pct: 0, color: T.muted },
+    { label: 'Jul', pct: 0, color: T.muted },
   ];
 
   const powers = [
@@ -143,10 +143,6 @@ export function PerfilScreen({ goto, tweaks, fireToast, currentUser, onLogout }:
                 <div style={{ fontSize: 12, fontWeight: 700, color: m.color }}>{m.pct}%</div>
               </div>
             ))}
-          </div>
-          <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
-            <div style={{ width: 8, height: 8, borderRadius: '50%', background: T.emerald }}/>
-            <span style={{ fontSize: 12, color: T.emerald, fontWeight: 600 }}>Mayo 2026 cumplido ✓</span>
           </div>
         </Card>
 
@@ -256,7 +252,7 @@ export function PerfilScreen({ goto, tweaks, fireToast, currentUser, onLogout }:
             <div style={{ fontSize: 52, marginBottom: 12 }}>{badgeModal.icon}</div>
             <div className="font-display" style={{ fontSize: 20, fontWeight: 700, color: T.ink, marginBottom: 8 }}>{badgeModal.label}</div>
             <div style={{ fontSize: 13.5, color: T.slate, lineHeight: 1.6 }}>
-              {badgeModal.unlocked ? badgeModal.desc : `Aún no desbloqueado: ${badgeModal.req}`}
+              {`Aún no desbloqueado: ${badgeModal.req}`}
             </div>
             {badgeModal.unlocked && <Pill color={T.limeSoft} textColor={T.limeDeep} style={{ marginTop: 14 }}>¡Desbloqueado!</Pill>}
             <button onClick={() => setBadgeModal(null)} style={{
