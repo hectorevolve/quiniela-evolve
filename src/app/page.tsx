@@ -137,21 +137,28 @@ export default function Home() {
   };
 
   return (
+    // Outer shell: full viewport, dark bg on desktop so the app column stands out
     <div style={{
       width: '100%', height: '100dvh',
-      background: '#fff', overflow: 'hidden', position: 'relative',
+      background: '#111', display: 'flex', justifyContent: 'center', alignItems: 'stretch',
       fontFamily: 'var(--font-inter), system-ui, sans-serif',
     }}>
+      {/* App column: mobile-width, white, full height */}
       <div style={{
-        width: '100%', height: '100%',
-        overflowY: 'auto', overflowX: 'hidden',
-        opacity: transitioning ? 0 : 1, transition: 'opacity 200ms ease',
+        width: '100%', maxWidth: 430, height: '100dvh',
+        background: '#fff', overflow: 'hidden', position: 'relative', flexShrink: 0,
       }}>
-        {renderScreen()}
+        <div style={{
+          width: '100%', height: '100%',
+          overflowY: 'auto', overflowX: 'hidden',
+          opacity: transitioning ? 0 : 1, transition: 'opacity 200ms ease',
+        }}>
+          {renderScreen()}
+        </div>
+        {toast && <Toast key={toast.id} message={toast.message} color={toast.color} textColor={toast.textColor} visible/>}
+        <Preloader visible={loading}/>
+        {transitioning && !loading && <MiniLoader/>}
       </div>
-      {toast && <Toast key={toast.id} message={toast.message} color={toast.color} textColor={toast.textColor} visible/>}
-      <Preloader visible={loading}/>
-      {transitioning && !loading && <MiniLoader/>}
 
       {DEV_TWEAKS && (
         <div style={{ position: 'fixed', bottom: 16, right: 16, zIndex: 9999 }}>
