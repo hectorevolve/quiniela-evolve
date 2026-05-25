@@ -7,7 +7,7 @@ import { Avatar } from '@/components/ui';
 import { supabase } from '@/lib/supabase';
 import { getRankings, type RankingEntry, getMatchResults, saveMatchResult } from '@/lib/db';
 
-type View = 'dashboard' | 'usuarios' | 'rankings' | 'predicciones' | 'partidos' | 'grupos';
+type View = 'dashboard' | 'usuarios' | 'rankings' | 'predicciones' | 'partidos' | 'grupos' | 'grupo-detalle';
 type AdminUser = { name: string; pts: number; group: string; city: string; pos: number; country: string };
 type AdminMatch = typeof MATCHES[number];
 
@@ -926,6 +926,165 @@ function ViewPartidos() {
   );
 }
 
+// ─── Grupo Detalle ────────────────────────────────────────────────────────────
+interface GroupPrizes { prize_1st: string; prize_2nd: string; prize_3rd: string }
+
+function ViewGrupoDetalle({ group, liveUsers, onBack, onUserUpdated, onUserRemoved }: {
+  group: string;
+  liveUsers: LiveUser[];
+  onBack: () => void;
+  onUserUpdated: (u: LiveUser) => void;
+  onUserRemoved: (id: string) => void;
+}) {
+  const col = GROUP_COLORS[group] ?? c.blue;
+  const members = liveUsers.filter(u => u.group_name === group && u.role !== 'admin');
+
+  // Prizes
+  const defaultPrizes: GroupPrizes = { prize_1st: '', prize_2nd: '', prize_3rd: '' };
+  const [prizes, setPrizes] = useState<GroupPrizes>(defaultPrizes);
+  const [prizesLoading, setPrizesLoading] = useState(true);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+
+  useEffect(() => {
+    setPrizesLoading(true);
+    (async () => {
+      const { data } = await supabase.from('group_settings').select('prize_1st,prize_2nd,prize_3rd').eq('group_name', group).single();
+      if (data) setPrizes({ prize_1st: data.prize_1st, prize_2nd: data.prize_2nd, prize_3rd: data.prize_3rd });
+      setPrizesLoading(false);
+    })();
+  }, [group]);
+
+  const savePrizes = async () => {
+    setSaveStatus('saving');
+    const { error } = await supabase.from('group_settings')
+      .upsert({ group_name: group, ...prizes, updated_at: new Date().toISOString() }, { onConflict: 'group_name' });
+    setSaveStatus(error ? 'error' : 'saved');
+    setTimeout(() => setSaveStatus('idle'), 2500);
+  };
+
+  // Member actions
+  const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [removingId, setRemovingId] = useState<string | null>(null);
+
+  const togglePremium = async (u: LiveUser) => {
+    setTogglingId(u.id);
+    await supabase.from('profiles').update({ premium: !u.premium }).eq('id', u.id);
+    onUserUpdated({ ...u, premium: !u.premium });
+    setTogglingId(null);
+  };
+
+  const removeFromGroup = async (u: LiveUser) => {
+    if (!confirm(`¿Quitar a ${u.name} del grupo ${group}?`)) return;
+    setRemovingId(u.id);
+    await supabase.from('profiles').update({ group_name: null }).eq('id', u.id);
+    onUserRemoved(u.id);
+    setRemovingId(null);
+  };
+
+  const prizeFields: { key: keyof GroupPrizes; icon: string; label: string }[] = [
+    { key: 'prize_1st', icon: '🥇', label: '1er Lugar' },
+    { key: 'prize_2nd', icon: '🥈', label: '2do Lugar' },
+    { key: 'prize_3rd', icon: '🥉', label: '3er Lugar' },
+  ];
+
+  return (
+    <div>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 28 }}>
+        <button onClick={onBack} style={{ padding: '7px 14px', borderRadius: 8, border: `1px solid ${c.border}`, background: c.card, color: c.muted, fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>← Grupos</button>
+        <GroupIcon group={group} size={42}/>
+        <div>
+          <div style={{ fontSize: 20, fontWeight: 800, color: c.text }}>{group}</div>
+          <div style={{ fontSize: 12, color: c.muted }}>{members.length} miembro{members.length !== 1 ? 's' : ''}</div>
+        </div>
+        <div style={{ marginLeft: 'auto', padding: '4px 14px', borderRadius: 20, background: `${col}22`, border: `1px solid ${col}44`, fontSize: 11, fontWeight: 700, color: col }}>Grupo activo</div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)', gap: 24, alignItems: 'start' }}>
+
+        {/* ── Premios del grupo ── */}
+        <div>
+          <SectionHeader title="Premios del grupo" sub="Qué gana cada lugar dentro de este grupo"/>
+          <div style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 14, padding: '20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {prizesLoading ? (
+              <div style={{ textAlign: 'center', padding: '20px', color: c.muted, fontSize: 13 }}>Cargando…</div>
+            ) : (
+              <>
+                {prizeFields.map(({ key, icon, label }) => (
+                  <div key={key}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 600, color: c.muted, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.8 }}>
+                      <span style={{ fontSize: 16 }}>{icon}</span>{label}
+                    </label>
+                    <input
+                      value={prizes[key]}
+                      onChange={e => setPrizes(p => ({ ...p, [key]: e.target.value }))}
+                      placeholder={`Ej. $15,000 MXN`}
+                      style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.06)', color: c.text, fontSize: 13, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }}
+                    />
+                  </div>
+                ))}
+                <button onClick={savePrizes} disabled={saveStatus === 'saving'} style={{
+                  width: '100%', padding: '11px', borderRadius: 10, border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 13,
+                  background: saveStatus === 'saved' ? `${c.lime}33` : saveStatus === 'error' ? `${c.rose}33` : `${col}33`,
+                  color: saveStatus === 'saved' ? c.lime : saveStatus === 'error' ? c.rose : col,
+                  transition: 'all 200ms',
+                }}>
+                  {saveStatus === 'saving' ? 'Guardando…' : saveStatus === 'saved' ? '✓ Guardado' : saveStatus === 'error' ? '✗ Error al guardar' : 'Guardar premios'}
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* ── Miembros ── */}
+        <div>
+          <SectionHeader title="Miembros" sub={`${members.length} participantes en este grupo`}/>
+          {members.length === 0 ? (
+            <div style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 14, padding: '32px 20px', textAlign: 'center', color: c.muted, fontSize: 13 }}>
+              No hay usuarios en este grupo aún.<br/>
+              <span style={{ fontSize: 11, opacity: 0.7 }}>Asigna usuarios desde la sección Usuarios.</span>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {members.map(u => (
+                <div key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', background: c.card, border: `1px solid ${c.border}`, borderRadius: 12 }}>
+                  <Avatar initials={u.name.slice(0, 2).toUpperCase()} size={36}/>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: c.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{u.name}</div>
+                    <div style={{ fontSize: 11, color: c.muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{u.email}</div>
+                  </div>
+                  {/* Premium toggle */}
+                  <button
+                    onClick={() => togglePremium(u)}
+                    disabled={togglingId === u.id}
+                    title={u.premium ? 'Quitar Premium' : 'Dar Premium'}
+                    style={{
+                      padding: '4px 10px', borderRadius: 20, border: 'none', cursor: 'pointer', fontSize: 10, fontWeight: 700,
+                      background: u.premium ? `${c.lime}33` : 'rgba(255,255,255,0.08)',
+                      color: u.premium ? c.lime : c.dim,
+                      transition: 'all 150ms', flexShrink: 0,
+                    }}>
+                    {togglingId === u.id ? '…' : u.premium ? '⭐ Premium' : 'Free'}
+                  </button>
+                  {/* Remove from group */}
+                  <button
+                    onClick={() => removeFromGroup(u)}
+                    disabled={removingId === u.id}
+                    title="Quitar del grupo"
+                    style={{ padding: '6px 8px', borderRadius: 8, border: `1px solid ${c.border}`, background: 'transparent', color: c.dim, cursor: 'pointer', fontSize: 13, lineHeight: 1, flexShrink: 0 }}>
+                    {removingId === u.id ? '…' : '✕'}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+      </div>
+    </div>
+  );
+}
+
 // ─── Grupos ───────────────────────────────────────────────────────────────────
 function ViewGrupos({ liveUsers, onSelectGroup }: { liveUsers: LiveUser[]; onSelectGroup: (g: string) => void }) {
   const isMobile = useIsMobile();
@@ -1111,6 +1270,7 @@ export default function AdminPage() {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [groupFilter, setGroupFilter] = useState('Todos');
   const [liveUsers, setLiveUsers] = useState<LiveUser[]>([]);
+  const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
   const [authState, setAuthState] = useState<'checking' | 'allowed' | 'denied'>('checking');
 
   // ── Auth guard: only admin users can access this page ──
@@ -1166,7 +1326,7 @@ export default function AdminPage() {
 
   const navigate = (v: View) => { setView(v); setMenuOpen(false); };
 
-  const goToGroup = (g: string) => { setGroupFilter(g); navigate('usuarios'); };
+  const goToGroup = (g: string) => { setSelectedGroup(g); navigate('grupo-detalle'); };
 
   return (
     <div style={{
@@ -1243,6 +1403,15 @@ export default function AdminPage() {
         {view === 'predicciones' && <ViewPredicciones users={users}/>}
         {view === 'partidos'     && <ViewPartidos/>}
         {view === 'grupos'       && <ViewGrupos liveUsers={liveUsers} onSelectGroup={goToGroup}/>}
+        {view === 'grupo-detalle' && selectedGroup && (
+          <ViewGrupoDetalle
+            group={selectedGroup}
+            liveUsers={liveUsers}
+            onBack={() => navigate('grupos')}
+            onUserUpdated={updated => setLiveUsers(prev => prev.map(u => u.id === updated.id ? updated : u))}
+            onUserRemoved={id => setLiveUsers(prev => prev.filter(u => u.id !== id))}
+          />
+        )}
       </div>
     </div>
   );
