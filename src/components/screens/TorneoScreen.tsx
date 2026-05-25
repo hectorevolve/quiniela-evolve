@@ -1152,8 +1152,8 @@ function TabBonus({ fireToast, champSelected, setChampSelected, subSelected, set
   return (
     <div style={{ padding: '14px 14px 80px', display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div style={{ textAlign: 'center', marginBottom: 4 }}>
-        <div className="font-display" style={{ fontSize: 22, fontWeight: 700, color: T.ink, marginBottom: 4 }}>¡Hasta 26 puntos extra!</div>
-        <div style={{ fontSize: 13, color: T.slate, lineHeight: 1.5 }}>Predice estos 4 bonus antes de que empiece el torneo.</div>
+        <div className="font-display" style={{ fontSize: 22, fontWeight: 700, color: T.ink, marginBottom: 4 }}>🏆 ¡Gana premios extra!</div>
+        <div style={{ fontSize: 13, color: T.slate, lineHeight: 1.5 }}>Haz tus predicciones especiales y escala en el ranking.</div>
       </div>
 
       {cards.map((card) => (
