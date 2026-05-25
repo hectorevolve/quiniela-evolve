@@ -936,8 +936,18 @@ function ViewGrupoDetalle({ group, liveUsers, onBack, onUserUpdated, onUserRemov
   onUserUpdated: (u: LiveUser) => void;
   onUserRemoved: (id: string) => void;
 }) {
-  const col = GROUP_COLORS[group] ?? c.blue;
-  const members = liveUsers.filter(u => u.group_name === group && u.role !== 'admin');
+  const isNacional  = group === '__nacional__';
+  const isSinGrupo  = group === '__sin_grupo__';
+  const isSpecial   = isNacional || isSinGrupo;
+  const displayName = isNacional ? 'Nacional' : isSinGrupo ? 'Sin grupo' : group;
+  const col = isNacional ? c.blue : isSinGrupo ? c.dim : (GROUP_COLORS[group] ?? c.blue);
+
+  const nonAdmins = liveUsers.filter(u => u.role !== 'admin');
+  const members = isNacional
+    ? nonAdmins
+    : isSinGrupo
+      ? nonAdmins.filter(u => !u.group_name)
+      : nonAdmins.filter(u => u.group_name === group);
 
   // Prizes
   const defaultPrizes: GroupPrizes = { prize_1st: '', prize_2nd: '', prize_3rd: '' };
@@ -946,13 +956,14 @@ function ViewGrupoDetalle({ group, liveUsers, onBack, onUserUpdated, onUserRemov
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
   useEffect(() => {
+    if (isSpecial) { setPrizesLoading(false); return; }
     setPrizesLoading(true);
     (async () => {
       const { data } = await supabase.from('group_settings').select('prize_1st,prize_2nd,prize_3rd').eq('group_name', group).single();
       if (data) setPrizes({ prize_1st: data.prize_1st, prize_2nd: data.prize_2nd, prize_3rd: data.prize_3rd });
       setPrizesLoading(false);
     })();
-  }, [group]);
+  }, [group]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const savePrizes = async () => {
     setSaveStatus('saving');
@@ -992,18 +1003,24 @@ function ViewGrupoDetalle({ group, liveUsers, onBack, onUserUpdated, onUserRemov
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 28 }}>
         <button onClick={onBack} style={{ padding: '7px 14px', borderRadius: 8, border: `1px solid ${c.border}`, background: c.card, color: c.muted, fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>← Grupos</button>
-        <GroupIcon group={group} size={42}/>
+        {isNacional
+          ? <div style={{ width: 42, height: 42, borderRadius: '50%', background: `${c.blue}22`, border: `2px solid ${c.blue}55`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, flexShrink: 0 }}>🌎</div>
+          : isSinGrupo
+            ? <div style={{ width: 42, height: 42, borderRadius: '50%', background: 'rgba(255,255,255,0.06)', border: `2px solid rgba(255,255,255,0.12)`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, flexShrink: 0 }}>❓</div>
+            : <GroupIcon group={group} size={42}/>}
         <div>
-          <div style={{ fontSize: 20, fontWeight: 800, color: c.text }}>{group}</div>
+          <div style={{ fontSize: 20, fontWeight: 800, color: c.text }}>{displayName}</div>
           <div style={{ fontSize: 12, color: c.muted }}>{members.length} miembro{members.length !== 1 ? 's' : ''}</div>
         </div>
-        <div style={{ marginLeft: 'auto', padding: '4px 14px', borderRadius: 20, background: `${col}22`, border: `1px solid ${col}44`, fontSize: 11, fontWeight: 700, color: col }}>Grupo activo</div>
+        <div style={{ marginLeft: 'auto', padding: '4px 14px', borderRadius: 20, background: `${col}22`, border: `1px solid ${col}44`, fontSize: 11, fontWeight: 700, color: col }}>
+          {isNacional ? 'Todos los usuarios' : isSinGrupo ? 'Sin asignar' : 'Grupo activo'}
+        </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)', gap: 24, alignItems: 'start' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isSpecial ? '1fr' : 'minmax(0,1fr) minmax(0,1fr)', gap: 24, alignItems: 'start' }}>
 
-        {/* ── Premios del grupo ── */}
-        <div>
+        {/* ── Premios del grupo (solo grupos reales) ── */}
+        {!isSpecial && <div>
           <SectionHeader title="Premios del grupo" sub="Qué gana cada lugar dentro de este grupo"/>
           <div style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 14, padding: '20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
             {prizesLoading ? (
@@ -1034,14 +1051,17 @@ function ViewGrupoDetalle({ group, liveUsers, onBack, onUserUpdated, onUserRemov
               </>
             )}
           </div>
-        </div>
+        </div>}
 
         {/* ── Miembros ── */}
         <div>
-          <SectionHeader title="Miembros" sub={`${members.length} participantes en este grupo`}/>
+          <SectionHeader
+            title={isNacional ? 'Todos los usuarios' : isSinGrupo ? 'Sin grupo asignado' : 'Miembros'}
+            sub={`${members.length} usuario${members.length !== 1 ? 's' : ''}`}
+          />
           {members.length === 0 ? (
             <div style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 14, padding: '32px 20px', textAlign: 'center', color: c.muted, fontSize: 13 }}>
-              No hay usuarios en este grupo aún.<br/>
+              {isSinGrupo ? 'Todos los usuarios tienen grupo asignado.' : 'No hay usuarios en este grupo aún.'}<br/>
               <span style={{ fontSize: 11, opacity: 0.7 }}>Asigna usuarios desde la sección Usuarios.</span>
             </div>
           ) : (
@@ -1051,7 +1071,10 @@ function ViewGrupoDetalle({ group, liveUsers, onBack, onUserUpdated, onUserRemov
                   <Avatar initials={u.name.slice(0, 2).toUpperCase()} size={36}/>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 13, fontWeight: 700, color: c.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{u.name}</div>
-                    <div style={{ fontSize: 11, color: c.muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{u.email}</div>
+                    <div style={{ fontSize: 11, color: c.muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {isNacional && u.group_name ? <span style={{ color: GROUP_COLORS[u.group_name] ?? c.blue, fontWeight: 600 }}>{u.group_name} · </span> : null}
+                      {u.email}
+                    </div>
                   </div>
                   {/* Premium toggle */}
                   <button
@@ -1066,14 +1089,16 @@ function ViewGrupoDetalle({ group, liveUsers, onBack, onUserUpdated, onUserRemov
                     }}>
                     {togglingId === u.id ? '…' : u.premium ? '⭐ Premium' : 'Free'}
                   </button>
-                  {/* Remove from group */}
-                  <button
-                    onClick={() => removeFromGroup(u)}
-                    disabled={removingId === u.id}
-                    title="Quitar del grupo"
-                    style={{ padding: '6px 8px', borderRadius: 8, border: `1px solid ${c.border}`, background: 'transparent', color: c.dim, cursor: 'pointer', fontSize: 13, lineHeight: 1, flexShrink: 0 }}>
-                    {removingId === u.id ? '…' : '✕'}
-                  </button>
+                  {/* Remove from group (only for real groups) */}
+                  {!isSpecial && (
+                    <button
+                      onClick={() => removeFromGroup(u)}
+                      disabled={removingId === u.id}
+                      title="Quitar del grupo"
+                      style={{ padding: '6px 8px', borderRadius: 8, border: `1px solid ${c.border}`, background: 'transparent', color: c.dim, cursor: 'pointer', fontSize: 13, lineHeight: 1, flexShrink: 0 }}>
+                      {removingId === u.id ? '…' : '✕'}
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
@@ -1086,36 +1111,73 @@ function ViewGrupoDetalle({ group, liveUsers, onBack, onUserUpdated, onUserRemov
 }
 
 // ─── Grupos ───────────────────────────────────────────────────────────────────
+function GroupCard({ label, col, icon, memberCount, totalUsers, onClick }: {
+  label: string; col: string; icon: React.ReactNode;
+  memberCount: number; totalUsers: number; onClick: () => void;
+}) {
+  return (
+    <button onClick={onClick} style={{ background: c.card, border: `1px solid ${col}44`, borderRadius: 16, padding: '18px 20px', cursor: 'pointer', textAlign: 'left', transition: 'border-color 150ms, background 150ms' }}
+      onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = `${col}99`; (e.currentTarget as HTMLButtonElement).style.background = `${col}0D`; }}
+      onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = `${col}44`; (e.currentTarget as HTMLButtonElement).style.background = c.card; }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
+        {icon}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 15, fontWeight: 800, color: c.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</div>
+          <div style={{ fontSize: 11, color: c.muted }}>{memberCount} miembro{memberCount !== 1 ? 's' : ''}</div>
+        </div>
+      </div>
+      <div style={{ height: 4, background: 'rgba(255,255,255,0.08)', borderRadius: 2, overflow: 'hidden' }}>
+        <div style={{ height: '100%', width: totalUsers > 0 ? `${(memberCount / totalUsers) * 100}%` : '0%', background: col, borderRadius: 2 }}/>
+      </div>
+      <div style={{ marginTop: 10, fontSize: 11, color: col, fontWeight: 600 }}>Ver usuarios →</div>
+    </button>
+  );
+}
+
 function ViewGrupos({ liveUsers, onSelectGroup }: { liveUsers: LiveUser[]; onSelectGroup: (g: string) => void }) {
   const isMobile = useIsMobile();
   const nonAdmins = liveUsers.filter(u => u.role !== 'admin');
+  const sinGrupo = nonAdmins.filter(u => !u.group_name);
   const totalUsers = nonAdmins.length;
 
   return (
     <div>
-      <SectionHeader title="Grupos" sub={`${ALL_GROUPS.length} grupos activos · ${totalUsers} usuarios`}/>
+      <SectionHeader title="Grupos" sub={`${ALL_GROUPS.length} grupos · ${totalUsers} usuarios`}/>
       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(auto-fill, minmax(260px, 1fr))', gap: 14 }}>
+
+        {/* Nacional — todos */}
+        <GroupCard
+          label="Nacional" col={c.blue}
+          icon={
+            <div style={{ width: 40, height: 40, borderRadius: '50%', background: `${c.blue}22`, border: `2px solid ${c.blue}55`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0 }}>🌎</div>
+          }
+          memberCount={totalUsers} totalUsers={totalUsers}
+          onClick={() => onSelectGroup('__nacional__')}
+        />
+
+        {/* Grupos reales */}
         {ALL_GROUPS.map(g => {
-          const members = nonAdmins.filter(u => u.group_name === g);
           const col = GROUP_COLORS[g] ?? c.blue;
           return (
-            <button key={g} onClick={() => onSelectGroup(g)} style={{ background: c.card, border: `1px solid ${col}44`, borderRadius: 16, padding: '18px 20px', cursor: 'pointer', textAlign: 'left', transition: 'border-color 150ms, background 150ms' }}
-              onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = `${col}99`; (e.currentTarget as HTMLButtonElement).style.background = `${col}0D`; }}
-              onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = `${col}44`; (e.currentTarget as HTMLButtonElement).style.background = c.card; }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
-                <GroupIcon group={g} size={40}/>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 15, fontWeight: 800, color: c.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g}</div>
-                  <div style={{ fontSize: 11, color: c.muted }}>{members.length} miembro{members.length !== 1 ? 's' : ''}</div>
-                </div>
-              </div>
-              <div style={{ height: 4, background: 'rgba(255,255,255,0.08)', borderRadius: 2, overflow: 'hidden' }}>
-                <div style={{ height: '100%', width: totalUsers > 0 ? `${(members.length / totalUsers) * 100}%` : '0%', background: col, borderRadius: 2 }}/>
-              </div>
-              <div style={{ marginTop: 10, fontSize: 11, color: col, fontWeight: 600 }}>Ver usuarios →</div>
-            </button>
+            <GroupCard key={g} label={g} col={col}
+              icon={<GroupIcon group={g} size={40}/>}
+              memberCount={nonAdmins.filter(u => u.group_name === g).length}
+              totalUsers={totalUsers}
+              onClick={() => onSelectGroup(g)}
+            />
           );
         })}
+
+        {/* Sin grupo */}
+        <GroupCard
+          label="Sin grupo" col={c.dim}
+          icon={
+            <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'rgba(255,255,255,0.06)', border: `2px solid rgba(255,255,255,0.12)`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0 }}>❓</div>
+          }
+          memberCount={sinGrupo.length} totalUsers={totalUsers}
+          onClick={() => onSelectGroup('__sin_grupo__')}
+        />
+
       </div>
     </div>
   );
