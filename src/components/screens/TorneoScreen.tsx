@@ -938,18 +938,22 @@ function TabRanking({ rankings, loading, userId, userName, userGroup }: {
   rankings: RankingEntry[]; loading: boolean;
   userId: string; userName: string; userGroup: string;
 }) {
+  const [subTab, setSubTab] = useState<'grupo' | 'nacional'>('grupo');
   const [podiumVisible, setPodiumVisible] = useState(false);
 
-  // Find the current user's entry
   const myEntry = rankings.find(e => e.userId === userId);
   const userPoints = myEntry?.points ?? 0;
 
-  // Only show members of the same group, re-ranked 1..N
-  const activeList = useMemo(() => {
+  // Grupo: only my group, re-ranked 1..N
+  const grupoList = useMemo(() => {
     const filtered = rankings.filter(p => p.group_name === userGroup);
     return filtered.map((p, i) => ({ ...p, pos: i + 1 }));
   }, [rankings, userGroup]);
 
+  // Nacional: everyone
+  const nacionalList = useMemo(() => rankings, [rankings]);
+
+  const activeList = subTab === 'grupo' ? grupoList : nacionalList;
   const total = activeList.length;
   const userRank = activeList.findIndex(e => e.userId === userId) + 1 || total + 1;
 
@@ -957,7 +961,7 @@ function TabRanking({ rankings, loading, userId, userName, userGroup }: {
     setPodiumVisible(false);
     const t = setTimeout(() => setPodiumVisible(true), 150);
     return () => clearTimeout(t);
-  }, [userRank]);
+  }, [userRank, subTab]);
 
   const top3 = activeList.slice(0, 3);
   const N = 4;
@@ -974,29 +978,41 @@ function TabRanking({ rankings, loading, userId, userName, userGroup }: {
   const showEllipsis = winStart > 4;
 
   if (loading) {
-    return (
-      <div style={{ padding: '40px 14px', textAlign: 'center', color: T.muted, fontSize: 14 }}>
-        Cargando ranking…
-      </div>
-    );
+    return <div style={{ padding: '40px 14px', textAlign: 'center', color: T.muted, fontSize: 14 }}>Cargando ranking…</div>;
   }
-
   if (total === 0) {
-    return (
-      <div style={{ padding: '40px 14px', textAlign: 'center', color: T.muted, fontSize: 14 }}>
-        El ranking estará disponible cuando comiencen los partidos.
-      </div>
-    );
+    return <div style={{ padding: '40px 14px', textAlign: 'center', color: T.muted, fontSize: 14 }}>El ranking estará disponible cuando comiencen los partidos.</div>;
   }
 
   return (
     <div style={{ padding: '12px 14px 80px' }}>
-      {/* Group label */}
-      <div style={{ fontSize: 11, color: T.muted, marginBottom: 12, paddingLeft: 2 }}>
-        {total} participante{total !== 1 ? 's' : ''} en {userGroup}
+
+      {/* Tabs */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+        <Chip active={subTab === 'grupo'} onClick={() => setSubTab('grupo')}>Mi grupo</Chip>
+        <Chip active={subTab === 'nacional'} onClick={() => setSubTab('nacional')}>Nacional</Chip>
+      </div>
+
+      {/* Prize context note */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14,
+        padding: '8px 12px', borderRadius: 10,
+        background: subTab === 'grupo' ? T.limeSoft : T.blueSoft,
+        border: `1px solid ${subTab === 'grupo' ? T.lime + '60' : T.blue + '60'}`,
+      }}>
+        <span style={{ fontSize: 14 }}>{subTab === 'grupo' ? '🏆' : '🌎'}</span>
+        <span style={{ fontSize: 11.5, fontWeight: 600, color: subTab === 'grupo' ? T.limeDeep : T.blueDeep }}>
+          {subTab === 'grupo'
+            ? `Premios de ${userGroup} — compites con tu grupo`
+            : 'Premios nacionales — compites con todos'}
+        </span>
       </div>
 
       <RankingPodium top3={top3} visible={podiumVisible} userRank={userRank} userName={userName} userPoints={userPoints} userId={userId}/>
+
+      <div style={{ fontSize: 11, color: T.muted, marginBottom: 12, paddingLeft: 2 }}>
+        {total.toLocaleString('es-MX')} {subTab === 'grupo' ? `en ${userGroup}` : 'jugadores en total'}
+      </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {showEllipsis && (
@@ -1004,9 +1020,10 @@ function TabRanking({ rankings, loading, userId, userName, userGroup }: {
         )}
         {windowRows.map((player) => {
           const isMe = player.userId === userId;
-          const rowName = isMe ? userName : player.name;
+          const rowName  = isMe ? userName : player.name;
+          const rowGroup = subTab === 'nacional' ? (isMe ? userGroup : (player.group_name ?? '')) : undefined;
           return (
-            <div key={player.pos} style={{
+            <div key={`${subTab}-${player.pos}`} style={{
               display: 'flex', alignItems: 'center', gap: 12,
               background: isMe ? T.limeSoft : '#fff',
               borderRadius: 12, padding: '10px 14px',
@@ -1025,6 +1042,7 @@ function TabRanking({ rankings, loading, userId, userName, userGroup }: {
                 <div style={{ fontSize: 13, fontWeight: isMe ? 700 : 600, color: T.ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {rowName}{isMe && <span style={{ fontSize: 10, color: T.limeDeep, marginLeft: 6, fontWeight: 700 }}>TÚ</span>}
                 </div>
+                {rowGroup && <div style={{ fontSize: 10.5, color: T.muted, marginTop: 2 }}>{rowGroup}</div>}
               </div>
               <div className="font-mono" style={{ fontSize: 13, fontWeight: 700, color: T.ink, flexShrink: 0 }}>{player.points} pts</div>
             </div>
