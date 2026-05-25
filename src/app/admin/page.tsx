@@ -928,6 +928,22 @@ function ViewPartidos() {
 
 // ─── Grupo Detalle ────────────────────────────────────────────────────────────
 interface GroupPrizes { prize_1st: string; prize_2nd: string; prize_3rd: string }
+interface BonusConfig { type: 'puntos' | 'otro'; value: string; result: string }
+type BonusKey = 'champ' | 'runner' | 'third' | 'scorer';
+
+const BONUS_CATEGORIES: { key: BonusKey; label: string; icon: string; field: string }[] = [
+  { key: 'champ',  label: 'Campeón del mundo',  icon: '🏆', field: 'champ_code' },
+  { key: 'runner', label: 'Subcampeón',          icon: '🥈', field: 'runner_up_code' },
+  { key: 'third',  label: '3er Lugar',           icon: '🥉', field: 'third_code' },
+  { key: 'scorer', label: 'Goleador del torneo', icon: '⚽', field: 'top_scorer' },
+];
+
+const defaultBonus = (): Record<BonusKey, BonusConfig> => ({
+  champ:  { type: 'otro', value: '', result: '' },
+  runner: { type: 'otro', value: '', result: '' },
+  third:  { type: 'otro', value: '', result: '' },
+  scorer: { type: 'otro', value: '', result: '' },
+});
 
 function ViewGrupoDetalle({ group, liveUsers, onBack, onUserUpdated, onUserRemoved }: {
   group: string;
@@ -955,12 +971,28 @@ function ViewGrupoDetalle({ group, liveUsers, onBack, onUserUpdated, onUserRemov
   const [prizesLoading, setPrizesLoading] = useState(true);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
+  // Bonus prizes
+  const [bonus, setBonus] = useState<Record<BonusKey, BonusConfig>>(defaultBonus());
+  const [bonusSaveStatus, setBonusSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [applyingKey, setApplyingKey] = useState<BonusKey | null>(null);
+  const [applyResults, setApplyResults] = useState<Record<string, number>>({});
+
   useEffect(() => {
     if (isSpecial) { setPrizesLoading(false); return; }
     setPrizesLoading(true);
     (async () => {
-      const { data } = await supabase.from('group_settings').select('prize_1st,prize_2nd,prize_3rd').eq('group_name', group).single();
-      if (data) setPrizes({ prize_1st: data.prize_1st, prize_2nd: data.prize_2nd, prize_3rd: data.prize_3rd });
+      const { data } = await supabase.from('group_settings')
+        .select('prize_1st,prize_2nd,prize_3rd,bonus_champ_type,bonus_champ_value,result_champ,bonus_runner_type,bonus_runner_value,result_runner,bonus_third_type,bonus_third_value,result_third,bonus_scorer_type,bonus_scorer_value,result_scorer')
+        .eq('group_name', group).single();
+      if (data) {
+        setPrizes({ prize_1st: data.prize_1st, prize_2nd: data.prize_2nd, prize_3rd: data.prize_3rd });
+        setBonus({
+          champ:  { type: data.bonus_champ_type  as 'puntos'|'otro', value: data.bonus_champ_value  ?? '', result: data.result_champ  ?? '' },
+          runner: { type: data.bonus_runner_type as 'puntos'|'otro', value: data.bonus_runner_value ?? '', result: data.result_runner ?? '' },
+          third:  { type: data.bonus_third_type  as 'puntos'|'otro', value: data.bonus_third_value  ?? '', result: data.result_third  ?? '' },
+          scorer: { type: data.bonus_scorer_type as 'puntos'|'otro', value: data.bonus_scorer_value ?? '', result: data.result_scorer ?? '' },
+        });
+      }
       setPrizesLoading(false);
     })();
   }, [group]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -971,6 +1003,46 @@ function ViewGrupoDetalle({ group, liveUsers, onBack, onUserUpdated, onUserRemov
       .upsert({ group_name: group, ...prizes, updated_at: new Date().toISOString() }, { onConflict: 'group_name' });
     setSaveStatus(error ? 'error' : 'saved');
     setTimeout(() => setSaveStatus('idle'), 2500);
+  };
+
+  const saveBonus = async () => {
+    setBonusSaveStatus('saving');
+    const patch = {
+      group_name: group,
+      bonus_champ_type:   bonus.champ.type,  bonus_champ_value:   bonus.champ.value,  result_champ:   bonus.champ.result  || null,
+      bonus_runner_type:  bonus.runner.type, bonus_runner_value:  bonus.runner.value, result_runner:  bonus.runner.result || null,
+      bonus_third_type:   bonus.third.type,  bonus_third_value:   bonus.third.value,  result_third:   bonus.third.result  || null,
+      bonus_scorer_type:  bonus.scorer.type, bonus_scorer_value:  bonus.scorer.value, result_scorer:  bonus.scorer.result || null,
+      updated_at: new Date().toISOString(),
+    };
+    const { error } = await supabase.from('group_settings').upsert(patch, { onConflict: 'group_name' });
+    setBonusSaveStatus(error ? 'error' : 'saved');
+    setTimeout(() => setBonusSaveStatus('idle'), 2500);
+  };
+
+  const applyBonusPoints = async (key: BonusKey) => {
+    const cfg = bonus[key];
+    const cat = BONUS_CATEGORIES.find(c => c.key === key)!;
+    if (cfg.type !== 'puntos' || !cfg.result.trim() || !cfg.value) return;
+    const pts = parseInt(cfg.value);
+    if (isNaN(pts) || pts <= 0) return;
+    setApplyingKey(key);
+
+    // Find bonus picks matching the result, filtered to this group's members
+    const memberIds = new Set(members.map(m => m.id));
+    const { data: picks } = await supabase.from('bonus_picks').select('user_id, champ_code, runner_up_code, third_code, top_scorer').eq(cat.field as 'champ_code', cfg.result.trim());
+    const eligible = (picks ?? []).filter((p: { user_id: string }) => memberIds.has(p.user_id));
+
+    let awarded = 0;
+    for (const p of eligible) {
+      const { error } = await supabase.from('bonus_awards').upsert(
+        { user_id: p.user_id, group_name: group, category: key, points: pts },
+        { onConflict: 'user_id,group_name,category' },
+      );
+      if (!error) awarded++;
+    }
+    setApplyResults(r => ({ ...r, [key]: awarded }));
+    setApplyingKey(null);
   };
 
   // Member actions
@@ -1106,6 +1178,88 @@ function ViewGrupoDetalle({ group, liveUsers, onBack, onUserUpdated, onUserRemov
         </div>
 
       </div>
+
+      {/* ── Premios Bonus (solo grupos reales) ── */}
+      {!isSpecial && (
+        <div style={{ marginTop: 28 }}>
+          <SectionHeader title="Premios bonus" sub="Predicciones especiales — elige si el premio son puntos o algo más"/>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 14 }}>
+            {BONUS_CATEGORIES.map(cat => {
+              const cfg = bonus[cat.key];
+              const isPuntos = cfg.type === 'puntos';
+              const applied = applyResults[cat.key];
+              return (
+                <div key={cat.key} style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 14, padding: '18px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+                    <span style={{ fontSize: 20 }}>{cat.icon}</span>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: c.text }}>{cat.label}</span>
+                  </div>
+
+                  {/* Type toggle */}
+                  <div style={{ display: 'flex', borderRadius: 8, border: `1px solid ${c.border}`, overflow: 'hidden', marginBottom: 12 }}>
+                    {(['puntos', 'otro'] as const).map(t => (
+                      <button key={t} onClick={() => setBonus(b => ({ ...b, [cat.key]: { ...b[cat.key], type: t } }))} style={{
+                        flex: 1, padding: '7px', border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 700,
+                        background: cfg.type === t ? (t === 'puntos' ? `${c.lime}33` : `${c.blue}33`) : 'transparent',
+                        color: cfg.type === t ? (t === 'puntos' ? c.lime : c.blue) : c.dim,
+                        transition: 'all 150ms',
+                      }}>
+                        {t === 'puntos' ? '⭐ Puntos' : '🎁 Otro'}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Value input */}
+                  <label style={{ fontSize: 11, color: c.muted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.8 }}>
+                    {isPuntos ? 'Cantidad de puntos' : 'Descripción del premio'}
+                  </label>
+                  <input
+                    type={isPuntos ? 'number' : 'text'}
+                    value={cfg.value}
+                    onChange={e => setBonus(b => ({ ...b, [cat.key]: { ...b[cat.key], value: e.target.value } }))}
+                    placeholder={isPuntos ? 'Ej. 15' : 'Ej. Tarjeta Amazon $500'}
+                    style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.06)', color: c.text, fontSize: 13, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box', marginTop: 6, marginBottom: 12 }}
+                  />
+
+                  {/* Result input + apply button (only for puntos) */}
+                  {isPuntos && (
+                    <>
+                      <label style={{ fontSize: 11, color: c.muted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.8 }}>
+                        {cat.key === 'scorer' ? 'Nombre del goleador real' : 'Código del equipo real (ej. ARG)'}
+                      </label>
+                      <input
+                        value={cfg.result}
+                        onChange={e => setBonus(b => ({ ...b, [cat.key]: { ...b[cat.key], result: e.target.value } }))}
+                        placeholder={cat.key === 'scorer' ? 'Ej. Messi' : 'Ej. ARG'}
+                        style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.06)', color: c.text, fontSize: 13, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box', marginTop: 6, marginBottom: 12 }}
+                      />
+                      <button
+                        onClick={() => applyBonusPoints(cat.key)}
+                        disabled={applyingKey === cat.key || !cfg.result.trim() || !cfg.value}
+                        style={{
+                          width: '100%', padding: '9px', borderRadius: 8, border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 12,
+                          background: applied !== undefined ? `${c.lime}33` : `${c.blue}22`,
+                          color: applied !== undefined ? c.lime : c.blue,
+                        }}>
+                        {applyingKey === cat.key ? 'Aplicando…' : applied !== undefined ? `✓ ${applied} usuario${applied !== 1 ? 's' : ''} premiado${applied !== 1 ? 's' : ''}` : '⚡ Aplicar puntos'}
+                      </button>
+                    </>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          <button onClick={saveBonus} disabled={bonusSaveStatus === 'saving'} style={{
+            marginTop: 14, padding: '11px 28px', borderRadius: 10, border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 13,
+            background: bonusSaveStatus === 'saved' ? `${c.lime}33` : bonusSaveStatus === 'error' ? `${c.rose}33` : `${col}33`,
+            color: bonusSaveStatus === 'saved' ? c.lime : bonusSaveStatus === 'error' ? c.rose : col,
+          }}>
+            {bonusSaveStatus === 'saving' ? 'Guardando…' : bonusSaveStatus === 'saved' ? '✓ Configuración guardada' : bonusSaveStatus === 'error' ? '✗ Error' : 'Guardar configuración bonus'}
+          </button>
+        </div>
+      )}
+
     </div>
   );
 }

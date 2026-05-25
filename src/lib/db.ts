@@ -102,23 +102,29 @@ export interface RankingEntry {
 }
 
 export async function getRankings(): Promise<RankingEntry[]> {
-  // Fetch all profiles (users only), predictions, and match results in parallel
-  const [profilesRes, predsRes, resultsRes] = await Promise.all([
+  // Fetch all data in parallel (including bonus awards)
+  const [profilesRes, predsRes, resultsRes, bonusRes] = await Promise.all([
     supabase.from('profiles').select('id, name, group_name').eq('role', 'user'),
     supabase.from('predictions').select('user_id, match_id, home_score, away_score'),
     supabase.from('matches').select('id, result_home, result_away').not('result_home', 'is', null),
+    supabase.from('bonus_awards').select('user_id, points'),
   ]);
 
   const resultMap: Record<string, [number, number]> = {};
   for (const m of resultsRes.data ?? []) resultMap[m.id] = [m.result_home, m.result_away];
 
-  // Sum points per user (only where match has a result)
+  // Sum match points per user
   const pointsMap: Record<string, number> = {};
   for (const p of predsRes.data ?? []) {
     const result = resultMap[p.match_id];
     if (!result) continue;
     const pts = calcPoints([p.home_score, p.away_score], result);
     pointsMap[p.user_id] = (pointsMap[p.user_id] ?? 0) + pts;
+  }
+
+  // Add bonus award points
+  for (const b of bonusRes.data ?? []) {
+    pointsMap[b.user_id] = (pointsMap[b.user_id] ?? 0) + b.points;
   }
 
   // All users get a ranking entry (0 pts if no results yet)
