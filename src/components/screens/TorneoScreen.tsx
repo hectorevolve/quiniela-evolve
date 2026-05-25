@@ -938,43 +938,36 @@ function TabRanking({ rankings, loading, userId, userName, userGroup }: {
   rankings: RankingEntry[]; loading: boolean;
   userId: string; userName: string; userGroup: string;
 }) {
-  const [subTab, setSubTab] = useState('Grupo');
   const [podiumVisible, setPodiumVisible] = useState(false);
-  const subTabs = ['Grupo', 'Nacional'];
 
   // Find the current user's entry
   const myEntry = rankings.find(e => e.userId === userId);
   const userPoints = myEntry?.points ?? 0;
 
-  // Grupo: only my group, re-ranked 1..N
-  const grupoList = useMemo(() => {
+  // Only show members of the same group, re-ranked 1..N
+  const activeList = useMemo(() => {
     const filtered = rankings.filter(p => p.group_name === userGroup);
     return filtered.map((p, i) => ({ ...p, pos: i + 1 }));
   }, [rankings, userGroup]);
 
-  // Nacional: all users
-  const activeList = subTab === 'Grupo' ? grupoList : rankings;
   const total = activeList.length;
-
-  // Find user rank within the active list
   const userRank = activeList.findIndex(e => e.userId === userId) + 1 || total + 1;
-  const activeRank = userRank;
 
   useEffect(() => {
     setPodiumVisible(false);
     const t = setTimeout(() => setPodiumVisible(true), 150);
     return () => clearTimeout(t);
-  }, [userRank, subTab]);
+  }, [userRank]);
 
   const top3 = activeList.slice(0, 3);
   const N = 4;
 
   let winStart: number, winEnd: number;
-  if (activeRank <= 3) {
+  if (userRank <= 3) {
     winStart = 4; winEnd = Math.min(total, 4 + N * 2);
   } else {
-    winStart = Math.max(4, activeRank - N);
-    winEnd   = Math.min(total, activeRank + N);
+    winStart = Math.max(4, userRank - N);
+    winEnd   = Math.min(total, userRank + N);
     if (winEnd - winStart < N * 2) winStart = Math.max(4, winEnd - N * 2);
   }
   const windowRows = activeList.filter(p => p.pos >= winStart && p.pos <= winEnd);
@@ -998,15 +991,12 @@ function TabRanking({ rankings, loading, userId, userName, userGroup }: {
 
   return (
     <div style={{ padding: '12px 14px 80px' }}>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
-        {subTabs.map(s => <Chip key={s} active={subTab === s} onClick={() => setSubTab(s)}>{s}</Chip>)}
-      </div>
-
-      <RankingPodium top3={top3} visible={podiumVisible} userRank={activeRank} userName={userName} userPoints={userPoints} userId={userId}/>
-
+      {/* Group label */}
       <div style={{ fontSize: 11, color: T.muted, marginBottom: 12, paddingLeft: 2 }}>
-        {total.toLocaleString('es-MX')} {subTab === 'Grupo' ? `en ${userGroup}` : 'jugadores en total'}
+        {total} participante{total !== 1 ? 's' : ''} en {userGroup}
       </div>
+
+      <RankingPodium top3={top3} visible={podiumVisible} userRank={userRank} userName={userName} userPoints={userPoints} userId={userId}/>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {showEllipsis && (
@@ -1014,10 +1004,9 @@ function TabRanking({ rankings, loading, userId, userName, userGroup }: {
         )}
         {windowRows.map((player) => {
           const isMe = player.userId === userId;
-          const rowName  = isMe ? userName  : player.name;
-          const rowGroup = isMe ? userGroup : (player.group_name ?? '');
+          const rowName = isMe ? userName : player.name;
           return (
-            <div key={`${subTab}-${player.pos}`} style={{
+            <div key={player.pos} style={{
               display: 'flex', alignItems: 'center', gap: 12,
               background: isMe ? T.limeSoft : '#fff',
               borderRadius: 12, padding: '10px 14px',
@@ -1036,7 +1025,6 @@ function TabRanking({ rankings, loading, userId, userName, userGroup }: {
                 <div style={{ fontSize: 13, fontWeight: isMe ? 700 : 600, color: T.ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {rowName}{isMe && <span style={{ fontSize: 10, color: T.limeDeep, marginLeft: 6, fontWeight: 700 }}>TÚ</span>}
                 </div>
-                <div style={{ fontSize: 10.5, color: T.muted, marginTop: 2 }}>{rowGroup}</div>
               </div>
               <div className="font-mono" style={{ fontSize: 13, fontWeight: 700, color: T.ink, flexShrink: 0 }}>{player.points} pts</div>
             </div>
