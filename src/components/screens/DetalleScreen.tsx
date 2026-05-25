@@ -26,10 +26,10 @@ type EditMode = 'empty' | 'editing' | 'saved';
 export function DetalleScreen({ goto, tweaks, fireToast, matchId, usedPowers: usedPowersFromParent, setUsedPowers: setUsedPowersFromParent, lateActiveMatchId: lateActiveMatchIdFromParent, setLateActiveMatchId: setLateActiveMatchIdFromParent, spyMatchId: spyMatchIdFromParent, setSpyMatchId: setSpyMatchIdFromParent }: Props) {
   const match = MATCHES.find(m => m.id === matchId) ?? MATCHES[0];
 
-  // Initialise from localStorage (or tweaks.filled for demo)
+  // Always open in editing mode so the user can input immediately
   const [mode, setMode] = useState<EditMode>(() => {
     if (tweaks.filled) return 'saved';
-    return loadPrediction(match.id) ? 'saved' : 'empty';
+    return 'editing';
   });
   const [homeScore, setHomeScore] = useState<string>(() => {
     if (tweaks.filled) return '2';
