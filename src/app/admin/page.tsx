@@ -927,18 +927,18 @@ function ViewPartidos() {
 }
 
 // ─── Grupos ───────────────────────────────────────────────────────────────────
-function ViewGrupos({ users, onSelectGroup }: { users: AdminUser[]; onSelectGroup: (g: string) => void }) {
+function ViewGrupos({ liveUsers, onSelectGroup }: { liveUsers: LiveUser[]; onSelectGroup: (g: string) => void }) {
   const isMobile = useIsMobile();
-  const groups = useMemo(() => Array.from(new Set(users.map(u => u.group))), [users]);
+  const nonAdmins = liveUsers.filter(u => u.role !== 'admin');
+  const totalUsers = nonAdmins.length;
 
   return (
     <div>
-      <SectionHeader title="Grupos" sub={`${groups.length} grupos activos · ${users.length} usuarios`}/>
+      <SectionHeader title="Grupos" sub={`${ALL_GROUPS.length} grupos activos · ${totalUsers} usuarios`}/>
       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(auto-fill, minmax(260px, 1fr))', gap: 14 }}>
-        {groups.map(g => {
-          const members = users.filter(u => u.group === g);
+        {ALL_GROUPS.map(g => {
+          const members = nonAdmins.filter(u => u.group_name === g);
           const col = GROUP_COLORS[g] ?? c.blue;
-          const leader = members.reduce((best, u) => u.pts > (best?.pts ?? 0) ? u : best, members[0]);
           return (
             <button key={g} onClick={() => onSelectGroup(g)} style={{ background: c.card, border: `1px solid ${col}44`, borderRadius: 16, padding: '18px 20px', cursor: 'pointer', textAlign: 'left', transition: 'border-color 150ms, background 150ms' }}
               onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = `${col}99`; (e.currentTarget as HTMLButtonElement).style.background = `${col}0D`; }}
@@ -947,19 +947,11 @@ function ViewGrupos({ users, onSelectGroup }: { users: AdminUser[]; onSelectGrou
                 <GroupIcon group={g} size={40}/>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 15, fontWeight: 800, color: c.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g}</div>
-                  <div style={{ fontSize: 11, color: c.muted }}>{members.length} miembros</div>
+                  <div style={{ fontSize: 11, color: c.muted }}>{members.length} miembro{members.length !== 1 ? 's' : ''}</div>
                 </div>
-                <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                  <div style={{ fontSize: 22, fontWeight: 800, color: col, lineHeight: 1 }}>{leader?.pts ?? '—'}</div>
-                  <div style={{ fontSize: 9, color: c.muted, marginTop: 2 }}>pts líder</div>
-                </div>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                <span style={{ fontSize: 11, color: c.muted }}>Promedio</span>
-                <span style={{ fontSize: 11, fontWeight: 700, color: c.text }}>{avg(members)} pts</span>
               </div>
               <div style={{ height: 4, background: 'rgba(255,255,255,0.08)', borderRadius: 2, overflow: 'hidden' }}>
-                <div style={{ height: '100%', width: `${(members.length / users.length) * 100}%`, background: col, borderRadius: 2 }}/>
+                <div style={{ height: '100%', width: totalUsers > 0 ? `${(members.length / totalUsers) * 100}%` : '0%', background: col, borderRadius: 2 }}/>
               </div>
               <div style={{ marginTop: 10, fontSize: 11, color: col, fontWeight: 600 }}>Ver usuarios →</div>
             </button>
@@ -1250,7 +1242,7 @@ export default function AdminPage() {
         {view === 'rankings'     && <ViewRankings/>}
         {view === 'predicciones' && <ViewPredicciones users={users}/>}
         {view === 'partidos'     && <ViewPartidos/>}
-        {view === 'grupos'       && <ViewGrupos users={users} onSelectGroup={goToGroup}/>}
+        {view === 'grupos'       && <ViewGrupos liveUsers={liveUsers} onSelectGroup={goToGroup}/>}
       </div>
     </div>
   );
