@@ -54,10 +54,21 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'phone and name are required' }, { status: 400 });
   }
 
-  // Create auth user with phone (pre-confirmed so they can log in immediately)
+  // Derive 10-digit phone to generate the internal auth email
+  const digits = phone.replace(/\D/g, '');
+  const phone10 =
+    digits.length === 10 ? digits :
+    digits.length === 12 && digits.startsWith('52') ? digits.slice(2) :
+    digits.length === 13 && digits.startsWith('152') ? digits.slice(3) :
+    digits.slice(-10);
+  const internalEmail = `${phone10}@auth.quinielaevolve.mx`;
+
+  // Create auth user: phone + internal email (both pre-confirmed for immediate login)
   const { data: newUser, error: createErr } = await supabaseAdmin.auth.admin.createUser({
     phone,
     phone_confirm: true,
+    email: internalEmail,
+    email_confirm: true,
   });
   if (createErr || !newUser.user) {
     return NextResponse.json({ error: createErr?.message ?? 'Failed to create user' }, { status: 400 });
@@ -67,7 +78,7 @@ export async function POST(req: NextRequest) {
   const { error: profileErr } = await supabaseAdmin.from('profiles').insert({
     id:         newUser.user.id,
     name,
-    email:      null,
+    email:      internalEmail,
     phone,
     role,
     group_name: group_name ?? null,

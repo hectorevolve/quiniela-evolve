@@ -4,7 +4,7 @@ import { theme as T } from '@/lib/theme';
 import { Button, Pill } from '@/components/ui';
 import { EvolveLogo, QELockup, ChevronMotif } from '@/components/brand/EvolveMark';
 import { FallingBall } from '@/components/ball/SoccerBall';
-import { supabase, normalizePhone, type AppUser } from '@/lib/supabase';
+import { supabase, type AppUser } from '@/lib/supabase';
 import { getProfile } from '@/lib/db';
 import { syncPredictionsFromDB, syncBonusFromDB } from '@/lib/predictions';
 
@@ -22,52 +22,90 @@ function daysUntilWC(): number {
 
 type Step = 'phone' | 'otp' | 'admin';
 
+/** Format 10-digit phone for display: "55 2888 5655" */
+function fmtPhone(raw: string): string {
+  const d = raw.replace(/\D/g, '').slice(0, 10);
+  if (d.length <= 2)  return d;
+  if (d.length <= 6)  return `${d.slice(0,2)} ${d.slice(2)}`;
+  return `${d.slice(0,2)} ${d.slice(2,6)} ${d.slice(6)}`;
+}
+
 export function LoginScreen({ onLogin, blocked = false }: Props) {
-  const [step, setStep]         = useState<Step>('phone');
-  const [phone, setPhone]       = useState('');
-  const [otp, setOtp]           = useState('');
-  const [loading, setLoading]   = useState(false);
-  const [error, setError]       = useState<string | null>(null);
-  const [resent, setResent]     = useState(false);
+  const [step, setStep]       = useState<Step>('phone');
+  const [phone, setPhone]     = useState('');
+  const [otp, setOtp]         = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError]     = useState<string | null>(null);
+  const [info, setInfo]       = useState<string | null>(null);
 
   // Admin fallback
-  const [adminEmail, setAdminEmail]   = useState('');
-  const [adminPass, setAdminPass]     = useState('');
+  const [adminEmail, setAdminEmail]       = useState('');
+  const [adminPass, setAdminPass]         = useState('');
   const [showAdminPass, setShowAdminPass] = useState(false);
 
   const otpInputRef = useRef<HTMLInputElement>(null);
 
-  // ── Normalize phone display (add spaces for readability) ─────────────────
-  function formatPhoneDisplay(raw: string) {
-    const digits = raw.replace(/\D/g, '');
-    if (digits.length <= 2)  return digits;
-    if (digits.length <= 6)  return `${digits.slice(0,2)} ${digits.slice(2)}`;
-    if (digits.length <= 10) return `${digits.slice(0,2)} ${digits.slice(2,6)} ${digits.slice(6)}`;
-    return digits; // let them type more, normalizePhone handles it
-  }
+  // ─── Shared: establish Supabase session from token_hash and call onLogin ────
+  const finishLogin = async (token_hash: string) => {
+    const { data, error: verifyErr } = await supabase.auth.verifyOtp({
+      token_hash,
+      type: 'email',
+    });
+    if (verifyErr || !data.user) {
+      setError('Error al establecer la sesión. Intenta de nuevo.');
+      return false;
+    }
+    const profile = await getProfile(data.user.id);
+    if (!profile) {
+      setError('No se encontró tu perfil. Contacta al administrador.');
+      return false;
+    }
+    await Promise.all([
+      syncPredictionsFromDB(data.user.id),
+      syncBonusFromDB(data.user.id),
+    ]);
+    onLogin(profile);
+    return true;
+  };
 
-  // ── Step 1: Send OTP ──────────────────────────────────────────────────────
+  // ─── Step 1: Send OTP via emetrix ───────────────────────────────────────────
   const handleSendOtp = async () => {
     const raw = phone.trim();
     if (!raw) { setError('Ingresa tu número de celular.'); return; }
-    const normalized = normalizePhone(raw);
-    if (normalized.length < 13) { setError('Número inválido. Debe tener 10 dígitos.'); return; }
+    const digits = raw.replace(/\D/g, '');
+    if (digits.length < 10) { setError('El número debe tener 10 dígitos.'); return; }
 
     setLoading(true);
     setError(null);
+    setInfo(null);
     try {
-      const { error: otpErr } = await supabase.auth.signInWithOtp({ phone: normalized });
-      if (otpErr) {
-        // Supabase returns this when signups disabled and phone not found
-        if (otpErr.message.toLowerCase().includes('signup') ||
-            otpErr.message.toLowerCase().includes('not allowed') ||
-            otpErr.message.toLowerCase().includes('disabled')) {
-          setError('Este número no está registrado. Contacta al administrador.');
-        } else {
-          setError('No pudimos enviar el código. Inténtalo de nuevo.');
-        }
+      const res = await fetch('/api/auth/emetrix-send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: digits }),
+      });
+      const data = await res.json() as {
+        code?: string;
+        token_hash?: string;
+        error?: string;
+      };
+
+      if (data.error === 'not_registered') {
+        setError('Este número no está registrado. Contacta al administrador.');
         return;
       }
+      if (data.error) {
+        setError('No pudimos enviar el código. Inténtalo de nuevo.');
+        return;
+      }
+
+      // verification_04: usuario ya registrado con emetrix → login directo
+      if (data.code === 'verification_04' && data.token_hash) {
+        await finishLogin(data.token_hash);
+        return;
+      }
+
+      // verification_01: código enviado al celular
       setStep('otp');
       setOtp('');
       setTimeout(() => otpInputRef.current?.focus(), 300);
@@ -78,32 +116,50 @@ export function LoginScreen({ onLogin, blocked = false }: Props) {
     }
   };
 
-  // ── Step 2: Verify OTP ────────────────────────────────────────────────────
+  // ─── Step 2: Verify OTP via emetrix ─────────────────────────────────────────
   const handleVerifyOtp = async () => {
-    if (otp.length < 6) { setError('El código tiene 6 dígitos.'); return; }
-    const normalized = normalizePhone(phone.trim());
+    if (!otp.trim()) { setError('Ingresa el código que recibiste.'); return; }
+    const digits = phone.replace(/\D/g, '');
+
     setLoading(true);
     setError(null);
+    setInfo(null);
     try {
-      const { data, error: verifyErr } = await supabase.auth.verifyOtp({
-        phone: normalized,
-        token: otp.trim(),
-        type: 'sms',
+      const res = await fetch('/api/auth/emetrix-verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: digits, code: otp.trim() }),
       });
-      if (verifyErr || !data.user) {
-        setError('Código incorrecto o expirado. Inténtalo de nuevo.');
+      const data = await res.json() as {
+        code?: string;
+        token_hash?: string;
+        error?: string;
+      };
+
+      if (data.error) {
+        setError('Error de verificación. Inténtalo de nuevo.');
         return;
       }
-      const profile = await getProfile(data.user.id);
-      if (!profile) {
-        setError('No se encontró tu perfil. Contacta al administrador.');
+
+      if (data.code === 'validation_01' && data.token_hash) {
+        // Código correcto → crear sesión
+        await finishLogin(data.token_hash);
         return;
       }
-      await Promise.all([
-        syncPredictionsFromDB(data.user.id),
-        syncBonusFromDB(data.user.id),
-      ]);
-      onLogin(profile);
+
+      if (data.code === 'validation_05') {
+        // Código incorrecto
+        setError('Código incorrecto. Verifica y vuelve a intentarlo.');
+        return;
+      }
+
+      if (data.code === 'validation_04') {
+        // Número alterado
+        setError('Error en el número de celular. Reinicia el proceso e ingresa tu número nuevamente.');
+        return;
+      }
+
+      setError('Respuesta inesperada. Intenta de nuevo.');
     } catch {
       setError('Error de conexión. Inténtalo de nuevo.');
     } finally {
@@ -111,16 +167,29 @@ export function LoginScreen({ onLogin, blocked = false }: Props) {
     }
   };
 
-  // ── Resend OTP ────────────────────────────────────────────────────────────
-  const handleResend = async () => {
-    if (resent) return;
-    const normalized = normalizePhone(phone.trim());
-    await supabase.auth.signInWithOtp({ phone: normalized });
-    setResent(true);
-    setTimeout(() => setResent(false), 30000);
+  // ─── Reiniciar proceso ───────────────────────────────────────────────────────
+  const handleReset = async () => {
+    const digits = phone.replace(/\D/g, '');
+    setLoading(true);
+    setError(null);
+    setInfo(null);
+    try {
+      await fetch('/api/auth/emetrix-reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: digits }),
+      });
+    } catch {/* silently ignore */} finally {
+      setLoading(false);
+    }
+    // Always go back to phone step and ask to re-enter
+    setStep('phone');
+    setPhone('');
+    setOtp('');
+    setInfo('Proceso reiniciado. Ingresa nuevamente tu número de celular.');
   };
 
-  // ── Admin email/password login ────────────────────────────────────────────
+  // ─── Admin email/password login ──────────────────────────────────────────────
   const handleAdminLogin = async () => {
     if (!adminEmail.trim() || !adminPass.trim()) {
       setError('Ingresa correo y contraseña.');
@@ -148,7 +217,7 @@ export function LoginScreen({ onLogin, blocked = false }: Props) {
     }
   };
 
-  // ── Blocked screen ────────────────────────────────────────────────────────
+  // ─── Blocked screen ──────────────────────────────────────────────────────────
   if (blocked) {
     return (
       <div style={{ height: '100%', background: T.bgInk, display: 'flex', flexDirection: 'column', overflow: 'auto' }}>
@@ -157,8 +226,7 @@ export function LoginScreen({ onLogin, blocked = false }: Props) {
           <EvolveLogo size={36} mode="light"/>
           <div style={{ width: 80, height: 80, borderRadius: '50%', background: T.bgInkRaised, border: `1px solid ${T.borderInk}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke={T.rose} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-              <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
             </svg>
           </div>
           <div>
@@ -172,7 +240,7 @@ export function LoginScreen({ onLogin, blocked = false }: Props) {
     );
   }
 
-  // ── Common input style ────────────────────────────────────────────────────
+  // ─── Common input style ──────────────────────────────────────────────────────
   const inputStyle: React.CSSProperties = {
     width: '100%', height: 52, padding: '0 16px',
     border: `1.5px solid ${T.border}`, borderRadius: 14,
@@ -183,6 +251,7 @@ export function LoginScreen({ onLogin, blocked = false }: Props) {
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'auto' }}>
+
       {/* Hero */}
       <div style={{
         height: '38%', minHeight: 210,
@@ -221,7 +290,7 @@ export function LoginScreen({ onLogin, blocked = false }: Props) {
         {step === 'admin' && (
           <>
             <button
-              onClick={() => { setStep('phone'); setError(null); }}
+              onClick={() => { setStep('phone'); setError(null); setInfo(null); }}
               style={{ alignSelf: 'flex-start', background: 'none', border: 'none', cursor: 'pointer', color: T.blue, fontSize: 13, padding: '0 0 16px', display: 'flex', alignItems: 'center', gap: 4 }}
             >
               ← Volver
@@ -258,15 +327,14 @@ export function LoginScreen({ onLogin, blocked = false }: Props) {
                     </svg>
                   ) : (
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/>
-                      <circle cx="12" cy="12" r="3"/>
+                      <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/>
                     </svg>
                   )}
                 </button>
               </div>
             </div>
 
-            {error && <ErrorBox msg={error} />}
+            {error && <ErrorBox msg={error}/>}
 
             <Button variant="ink" fullWidth onClick={handleAdminLogin} size="lg" style={{ opacity: loading ? 0.7 : 1 }}>
               {loading ? 'Ingresando…' : 'Entrar como admin'}
@@ -274,42 +342,41 @@ export function LoginScreen({ onLogin, blocked = false }: Props) {
           </>
         )}
 
-        {/* ── STEP 1: Phone ── */}
+        {/* ── PASO 1: Celular ── */}
         {step === 'phone' && (
           <>
             <div className="font-display" style={{ fontSize: 22, fontWeight: 700, color: T.ink, marginBottom: 6, letterSpacing: '-0.02em' }}>Bienvenido</div>
             <div style={{ fontSize: 14, color: T.slate, marginBottom: 28, lineHeight: 1.5 }}>
-              Ingresa tu número de celular para recibir un código de acceso
+              Ingresa tu número de celular para recibir un código de acceso por SMS
             </div>
 
             <div style={{ marginBottom: 20 }}>
               <label style={{ fontSize: 12, fontWeight: 600, color: T.slate, letterSpacing: 0.3, display: 'block', marginBottom: 8 }}>
                 Número de celular
               </label>
-              {/* Phone input with +52 prefix */}
               <div style={{ display: 'flex', gap: 8 }}>
+                {/* Country prefix badge */}
                 <div style={{
                   height: 52, padding: '0 12px',
                   border: `1.5px solid ${T.border}`, borderRadius: 14,
                   display: 'flex', alignItems: 'center', gap: 6,
-                  background: '#F8FAFC', flexShrink: 0, fontSize: 15, color: T.slate,
-                  fontWeight: 600,
+                  background: '#F8FAFC', flexShrink: 0, fontSize: 15, color: T.slate, fontWeight: 600,
                 }}>
                   🇲🇽 +52
                 </div>
                 <input
                   type="tel"
-                  placeholder="81 1234 5678"
+                  inputMode="numeric"
+                  placeholder="55 2888 5655"
                   value={phone}
                   onChange={e => {
-                    // Only allow digits and spaces
                     const clean = e.target.value.replace(/[^\d\s]/g, '');
                     setPhone(clean);
                     setError(null);
+                    setInfo(null);
                   }}
                   onKeyDown={e => e.key === 'Enter' && handleSendOtp()}
                   disabled={loading}
-                  inputMode="numeric"
                   maxLength={14}
                   style={{ ...inputStyle, flex: 1 }}
                   onFocus={e => e.currentTarget.style.borderColor = T.blue}
@@ -321,7 +388,8 @@ export function LoginScreen({ onLogin, blocked = false }: Props) {
               </div>
             </div>
 
-            {error && <ErrorBox msg={error} />}
+            {info && <InfoBox msg={info}/>}
+            {error && <ErrorBox msg={error}/>}
 
             <Button
               variant="ink" fullWidth onClick={handleSendOtp} size="lg"
@@ -330,9 +398,9 @@ export function LoginScreen({ onLogin, blocked = false }: Props) {
               {loading ? 'Enviando…' : 'Enviar código SMS →'}
             </Button>
 
-            {/* Admin fallback link */}
+            {/* Admin fallback */}
             <button
-              onClick={() => { setStep('admin'); setError(null); }}
+              onClick={() => { setStep('admin'); setError(null); setInfo(null); }}
               style={{ background: 'none', border: 'none', cursor: 'pointer', color: T.muted, fontSize: 12, padding: '4px 0', textAlign: 'center' }}
             >
               Acceso administrativo
@@ -340,11 +408,12 @@ export function LoginScreen({ onLogin, blocked = false }: Props) {
           </>
         )}
 
-        {/* ── STEP 2: OTP ── */}
+        {/* ── PASO 2: Código OTP ── */}
         {step === 'otp' && (
           <>
+            {/* Back */}
             <button
-              onClick={() => { setStep('phone'); setError(null); setOtp(''); }}
+              onClick={() => { setStep('phone'); setError(null); setInfo(null); setOtp(''); }}
               style={{ alignSelf: 'flex-start', background: 'none', border: 'none', cursor: 'pointer', color: T.blue, fontSize: 13, padding: '0 0 16px', display: 'flex', alignItems: 'center', gap: 4 }}
             >
               ← Cambiar número
@@ -359,8 +428,8 @@ export function LoginScreen({ onLogin, blocked = false }: Props) {
 
             <div className="font-display" style={{ fontSize: 22, fontWeight: 700, color: T.ink, marginBottom: 6 }}>Código enviado</div>
             <div style={{ fontSize: 14, color: T.slate, marginBottom: 28, lineHeight: 1.5 }}>
-              Ingresa el código de 6 dígitos que te enviamos al{' '}
-              <span style={{ fontWeight: 600, color: T.ink }}>+52 {phone.replace(/\D/g, '').replace(/(\d{2})(\d{4})(\d{4})/, '$1 $2 $3')}</span>
+              Ingresa el código que te enviamos por SMS al{' '}
+              <span style={{ fontWeight: 600, color: T.ink }}>+52 {fmtPhone(phone.replace(/\D/g,''))}</span>
             </div>
 
             <div style={{ marginBottom: 20 }}>
@@ -371,7 +440,7 @@ export function LoginScreen({ onLogin, blocked = false }: Props) {
                 ref={otpInputRef}
                 type="text"
                 inputMode="numeric"
-                placeholder="123456"
+                placeholder="••••"
                 value={otp}
                 onChange={e => {
                   const val = e.target.value.replace(/\D/g, '').slice(0, 6);
@@ -383,7 +452,7 @@ export function LoginScreen({ onLogin, blocked = false }: Props) {
                 maxLength={6}
                 style={{
                   ...inputStyle,
-                  fontSize: 28, fontWeight: 700, letterSpacing: 12,
+                  fontSize: 32, fontWeight: 700, letterSpacing: 16,
                   textAlign: 'center', fontFamily: 'var(--font-jetbrains-mono)',
                 }}
                 onFocus={e => e.currentTarget.style.borderColor = T.blue}
@@ -391,7 +460,7 @@ export function LoginScreen({ onLogin, blocked = false }: Props) {
               />
             </div>
 
-            {error && <ErrorBox msg={error} />}
+            {error && <ErrorBox msg={error}/>}
 
             <Button
               variant="ink" fullWidth onClick={handleVerifyOtp} size="lg"
@@ -400,14 +469,19 @@ export function LoginScreen({ onLogin, blocked = false }: Props) {
               {loading ? 'Verificando…' : 'Verificar y entrar'}
             </Button>
 
-            {/* Resend */}
-            <button
-              onClick={handleResend}
-              disabled={resent}
-              style={{ background: 'none', border: 'none', cursor: resent ? 'default' : 'pointer', color: resent ? T.muted : T.blue, fontSize: 13, padding: '4px 0', textAlign: 'center' }}
-            >
-              {resent ? '✓ Código reenviado' : '¿No llegó? Reenviar código'}
-            </button>
+            {/* Reiniciar proceso */}
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, marginTop: 4 }}>
+              <button
+                onClick={handleReset}
+                disabled={loading}
+                style={{ background: 'none', border: 'none', cursor: loading ? 'default' : 'pointer', color: T.rose, fontSize: 13, fontWeight: 600, padding: '4px 0' }}
+              >
+                🔄 Reiniciar proceso
+              </button>
+              <span style={{ fontSize: 11, color: T.muted, textAlign: 'center', maxWidth: 260, lineHeight: 1.4 }}>
+                Úsalo si ingresaste un número incorrecto o si el SMS no llegó a tiempo
+              </span>
+            </div>
           </>
         )}
       </div>
@@ -421,6 +495,18 @@ function ErrorBox({ msg }: { msg: string }) {
       marginBottom: 14, padding: '10px 14px',
       background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 10,
       fontSize: 13, color: '#DC2626', lineHeight: 1.4,
+    }}>
+      {msg}
+    </div>
+  );
+}
+
+function InfoBox({ msg }: { msg: string }) {
+  return (
+    <div style={{
+      marginBottom: 14, padding: '10px 14px',
+      background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 10,
+      fontSize: 13, color: '#1D4ED8', lineHeight: 1.4,
     }}>
       {msg}
     </div>
