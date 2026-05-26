@@ -2782,12 +2782,15 @@ function ViewCelulares() {
 
 function ImportModalCelulares({ onClose, onDone }: { onClose: () => void; onDone: (count: number) => void }) {
   const fileRef = useRef<HTMLInputElement>(null);
-  const [step, setStep]         = useState<'upload' | 'preview' | 'importing' | 'done'>('upload');
-  const [rows, setRows]         = useState<ImportRow[]>([]);
+  const [step, setStep]           = useState<'upload' | 'preview' | 'importing' | 'done'>('upload');
+  const [rows, setRows]           = useState<ImportRow[]>([]);
   const [defaultGroup, setDefaultGroup] = useState('Evolve');
-  const [progress, setProgress] = useState(0);
-  const [okCount, setOkCount]   = useState(0);
-  const [dragOver, setDragOver] = useState(false);
+  const [progress, setProgress]   = useState(0);
+  const [progressLabel, setProgressLabel] = useState('');
+  const [okCount, setOkCount]     = useState(0);
+  const [createdCount, setCreatedCount] = useState(0);
+  const [skippedCount, setSkippedCount] = useState(0);
+  const [dragOver, setDragOver]   = useState(false);
   const [detectedHeaders, setDetectedHeaders] = useState<string[]>([]);
 
   // ── Parse any Excel/CSV ──────────────────────────────────────────────────────
@@ -2907,28 +2910,55 @@ function ImportModalCelulares({ onClose, onDone }: { onClose: () => void; onDone
     setStep('importing');
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return;
-    const CHUNK = 50;
+
+    const CHUNK = 20;
     const all = rows.filter(r => r.telefono);
+    const rowPayload = (r: ImportRow) => ({
+      phone:      r.telefono,
+      name:       r.nombre     || null,
+      group_name: r.grupo      || null,
+      city:       r.ciudad     || null,
+      phone_type: r.phone_type || null,
+    });
+
+    // ── Fase 1: whitelist ────────────────────────────────────────────────────
+    setProgressLabel('Agregando al whitelist…');
     let done = 0;
     for (let i = 0; i < all.length; i += CHUNK) {
       const chunk = all.slice(i, i + CHUNK);
       await fetch('/api/admin/allow-phones-bulk', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
-        body: JSON.stringify({
-          rows: chunk.map(r => ({
-            phone:      r.telefono,
-            name:       r.nombre     || null,
-            group_name: r.grupo      || null,
-            city:       r.ciudad     || null,
-            phone_type: r.phone_type || null,
-          })),
-        }),
+        body: JSON.stringify({ rows: chunk.map(rowPayload) }),
       });
       done += chunk.length;
-      setProgress(Math.round((done / all.length) * 100));
+      setProgress(Math.round((done / all.length) * 50)); // 0-50%
     }
+
+    // ── Fase 2: crear cuentas ────────────────────────────────────────────────
+    setProgressLabel('Creando cuentas de usuario…');
+    done = 0;
+    let totalCreated = 0;
+    let totalSkipped = 0;
+    for (let i = 0; i < all.length; i += CHUNK) {
+      const chunk = all.slice(i, i + CHUNK);
+      const res = await fetch('/api/admin/bulk-create-users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ rows: chunk.map(rowPayload) }),
+      });
+      if (res.ok) {
+        const data = await res.json() as { created: number; skipped: number };
+        totalCreated += data.created ?? 0;
+        totalSkipped += data.skipped ?? 0;
+      }
+      done += chunk.length;
+      setProgress(50 + Math.round((done / all.length) * 50)); // 50-100%
+    }
+
     setOkCount(all.length);
+    setCreatedCount(totalCreated);
+    setSkippedCount(totalSkipped);
     setStep('done');
   };
 
@@ -3062,9 +3092,10 @@ function ImportModalCelulares({ onClose, onDone }: { onClose: () => void; onDone
           {step === 'importing' && (
             <div style={{ textAlign: 'center', padding: '40px 24px' }}>
               <div style={{ fontSize: 32, marginBottom: 12 }}>⏳</div>
-              <div style={{ fontSize: 15, fontWeight: 600, color: c.text, marginBottom: 16 }}>Importando celulares…</div>
-              <div style={{ height: 6, background: 'rgba(255,255,255,0.1)', borderRadius: 3, overflow: 'hidden' }}>
-                <div style={{ height: '100%', background: c.blue, width: `${progress}%`, transition: 'width 300ms ease', borderRadius: 3 }}/>
+              <div style={{ fontSize: 15, fontWeight: 600, color: c.text, marginBottom: 4 }}>Procesando…</div>
+              <div style={{ fontSize: 12, color: c.muted, marginBottom: 16 }}>{progressLabel}</div>
+              <div style={{ height: 8, background: 'rgba(255,255,255,0.1)', borderRadius: 4, overflow: 'hidden' }}>
+                <div style={{ height: '100%', background: c.blue, width: `${progress}%`, transition: 'width 300ms ease', borderRadius: 4 }}/>
               </div>
               <div style={{ marginTop: 10, fontSize: 12, color: c.muted }}>{progress}%</div>
             </div>
@@ -3073,9 +3104,27 @@ function ImportModalCelulares({ onClose, onDone }: { onClose: () => void; onDone
           {/* ── STEP 4: Done ── */}
           {step === 'done' && (
             <div style={{ textAlign: 'center', padding: '40px 24px' }}>
-              <div style={{ fontSize: 44, marginBottom: 12 }}>✅</div>
-              <div style={{ fontSize: 16, fontWeight: 700, color: c.text, marginBottom: 8 }}>{okCount} celulares agregados</div>
-              <div style={{ fontSize: 13, color: c.muted, marginBottom: 24 }}>Los usuarios ya pueden registrarse con esos números</div>
+              <div style={{ fontSize: 44, marginBottom: 16 }}>✅</div>
+              <div style={{ fontSize: 17, fontWeight: 700, color: c.text, marginBottom: 20 }}>Importación completada</div>
+              <div style={{ display: 'flex', gap: 12, justifyContent: 'center', marginBottom: 24, flexWrap: 'wrap' }}>
+                <div style={{ background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: 12, padding: '14px 22px', minWidth: 100 }}>
+                  <div style={{ fontSize: 28, fontWeight: 800, color: '#22C55E' }}>{okCount}</div>
+                  <div style={{ fontSize: 11, color: c.muted, marginTop: 2 }}>en whitelist</div>
+                </div>
+                <div style={{ background: 'rgba(26,175,255,0.1)', border: '1px solid rgba(26,175,255,0.3)', borderRadius: 12, padding: '14px 22px', minWidth: 100 }}>
+                  <div style={{ fontSize: 28, fontWeight: 800, color: c.blue }}>{createdCount}</div>
+                  <div style={{ fontSize: 11, color: c.muted, marginTop: 2 }}>cuentas creadas</div>
+                </div>
+                {skippedCount > 0 && (
+                  <div style={{ background: 'rgba(255,255,255,0.04)', border: `1px solid ${c.border}`, borderRadius: 12, padding: '14px 22px', minWidth: 100 }}>
+                    <div style={{ fontSize: 28, fontWeight: 800, color: c.muted }}>{skippedCount}</div>
+                    <div style={{ fontSize: 11, color: c.muted, marginTop: 2 }}>ya existían</div>
+                  </div>
+                )}
+              </div>
+              <div style={{ fontSize: 12, color: c.muted, marginBottom: 24 }}>
+                Los usuarios pueden iniciar sesión con su número vía SMS
+              </div>
               <button onClick={() => onDone(okCount)} style={{ padding: '12px 28px', background: c.blue, color: '#fff', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>Cerrar</button>
             </div>
           )}
