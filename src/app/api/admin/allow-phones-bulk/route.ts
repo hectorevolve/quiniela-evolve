@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
   }
 
   const { rows } = (await req.json()) as {
-    rows: Array<{ phone: string; name?: string; group_name?: string; premium?: boolean }>;
+    rows: Array<{ phone: string; name?: string; group_name?: string; city?: string; premium?: boolean }>;
   };
 
   if (!Array.isArray(rows) || rows.length === 0) {
@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
   let failed = 0;
 
   // Process in batches of 50
-  const batch: Array<{ phone: string; name: string | null; group_name: string | null; premium: boolean }> = [];
+  const batch: Array<{ phone: string; name: string | null; group_name: string | null; city: string | null; premium: boolean }> = [];
 
   for (const row of rows) {
     const e164 = toE164(row.phone);
@@ -61,6 +61,7 @@ export async function POST(req: NextRequest) {
       phone:      e164,
       name:       row.name ?? null,
       group_name: row.group_name ?? null,
+      city:       row.city ?? null,
       premium:    row.premium ?? false,
     });
     ok++;

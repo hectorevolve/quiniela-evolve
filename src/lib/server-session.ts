@@ -31,6 +31,7 @@ export interface PhoneCheck {
   /** Name from whitelist or profile */
   name?: string;
   group_name?: string;
+  city?: string;
   premium?: boolean;
 }
 
@@ -47,12 +48,12 @@ export async function checkPhoneAllowed(phone10: string): Promise<PhoneCheck> {
   const [{ data: wl }, { data: profile }] = await Promise.all([
     admin
       .from('allowed_phones')
-      .select('name, group_name, premium')
+      .select('name, group_name, city, premium')
       .eq('phone', phoneE164)
       .maybeSingle(),
     admin
       .from('profiles')
-      .select('id, name, group_name, premium')
+      .select('id, name, group_name, city, premium')
       .eq('phone', phoneE164)
       .maybeSingle(),
   ]);
@@ -63,6 +64,7 @@ export async function checkPhoneAllowed(phone10: string): Promise<PhoneCheck> {
     hasAccount:  !!profile,
     name:        profile?.name ?? wl?.name ?? undefined,
     group_name:  profile?.group_name ?? wl?.group_name ?? undefined,
+    city:        profile?.city ?? wl?.city ?? undefined,
     premium:     profile?.premium ?? wl?.premium ?? false,
   };
 }

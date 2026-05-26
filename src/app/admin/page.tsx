@@ -9,23 +9,46 @@ import { Avatar } from '@/components/ui';
 import { supabase } from '@/lib/supabase';
 import { getRankings, type RankingEntry, getMatchResults, saveMatchResult, getMatches, updateMatch, createMatch, deleteMatch, type DBMatch } from '@/lib/db';
 
-type View = 'dashboard' | 'celulares' | 'usuarios' | 'rankings' | 'predicciones' | 'partidos' | 'grupos' | 'grupo-detalle';
+type View = 'dashboard' | 'encuesta' | 'celulares' | 'usuarios' | 'rankings' | 'predicciones' | 'partidos' | 'grupos' | 'grupo-detalle' | 'grupos-config';
 type AdminUser = { name: string; pts: number; group: string; city: string; pos: number; country: string };
 type AdminMatch = typeof MATCHES[number];
 
 const NAV: { id: View; label: string }[] = [
-  { id: 'dashboard', label: 'Dashboard' },
-  { id: 'celulares', label: 'Celulares' },
-  { id: 'usuarios',  label: 'Usuarios' },
-  { id: 'rankings',  label: 'Rankings' },
-  { id: 'partidos',  label: 'Partidos' },
-  { id: 'grupos',    label: 'Grupos' },
+  { id: 'dashboard',    label: 'Dashboard' },
+  { id: 'encuesta',     label: 'Encuesta' },
+  { id: 'celulares',    label: 'Celulares' },
+  { id: 'grupos-config',label: 'Grupos' },
+  { id: 'usuarios',     label: 'Usuarios' },
+  { id: 'rankings',     label: 'Rankings' },
+  { id: 'partidos',     label: 'Partidos' },
 ];
 
-const ALL_GROUPS = Object.keys({
-  'Evolve': 1, 'BEPENSA Spirits': 1, 'ADM': 1, 'Disney': 1,
-  'Ruz': 1, 'Zuru': 1, 'AGEMEX': 1, 'Delongi': 1,
-});
+// ─── Dynamic groups ───────────────────────────────────────────────────────────
+// Hardcoded fallback (used while DB loads, and for color/logo lookups)
+const ALL_GROUPS = [
+  'Evolve', 'BEPENSA Spirits', 'ADM', 'Disney',
+  'Ruz', 'Zuru', 'AJEMEX', 'Delongi', 'Juguetimax', 'Hanes',
+];
+
+/** Loads group list from Supabase `groups` table; falls back to ALL_GROUPS. */
+function useGroups() {
+  const [groups, setGroups] = useState<string[]>(ALL_GROUPS);
+  useEffect(() => {
+    supabase.from('groups').select('name').order('name')
+      .then(({ data }) => { if (data?.length) setGroups(data.map((g: { name: string }) => g.name)); });
+  }, []);
+  return groups;
+}
+
+/** Shared group select dropdown backed by live DB list. */
+function GroupSelect({ value, onChange, style }: { value: string; onChange: (v: string) => void; style?: React.CSSProperties }) {
+  const groups = useGroups();
+  return (
+    <select value={value} onChange={e => onChange(e.target.value)} style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: `1px solid ${c.border}`, background: '#0D1829', color: c.text, fontSize: 13, fontFamily: 'inherit', outline: 'none', ...style }}>
+      {groups.map(g => <option key={g} value={g} style={{ background: '#0D1829' }}>{g}</option>)}
+    </select>
+  );
+}
 
 const c = {
   bg:      '#070F1E',
@@ -50,8 +73,10 @@ const GROUP_COLORS: Record<string, string> = {
   'Disney':          '#0063E5',
   'Ruz':             '#8B5CF6',
   'Zuru':            '#22C55E',
-  'AGEMEX':          '#EF4444',
+  'AJEMEX':          '#EF4444',
   'Delongi':         '#F97316',
+  'Juguetimax':      '#EC4899',
+  'Hanes':           '#14B8A6',
 };
 
 const GROUP_LOGOS: Record<string, string> = {
@@ -1617,6 +1642,197 @@ function ViewGrupoDetalle({ group, liveUsers, onBack, onUserUpdated, onUserRemov
   );
 }
 
+// ─── Gestión de Grupos ───────────────────────────────────────────────────────
+type DBGroup = { id: number; name: string; color: string };
+
+const COLOR_PRESETS = [
+  '#A3E635','#1AAFFF','#F59E0B','#0063E5','#8B5CF6',
+  '#22C55E','#EF4444','#F97316','#EC4899','#14B8A6',
+  '#F43F5E','#84CC16','#06B6D4','#A855F7','#FB923C',
+];
+
+function ViewGruposConfig({ onSelectGroup }: { onSelectGroup: (g: string) => void }) {
+  const isMobile = useIsMobile();
+  const [dbGroups, setDbGroups] = useState<DBGroup[]>([]);
+  const [loading, setLoading]   = useState(true);
+  const [newName, setNewName]   = useState('');
+  const [newColor, setNewColor] = useState('#1AAFFF');
+  const [adding, setAdding]     = useState(false);
+  const [editing, setEditing]   = useState<DBGroup | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editColor, setEditColor] = useState('');
+  const [saving, setSaving]     = useState(false);
+  const [err, setErr]           = useState<string | null>(null);
+
+  const load = () => {
+    setLoading(true);
+    supabase.from('groups').select('id, name, color').order('name')
+      .then(({ data }) => { setDbGroups((data ?? []) as DBGroup[]); setLoading(false); });
+  };
+  useEffect(() => { load(); }, []);
+
+  const handleAdd = async () => {
+    if (!newName.trim()) { setErr('Ingresa el nombre del grupo.'); return; }
+    setSaving(true); setErr(null);
+    const { error } = await supabase.from('groups').insert({ name: newName.trim(), color: newColor });
+    if (error) { setErr(error.message); setSaving(false); return; }
+    setNewName(''); setNewColor('#1AAFFF'); setAdding(false);
+    load();
+    setSaving(false);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editing || !editName.trim()) return;
+    setSaving(true); setErr(null);
+    // Update group name in all profiles too
+    await supabase.from('profiles').update({ group_name: editName.trim() }).eq('group_name', editing.name);
+    await supabase.from('allowed_phones').update({ group_name: editName.trim() }).eq('group_name', editing.name);
+    const { error } = await supabase.from('groups').update({ name: editName.trim(), color: editColor }).eq('id', editing.id);
+    if (error) { setErr(error.message); setSaving(false); return; }
+    setEditing(null);
+    load();
+    setSaving(false);
+  };
+
+  const handleDelete = async (g: DBGroup) => {
+    if (!confirm(`¿Eliminar el grupo "${g.name}"? Los usuarios de este grupo quedarán sin grupo asignado.`)) return;
+    setSaving(true);
+    await supabase.from('profiles').update({ group_name: null }).eq('group_name', g.name);
+    await supabase.from('allowed_phones').update({ group_name: null }).eq('group_name', g.name);
+    await supabase.from('groups').delete().eq('id', g.id);
+    load();
+    setSaving(false);
+  };
+
+  const openEdit = (g: DBGroup) => { setEditing(g); setEditName(g.name); setEditColor(g.color); setErr(null); };
+
+  const inputS: React.CSSProperties = {
+    padding: '9px 12px', borderRadius: 8, border: `1px solid ${c.border}`,
+    background: 'rgba(255,255,255,0.06)', color: c.text, fontSize: 13,
+    fontFamily: 'inherit', outline: 'none', width: '100%', boxSizing: 'border-box',
+  };
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24, gap: 12, flexWrap: 'wrap' }}>
+        <div>
+          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: c.text }}>Grupos</h2>
+          <p style={{ margin: '4px 0 0', fontSize: 13, color: c.muted }}>
+            {loading ? 'Cargando…' : `${dbGroups.length} grupos configurados`}
+          </p>
+        </div>
+        <button onClick={() => { setAdding(true); setErr(null); }} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 18px', background: c.blue, color: '#fff', border: 'none', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+          + Nuevo grupo
+        </button>
+      </div>
+
+      {err && <div style={{ marginBottom: 14, padding: '10px 14px', background: 'rgba(244,63,94,0.1)', border: '1px solid rgba(244,63,94,0.3)', borderRadius: 8, fontSize: 13, color: c.rose }}>{err}</div>}
+
+      {/* Group list */}
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: '40px', color: c.muted }}>Cargando grupos…</div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12, marginBottom: 24 }}>
+          {dbGroups.map(g => (
+            <div key={g.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', background: c.card, border: `1px solid ${g.color}44`, borderRadius: 14 }}>
+              <div style={{ width: 40, height: 40, borderRadius: '50%', background: g.color, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 13, fontWeight: 800, color: '#fff' }}>
+                {g.name.slice(0, 2).toUpperCase()}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: c.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.name}</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3 }}>
+                  <div style={{ width: 10, height: 10, borderRadius: '50%', background: g.color }}/>
+                  <span style={{ fontSize: 11, color: c.muted, fontFamily: 'monospace' }}>{g.color}</span>
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                <button onClick={() => openEdit(g)} style={{ padding: '5px 10px', borderRadius: 7, border: `1px solid ${c.border}`, background: 'transparent', color: c.muted, cursor: 'pointer', fontSize: 12 }}>✏️</button>
+                <button onClick={() => onSelectGroup(g.name)} title="Ver usuarios" style={{ padding: '5px 10px', borderRadius: 7, border: `1px solid ${c.border}`, background: 'transparent', color: c.blue, cursor: 'pointer', fontSize: 12 }}>👥</button>
+                <button onClick={() => handleDelete(g)} disabled={saving} style={{ padding: '5px 10px', borderRadius: 7, border: `1px solid ${c.border}`, background: 'transparent', color: c.rose, cursor: 'pointer', fontSize: 12, opacity: saving ? 0.4 : 1 }}>🗑</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Add group modal */}
+      {adding && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 20 }}>
+          <div style={{ background: '#0D1829', border: `1px solid ${c.border}`, borderRadius: 18, padding: 28, width: '100%', maxWidth: 420 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 22 }}>
+              <h3 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: c.text }}>Nuevo grupo</h3>
+              <button onClick={() => setAdding(false)} style={{ background: 'none', border: 'none', color: c.muted, fontSize: 20, cursor: 'pointer' }}>✕</button>
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: c.muted, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 6 }}>Nombre del grupo</label>
+              <input type="text" placeholder="Ej. Mi Empresa" value={newName} onChange={e => setNewName(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAdd()} style={inputS}/>
+            </div>
+            <div style={{ marginBottom: 22 }}>
+              <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: c.muted, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>Color</label>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
+                {COLOR_PRESETS.map(col => (
+                  <button key={col} onClick={() => setNewColor(col)} style={{ width: 28, height: 28, borderRadius: '50%', background: col, border: newColor === col ? '3px solid #fff' : '2px solid transparent', cursor: 'pointer', boxShadow: newColor === col ? `0 0 0 2px ${col}` : 'none' }}/>
+                ))}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <input type="color" value={newColor} onChange={e => setNewColor(e.target.value)} style={{ width: 40, height: 36, borderRadius: 8, border: 'none', cursor: 'pointer', background: 'none', padding: 0 }}/>
+                <span style={{ fontSize: 12, color: c.muted, fontFamily: 'monospace' }}>{newColor}</span>
+                <div style={{ width: 24, height: 24, borderRadius: '50%', background: newColor }}/>
+              </div>
+            </div>
+            {err && <div style={{ marginBottom: 14, padding: '9px 12px', background: 'rgba(244,63,94,0.1)', border: '1px solid rgba(244,63,94,0.3)', borderRadius: 8, fontSize: 13, color: c.rose }}>{err}</div>}
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={() => setAdding(false)} style={{ flex: 1, padding: '11px', background: 'transparent', border: `1px solid ${c.border}`, borderRadius: 10, color: c.muted, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Cancelar</button>
+              <button onClick={handleAdd} disabled={saving} style={{ flex: 1, padding: '11px', background: c.blue, color: '#fff', border: 'none', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: saving ? 'default' : 'pointer', opacity: saving ? 0.7 : 1 }}>
+                {saving ? 'Guardando…' : 'Crear grupo'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit group modal */}
+      {editing && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 20 }}>
+          <div style={{ background: '#0D1829', border: `1px solid ${c.border}`, borderRadius: 18, padding: 28, width: '100%', maxWidth: 420 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 22 }}>
+              <h3 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: c.text }}>Editar grupo</h3>
+              <button onClick={() => setEditing(null)} style={{ background: 'none', border: 'none', color: c.muted, fontSize: 20, cursor: 'pointer' }}>✕</button>
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: c.muted, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 6 }}>Nombre del grupo</label>
+              <input type="text" value={editName} onChange={e => setEditName(e.target.value)} style={inputS}/>
+              {editName !== editing.name && (
+                <div style={{ fontSize: 11, color: c.amber, marginTop: 4 }}>⚠ Se actualizará en todos los usuarios y celulares autorizados</div>
+              )}
+            </div>
+            <div style={{ marginBottom: 22 }}>
+              <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: c.muted, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>Color</label>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
+                {COLOR_PRESETS.map(col => (
+                  <button key={col} onClick={() => setEditColor(col)} style={{ width: 28, height: 28, borderRadius: '50%', background: col, border: editColor === col ? '3px solid #fff' : '2px solid transparent', cursor: 'pointer', boxShadow: editColor === col ? `0 0 0 2px ${col}` : 'none' }}/>
+                ))}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <input type="color" value={editColor} onChange={e => setEditColor(e.target.value)} style={{ width: 40, height: 36, borderRadius: 8, border: 'none', cursor: 'pointer', background: 'none', padding: 0 }}/>
+                <span style={{ fontSize: 12, color: c.muted, fontFamily: 'monospace' }}>{editColor}</span>
+                <div style={{ width: 24, height: 24, borderRadius: '50%', background: editColor }}/>
+              </div>
+            </div>
+            {err && <div style={{ marginBottom: 14, padding: '9px 12px', background: 'rgba(244,63,94,0.1)', border: '1px solid rgba(244,63,94,0.3)', borderRadius: 8, fontSize: 13, color: c.rose }}>{err}</div>}
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={() => setEditing(null)} style={{ flex: 1, padding: '11px', background: 'transparent', border: `1px solid ${c.border}`, borderRadius: 10, color: c.muted, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Cancelar</button>
+              <button onClick={handleSaveEdit} disabled={saving} style={{ flex: 1, padding: '11px', background: c.blue, color: '#fff', border: 'none', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: saving ? 'default' : 'pointer', opacity: saving ? 0.7 : 1 }}>
+                {saving ? 'Guardando…' : 'Guardar cambios'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Grupos ───────────────────────────────────────────────────────────────────
 function GroupCard({ label, col, icon, memberCount, totalUsers, onClick }: {
   label: string; col: string; icon: React.ReactNode;
@@ -1707,7 +1923,8 @@ interface ImportRow {
   numero:   string;
   nombre:   string;
   grupo:    string;
-  telefono: string;  // primary identifier — used as phone auth key
+  ciudad:   string;
+  telefono: string;  // priority: Celular Laboral → Celular Personal
   status:   'pending' | 'ok' | 'error';
   errorMsg: string;
 }
@@ -1769,7 +1986,7 @@ function ImportModal({ onClose, onDone }: {
         const grupo    = findCol(r, 'grupo', 'group') || defaultGroup;
         const rawTel   = findCol(r, 'telefono', 'tel', 'phone', 'celular', 'movil', 'cel');
         const telefono = rawTel ? normalizePhoneImport(rawTel) : '';
-        return { numero, nombre, grupo, telefono, status: 'pending' as const, errorMsg: '' };
+        return { numero, nombre, grupo, ciudad: '', telefono, status: 'pending' as const, errorMsg: '' };
       });
 
     setRows(parsed);
@@ -1860,9 +2077,7 @@ function ImportModal({ onClose, onDone }: {
 
               <div>
                 <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: c.muted, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 6 }}>Grupo por defecto</label>
-                <select value={defaultGroup} onChange={e => setDefaultGroup(e.target.value)} style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: `1px solid ${c.border}`, background: '#0D1829', color: c.text, fontSize: 13, fontFamily: 'inherit', outline: 'none' }}>
-                  {ALL_GROUPS.map(g => <option key={g} value={g} style={{ background: '#0D1829' }}>{g}</option>)}
-                </select>
+                <GroupSelect value={defaultGroup} onChange={setDefaultGroup}/>
                 <div style={{ fontSize: 10, color: c.muted, marginTop: 4 }}>Se usa si la columna Grupo está vacía en el archivo</div>
               </div>
 
@@ -2166,9 +2381,7 @@ function ViewUsuariosAdmin({ liveUsers, onUserCreated }: { liveUsers: { id: stri
 
             <div style={{ marginBottom: 16 }}>
               <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: c.muted, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 6 }}>Grupo</label>
-              <select value={group} onChange={e => setGroup(e.target.value)} style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.06)', color: c.text, fontSize: 13, fontFamily: 'inherit', outline: 'none' }}>
-                {ALL_GROUPS.map(g => <option key={g} value={g} style={{ background: '#0D1829' }}>{g}</option>)}
-              </select>
+              <GroupSelect value={group} onChange={setGroup} style={{ background: 'rgba(255,255,255,0.06)', padding: '10px 14px' }}/>
             </div>
 
             <div style={{ marginBottom: 16 }}>
@@ -2205,6 +2418,192 @@ function ViewUsuariosAdmin({ liveUsers, onUserCreated }: { liveUsers: { id: stri
                 {loading ? 'Creando…' : 'Crear usuario'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Encuesta ─────────────────────────────────────────────────────────────────
+type SurveyRow = { id: string; name: string; phone: string | null; group_name: string | null; created_at: string | null };
+
+function ViewEncuesta() {
+  const [rows, setRows]             = useState<SurveyRow[]>([]);
+  const [loading, setLoading]       = useState(true);
+  const [groupFilter, setGroupFilter] = useState('Todos');
+  const [search, setSearch]         = useState('');
+
+  useEffect(() => {
+    supabase
+      .from('profiles')
+      .select('id, name, phone, group_name, created_at')
+      .neq('role', 'admin')
+      .order('created_at', { ascending: true })
+      .then(({ data }) => {
+        setRows((data ?? []) as SurveyRow[]);
+        setLoading(false);
+      });
+  }, []);
+
+  const groups = useMemo(() => ['Todos', ...Array.from(new Set(rows.map(r => r.group_name ?? 'Sin grupo')))], [rows]);
+
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase();
+    return rows.filter(r => {
+      const matchGroup = groupFilter === 'Todos' || (r.group_name ?? 'Sin grupo') === groupFilter;
+      const matchSearch = !q || r.name.toLowerCase().includes(q) || (r.phone ?? '').includes(q);
+      return matchGroup && matchSearch;
+    });
+  }, [rows, groupFilter, search]);
+
+  const downloadExcel = () => {
+    const ws = XLSX.utils.json_to_sheet(filtered.map((r, i) => ({
+      '#':           i + 1,
+      'Nombre':      r.name,
+      'Grupo':       r.group_name ?? 'Sin grupo',
+      'Celular':     r.phone ?? '',
+      'Registro':    r.created_at ? new Date(r.created_at).toLocaleDateString('es-MX', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '',
+    })));
+
+    // Column widths
+    ws['!cols'] = [{ wch: 5 }, { wch: 30 }, { wch: 20 }, { wch: 16 }, { wch: 14 }];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Encuesta');
+    const fileName = groupFilter === 'Todos'
+      ? `encuesta_todos_${new Date().toISOString().slice(0, 10)}.xlsx`
+      : `encuesta_${groupFilter.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    XLSX.writeFile(wb, fileName);
+  };
+
+  const col = (group: string) => GROUP_COLORS[group] ?? c.blue;
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20, gap: 12, flexWrap: 'wrap' }}>
+        <div>
+          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: c.text }}>Resultados de encuesta</h2>
+          <p style={{ margin: '4px 0 0', fontSize: 13, color: c.muted }}>
+            {loading ? 'Cargando…' : `${filtered.length} respuestas${groupFilter !== 'Todos' ? ` · ${groupFilter}` : ''}`}
+          </p>
+        </div>
+        <button
+          onClick={downloadExcel}
+          disabled={filtered.length === 0}
+          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 18px', background: filtered.length > 0 ? c.lime : 'rgba(255,255,255,0.06)', color: filtered.length > 0 ? '#0A1628' : c.muted, border: 'none', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: filtered.length > 0 ? 'pointer' : 'default', transition: 'all 150ms' }}
+        >
+          ⬇ Descargar Excel
+        </button>
+      </div>
+
+      {/* Filters */}
+      <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+        {/* Search */}
+        <div style={{ flex: 1, minWidth: 180, display: 'flex', alignItems: 'center', gap: 8, background: c.card, border: `1px solid ${c.border}`, borderRadius: 10, padding: '8px 14px' }}>
+          <span style={{ color: c.dim }}>🔍</span>
+          <input
+            value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="Buscar por nombre o celular…"
+            style={{ flex: 1, background: 'none', border: 'none', outline: 'none', color: c.text, fontSize: 13, fontFamily: 'inherit' }}
+          />
+        </div>
+
+        {/* Group filter */}
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {groups.map(g => {
+            const active = groupFilter === g;
+            const gCol   = g === 'Todos' ? c.blue : col(g);
+            return (
+              <button
+                key={g}
+                onClick={() => setGroupFilter(g)}
+                style={{
+                  padding: '6px 14px', borderRadius: 20, border: active ? `1.5px solid ${gCol}` : `1px solid ${c.border}`,
+                  background: active ? `${gCol}22` : c.card,
+                  color: active ? gCol : c.muted,
+                  fontSize: 12, fontWeight: active ? 700 : 500,
+                  cursor: 'pointer', transition: 'all 150ms',
+                }}
+              >
+                {g}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Table */}
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: '48px 24px', color: c.muted }}>Cargando encuesta…</div>
+      ) : filtered.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: '48px 24px', color: c.muted, fontSize: 14 }}>
+          {rows.length === 0 ? 'Aún no hay respuestas.' : 'Sin resultados para el filtro seleccionado.'}
+        </div>
+      ) : (
+        <TableWrap>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <thead>
+              <tr style={{ background: 'rgba(255,255,255,0.04)' }}>
+                {['#', 'Nombre', 'Grupo', 'Celular', 'Registro'].map(h => (
+                  <th key={h} style={{ padding: '10px 14px', textAlign: 'left', color: c.muted, fontWeight: 600, fontSize: 11, letterSpacing: 0.8, textTransform: 'uppercase', borderBottom: `1px solid ${c.border}`, whiteSpace: 'nowrap' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((r, i) => {
+                const gCol = r.group_name ? col(r.group_name) : c.dim;
+                return (
+                  <tr key={r.id} style={{ borderBottom: `1px solid ${c.border}` }}
+                    onMouseEnter={e => (e.currentTarget as HTMLTableRowElement).style.background = c.rowHov}
+                    onMouseLeave={e => (e.currentTarget as HTMLTableRowElement).style.background = 'transparent'}>
+                    <td style={{ padding: '11px 14px', color: c.dim, fontWeight: 500, minWidth: 40 }}>{i + 1}</td>
+                    <td style={{ padding: '11px 14px', color: c.text, fontWeight: 600 }}>{r.name}</td>
+                    <td style={{ padding: '11px 14px', minWidth: 120 }}>
+                      {r.group_name ? (
+                        <span style={{ display: 'inline-block', padding: '2px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700, background: `${gCol}22`, color: gCol, border: `1px solid ${gCol}44` }}>{r.group_name}</span>
+                      ) : (
+                        <span style={{ color: c.dim, fontSize: 11, fontStyle: 'italic' }}>Sin grupo</span>
+                      )}
+                    </td>
+                    <td style={{ padding: '11px 14px', color: c.muted, fontFamily: 'monospace', fontSize: 12 }}>{r.phone ?? '—'}</td>
+                    <td style={{ padding: '11px 14px', color: c.dim, fontSize: 12, whiteSpace: 'nowrap' }}>
+                      {r.created_at ? new Date(r.created_at).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </TableWrap>
+      )}
+
+      {/* Summary by group */}
+      {!loading && rows.length > 0 && groupFilter === 'Todos' && (
+        <div style={{ marginTop: 24 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: c.text, marginBottom: 12 }}>Resumen por grupo</div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {Array.from(new Set(rows.map(r => r.group_name ?? 'Sin grupo'))).map(g => {
+              const count = rows.filter(r => (r.group_name ?? 'Sin grupo') === g).length;
+              const gCol = col(g === 'Sin grupo' ? '' : g);
+              return (
+                <button
+                  key={g}
+                  onClick={() => setGroupFilter(g)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    padding: '8px 14px', borderRadius: 10,
+                    background: c.card, border: `1px solid ${gCol}44`,
+                    cursor: 'pointer', transition: 'all 150ms',
+                  }}
+                  onMouseEnter={e => (e.currentTarget as HTMLButtonElement).style.background = `${gCol}12`}
+                  onMouseLeave={e => (e.currentTarget as HTMLButtonElement).style.background = c.card}
+                >
+                  <span style={{ fontSize: 20, fontWeight: 800, color: gCol }}>{count}</span>
+                  <span style={{ fontSize: 12, color: c.muted }}>{g}</span>
+                </button>
+              );
+            })}
           </div>
         </div>
       )}
@@ -2343,9 +2742,7 @@ function ViewCelulares() {
             </div>
             <div style={{ marginBottom: 20 }}>
               <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: c.muted, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 6 }}>Grupo</label>
-              <select value={newGroup} onChange={e => setNewGroup(e.target.value)} style={{ ...inputS }}>
-                {ALL_GROUPS.map(g => <option key={g} value={g} style={{ background: '#0D1829' }}>{g}</option>)}
-              </select>
+              <GroupSelect value={newGroup} onChange={setNewGroup}/>
             </div>
             <div style={{ display: 'flex', gap: 10 }}>
               <button onClick={() => setShowAdd(false)} style={{ flex: 1, padding: '11px', background: 'transparent', border: `1px solid ${c.border}`, borderRadius: 10, color: c.muted, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Cancelar</button>
@@ -2370,16 +2767,18 @@ function ViewCelulares() {
 
 function ImportModalCelulares({ onClose, onDone }: { onClose: () => void; onDone: (count: number) => void }) {
   const fileRef = useRef<HTMLInputElement>(null);
-  const [step, setStep]       = useState<'upload' | 'preview' | 'importing' | 'done'>('upload');
-  const [rows, setRows]       = useState<ImportRow[]>([]);
+  const [step, setStep]         = useState<'upload' | 'preview' | 'importing' | 'done'>('upload');
+  const [rows, setRows]         = useState<ImportRow[]>([]);
   const [defaultGroup, setDefaultGroup] = useState('Evolve');
   const [progress, setProgress] = useState(0);
-  const [okCount, setOkCount] = useState(0);
+  const [okCount, setOkCount]   = useState(0);
   const [dragOver, setDragOver] = useState(false);
 
+  // ── Parse any Excel/CSV ──────────────────────────────────────────────────────
   const parseFile = async (file: File) => {
-    const ext = file.name.split('.').pop()?.toLowerCase();
     let rawRows: Record<string, unknown>[] = [];
+    const ext = file.name.split('.').pop()?.toLowerCase();
+
     if (ext === 'csv') {
       const text = await file.text();
       const lines = text.trim().split(/\r?\n/);
@@ -2396,28 +2795,70 @@ function ImportModalCelulares({ onClose, onDone }: { onClose: () => void; onDone
       const ws = wb.Sheets[wb.SheetNames[0]];
       rawRows = XLSX.utils.sheet_to_json(ws, { defval: '' }) as Record<string, unknown>[];
     }
+
     const norm = (v: unknown) => String(v ?? '').trim();
+
+    // Normalize column header for matching
+    const hdr = (k: string) => k.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim();
+
+    // Find first column whose header contains any of the given keywords
     const findCol = (obj: Record<string, unknown>, ...keys: string[]) => {
       for (const k of Object.keys(obj)) {
-        const kl = k.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
-        for (const t of keys) if (kl.includes(t)) return norm(obj[k]);
+        const h = hdr(k);
+        for (const t of keys) if (h.includes(t)) return norm(obj[k]);
       }
       return '';
     };
+
+    // Find laboral phone: header contains "laboral" or "empresarial"
+    const findLaboral = (obj: Record<string, unknown>) =>
+      findCol(obj, 'laboral', 'empresarial');
+
+    // Find personal phone: header contains "personal"
+    const findPersonal = (obj: Record<string, unknown>) =>
+      findCol(obj, 'personal');
+
+    // General phone fallback
+    const findGenericPhone = (obj: Record<string, unknown>) =>
+      findCol(obj, 'telefono', 'tel ', 'phone', 'celular', 'cel ', 'movil', 'cel');
+
     const parsed: ImportRow[] = rawRows
-      .filter(r => findCol(r, 'telefono', 'tel', 'phone', 'celular', 'cel'))
+      .filter(r => {
+        const laboral  = findLaboral(r);
+        const personal = findPersonal(r);
+        const generic  = findGenericPhone(r);
+        return !!(laboral || personal || generic);
+      })
       .map(r => {
-        const nombre   = findCol(r, 'nombre', 'name');
-        const numero   = findCol(r, 'numero', 'num', '#');
-        const grupo    = findCol(r, 'grupo', 'group') || defaultGroup;
-        const rawTel   = findCol(r, 'telefono', 'tel', 'phone', 'celular', 'cel');
-        const telefono = rawTel ? normalizePhoneImport(rawTel) : '';
-        return { numero, nombre, grupo, telefono, status: 'pending' as const, errorMsg: '' };
+        const nombre  = findCol(r, 'nombre', 'name');
+        const numero  = findCol(r, 'numero', 'num', '#');
+        const ciudad  = findCol(r, 'ciudad', 'city', 'localidad', 'estado');
+        // Group from "Cuenta" first, then "Grupo", then default
+        const grupo   = findCol(r, 'cuenta', 'account', 'grupo', 'group') || defaultGroup;
+
+        // Phone priority: laboral → personal → generic
+        const rawLaboral  = findLaboral(r);
+        const rawPersonal = findPersonal(r);
+        const rawGeneric  = findGenericPhone(r);
+        const rawTel      = rawLaboral || rawPersonal || rawGeneric;
+        const telefono    = rawTel ? normalizePhoneImport(rawTel) : '';
+
+        return { numero, nombre, grupo, ciudad, telefono, status: 'pending' as const, errorMsg: '' };
       });
-    setRows(parsed);
+
+    // Deduplicate by phone (keep first occurrence)
+    const seen = new Set<string>();
+    const deduped = parsed.filter(r => {
+      if (!r.telefono || seen.has(r.telefono)) return false;
+      seen.add(r.telefono);
+      return true;
+    });
+
+    setRows(deduped);
     setStep('preview');
   };
 
+  // ── Submit to API ────────────────────────────────────────────────────────────
   const handleImport = async () => {
     setStep('importing');
     const { data: { session } } = await supabase.auth.getSession();
@@ -2430,7 +2871,14 @@ function ImportModalCelulares({ onClose, onDone }: { onClose: () => void; onDone
       await fetch('/api/admin/allow-phones-bulk', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
-        body: JSON.stringify({ rows: chunk.map(r => ({ phone: r.telefono, name: r.nombre || null, group_name: r.grupo })) }),
+        body: JSON.stringify({
+          rows: chunk.map(r => ({
+            phone:      r.telefono,
+            name:       r.nombre  || null,
+            group_name: r.grupo   || null,
+            city:       r.ciudad  || null,
+          })),
+        }),
       });
       done += chunk.length;
       setProgress(Math.round((done / all.length) * 100));
@@ -2439,26 +2887,34 @@ function ImportModalCelulares({ onClose, onDone }: { onClose: () => void; onDone
     setStep('done');
   };
 
-  const noPhone = rows.filter(r => !r.telefono).length;
+  const withPhone    = rows.filter(r => r.telefono).length;
+  const withoutPhone = rows.filter(r => !r.telefono).length;
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: 20 }}>
-      <div style={{ background: '#0D1829', border: `1px solid ${c.border}`, borderRadius: 20, width: '100%', maxWidth: 560, maxHeight: '85vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <div style={{ background: '#0D1829', border: `1px solid ${c.border}`, borderRadius: 20, width: '100%', maxWidth: 620, maxHeight: '88vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+
+        {/* Header */}
         <div style={{ padding: '18px 22px 14px', borderBottom: `1px solid ${c.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
           <div>
             <div style={{ fontSize: 16, fontWeight: 700, color: c.text }}>📥 Importar celulares autorizados</div>
             <div style={{ fontSize: 12, color: c.muted, marginTop: 2 }}>
-              {step === 'upload' && 'Excel o CSV con nombre y celular'}
-              {step === 'preview' && `${rows.length} filas · ${noPhone > 0 ? `⚠ ${noPhone} sin teléfono` : 'todos con teléfono ✓'}`}
+              {step === 'upload'    && 'Sube el Excel con la lista de empleados'}
+              {step === 'preview'   && `${withPhone} con teléfono${withoutPhone > 0 ? ` · ⚠ ${withoutPhone} sin teléfono` : ' ✓'} · Revisa antes de importar`}
               {step === 'importing' && `Importando… ${progress}%`}
-              {step === 'done' && `✓ ${okCount} celulares agregados al whitelist`}
+              {step === 'done'      && `✓ ${okCount} celulares agregados al whitelist`}
             </div>
           </div>
-          {step !== 'importing' && <button onClick={onClose} style={{ background: 'none', border: 'none', color: c.muted, fontSize: 22, cursor: 'pointer' }}>✕</button>}
+          {step !== 'importing' && <button onClick={onClose} style={{ background: 'none', border: 'none', color: c.muted, fontSize: 22, cursor: 'pointer', lineHeight: 1 }}>✕</button>}
         </div>
+
+        {/* Body */}
         <div style={{ flex: 1, overflowY: 'auto', padding: 22 }}>
+
+          {/* ── STEP 1: Upload ── */}
           {step === 'upload' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+              {/* Drop zone */}
               <div
                 onDragOver={e => { e.preventDefault(); setDragOver(true); }}
                 onDragLeave={() => setDragOver(false)}
@@ -2467,29 +2923,52 @@ function ImportModalCelulares({ onClose, onDone }: { onClose: () => void; onDone
                 style={{ border: `2px dashed ${dragOver ? c.blue : c.border}`, borderRadius: 14, padding: '36px 24px', textAlign: 'center', cursor: 'pointer', background: dragOver ? `${c.blue}10` : 'rgba(255,255,255,0.02)', transition: 'all 200ms' }}
               >
                 <div style={{ fontSize: 36, marginBottom: 10 }}>📂</div>
-                <div style={{ fontSize: 14, fontWeight: 600, color: c.text, marginBottom: 4 }}>Arrastra tu archivo aquí</div>
+                <div style={{ fontSize: 14, fontWeight: 600, color: c.text, marginBottom: 4 }}>Arrastra tu archivo aquí o haz clic</div>
                 <div style={{ fontSize: 12, color: c.muted }}>.xlsx · .xls · .csv</div>
                 <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) parseFile(f); }}/>
               </div>
+
+              {/* Default group */}
               <div>
                 <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: c.muted, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 6 }}>Grupo por defecto</label>
-                <select value={defaultGroup} onChange={e => setDefaultGroup(e.target.value)} style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: `1px solid ${c.border}`, background: '#0D1829', color: c.text, fontSize: 13, fontFamily: 'inherit', outline: 'none' }}>
-                  {ALL_GROUPS.map(g => <option key={g} value={g} style={{ background: '#0D1829' }}>{g}</option>)}
-                </select>
+                <GroupSelect value={defaultGroup} onChange={setDefaultGroup}/>
+                <div style={{ fontSize: 10, color: c.muted, marginTop: 4 }}>Se usa si la columna &quot;Cuenta&quot; o &quot;Grupo&quot; está vacía</div>
               </div>
-              <div style={{ padding: '12px 14px', background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, borderRadius: 10, fontSize: 12, color: c.muted }}>
-                Columnas esperadas: <strong style={{ color: c.text }}>Nombre</strong> · <strong style={{ color: c.text }}>Celular</strong> · <strong style={{ color: c.text }}>Grupo</strong> (opcional)
+
+              {/* Column guide */}
+              <div style={{ padding: '14px 16px', background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, borderRadius: 10 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: c.blue, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.8 }}>Columnas reconocidas automáticamente</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 16px', fontSize: 12 }}>
+                  {[
+                    ['Ciudad', 'ciudad, city'],
+                    ['Nombre', 'nombre, name'],
+                    ['Cuenta/Grupo', 'cuenta, grupo, group'],
+                    ['Celular Laboral ★', 'laboral, empresarial'],
+                    ['Celular Personal', 'personal'],
+                    ['Genérico', 'celular, telefono, tel'],
+                  ].map(([label, hint]) => (
+                    <div key={label}>
+                      <span style={{ color: c.text, fontWeight: 600 }}>{label}</span>
+                      <span style={{ color: c.dim }}> — {hint}</span>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ marginTop: 10, fontSize: 11, color: c.muted, lineHeight: 1.5 }}>
+                  ★ <strong style={{ color: c.lime }}>Celular Laboral</strong> tiene prioridad sobre Personal · Solo un número por persona · Se eliminan duplicados automáticamente
+                </div>
               </div>
             </div>
           )}
+
+          {/* ── STEP 2: Preview ── */}
           {step === 'preview' && (
             <div>
-              <div style={{ maxHeight: 320, overflowY: 'auto', marginBottom: 18, borderRadius: 10, border: `1px solid ${c.border}`, overflow: 'hidden' }}>
+              <div style={{ maxHeight: 380, overflowY: 'auto', marginBottom: 18, borderRadius: 10, border: `1px solid ${c.border}`, overflow: 'hidden' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                   <thead>
-                    <tr style={{ background: 'rgba(255,255,255,0.05)' }}>
-                      {['Nombre', 'Celular', 'Grupo'].map(h => (
-                        <th key={h} style={{ padding: '10px 12px', textAlign: 'left', color: c.muted, fontWeight: 600, borderBottom: `1px solid ${c.border}` }}>{h}</th>
+                    <tr style={{ background: 'rgba(255,255,255,0.05)', position: 'sticky', top: 0 }}>
+                      {['Nombre', 'Ciudad', 'Celular', 'Grupo'].map(h => (
+                        <th key={h} style={{ padding: '10px 12px', textAlign: 'left', color: c.muted, fontWeight: 600, borderBottom: `1px solid ${c.border}`, whiteSpace: 'nowrap' }}>{h}</th>
                       ))}
                     </tr>
                   </thead>
@@ -2497,18 +2976,23 @@ function ImportModalCelulares({ onClose, onDone }: { onClose: () => void; onDone
                     {rows.map((r, i) => (
                       <tr key={i} style={{ borderBottom: `1px solid ${c.border}`, opacity: r.telefono ? 1 : 0.4 }}>
                         <td style={{ padding: '8px 12px', color: c.text }}>{r.nombre || <span style={{ fontStyle: 'italic', color: c.muted }}>—</span>}</td>
-                        <td style={{ padding: '8px 12px', color: r.telefono ? c.green : c.rose, fontFamily: 'monospace', fontSize: 11 }}>{r.telefono || '⚠ sin teléfono'}</td>
-                        <td style={{ padding: '8px 12px', color: c.muted }}>{r.grupo}</td>
+                        <td style={{ padding: '8px 12px', color: c.muted, fontSize: 11 }}>{r.ciudad || '—'}</td>
+                        <td style={{ padding: '8px 12px', color: r.telefono ? c.green : c.rose, fontFamily: 'monospace', fontSize: 11 }}>{r.telefono || '⚠ sin tel.'}</td>
+                        <td style={{ padding: '8px 12px' }}>
+                          {r.grupo ? <GroupBadge group={r.grupo}/> : <span style={{ color: c.dim, fontSize: 11 }}>—</span>}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
               <button onClick={handleImport} style={{ width: '100%', padding: '13px', background: c.blue, color: '#fff', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
-                Agregar {rows.filter(r => r.telefono).length} celulares al whitelist →
+                Agregar {withPhone} celulares al whitelist →
               </button>
             </div>
           )}
+
+          {/* ── STEP 3: Progress ── */}
           {step === 'importing' && (
             <div style={{ textAlign: 'center', padding: '40px 24px' }}>
               <div style={{ fontSize: 32, marginBottom: 12 }}>⏳</div>
@@ -2519,6 +3003,8 @@ function ImportModalCelulares({ onClose, onDone }: { onClose: () => void; onDone
               <div style={{ marginTop: 10, fontSize: 12, color: c.muted }}>{progress}%</div>
             </div>
           )}
+
+          {/* ── STEP 4: Done ── */}
           {step === 'done' && (
             <div style={{ textAlign: 'center', padding: '40px 24px' }}>
               <div style={{ fontSize: 44, marginBottom: 12 }}>✅</div>
@@ -2527,6 +3013,7 @@ function ImportModalCelulares({ onClose, onDone }: { onClose: () => void; onDone
               <button onClick={() => onDone(okCount)} style={{ padding: '12px 28px', background: c.blue, color: '#fff', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>Cerrar</button>
             </div>
           )}
+
         </div>
       </div>
     </div>
@@ -2670,18 +3157,20 @@ export default function AdminPage() {
 
       {/* ── Main content ── */}
       <div style={{ flex: 1, overflow: isMobile ? 'visible' : 'auto', padding: isMobile ? 16 : 32 }}>
-        {view === 'dashboard'    && <ViewDashboard liveUsers={liveUsers} setView={setView}/>}
-        {view === 'celulares'    && <ViewCelulares/>}
-        {view === 'usuarios'     && <ViewUsuariosAdmin liveUsers={liveUsers} onUserCreated={u => setLiveUsers(prev => [...prev, u])}/>}
-        {view === 'rankings'     && <ViewRankings/>}
-        {view === 'predicciones' && <ViewPredicciones users={users}/>}
-        {view === 'partidos'     && <ViewPartidos/>}
-        {view === 'grupos'       && <ViewGrupos liveUsers={liveUsers} onSelectGroup={goToGroup}/>}
+        {view === 'dashboard'     && <ViewDashboard liveUsers={liveUsers} setView={setView}/>}
+        {view === 'encuesta'      && <ViewEncuesta/>}
+        {view === 'celulares'     && <ViewCelulares/>}
+        {view === 'grupos-config' && <ViewGruposConfig onSelectGroup={g => { setSelectedGroup(g); navigate('grupo-detalle'); }}/>}
+        {view === 'usuarios'      && <ViewUsuariosAdmin liveUsers={liveUsers} onUserCreated={u => setLiveUsers(prev => [...prev, u])}/>}
+        {view === 'rankings'      && <ViewRankings/>}
+        {view === 'predicciones'  && <ViewPredicciones users={users}/>}
+        {view === 'partidos'      && <ViewPartidos/>}
+        {view === 'grupos'        && <ViewGrupos liveUsers={liveUsers} onSelectGroup={goToGroup}/>}
         {view === 'grupo-detalle' && selectedGroup && (
           <ViewGrupoDetalle
             group={selectedGroup}
             liveUsers={liveUsers}
-            onBack={() => navigate('grupos')}
+            onBack={() => navigate('grupos-config')}
             onUserUpdated={updated => setLiveUsers(prev => prev.map(u => u.id === updated.id ? updated : u))}
             onUserRemoved={id => setLiveUsers(prev => prev.filter(u => u.id !== id))}
           />
