@@ -2807,7 +2807,27 @@ function ImportModalCelulares({ onClose, onDone }: { onClose: () => void; onDone
       const buf = await file.arrayBuffer();
       const wb = XLSX.read(buf, { type: 'array' });
       const ws = wb.Sheets[wb.SheetNames[0]];
-      rawRows = XLSX.utils.sheet_to_json(ws, { defval: '' }) as Record<string, unknown>[];
+      // Read as raw arrays first to auto-detect the real header row
+      // (Excel files often have blank rows at the top before actual headers)
+      const allRows2 = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' }) as unknown[][];
+
+      const normH = (v: unknown) =>
+        String(v ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim();
+
+      const KNOWN_COLS = ['nombre', 'celular', 'telefono', 'laboral', 'personal', 'ciudad', 'cuenta', 'grupo'];
+      let hdrIdx = 0;
+      for (let i = 0; i < Math.min(15, allRows2.length); i++) {
+        const cells = (allRows2[i] as unknown[]).map(normH);
+        if (KNOWN_COLS.some(k => cells.some(c => c.includes(k)))) { hdrIdx = i; break; }
+      }
+      const hdrRow = (allRows2[hdrIdx] as unknown[]).map(c => String(c ?? ''));
+      rawRows = allRows2.slice(hdrIdx + 1)
+        .filter(row => (row as unknown[]).some(c => String(c ?? '').trim() !== ''))
+        .map(row => {
+          const obj: Record<string, unknown> = {};
+          hdrRow.forEach((h, i) => { obj[h || `__COL_${i}`] = (row as unknown[])[i] ?? ''; });
+          return obj;
+        });
     }
 
     const norm = (v: unknown) => String(v ?? '').trim();
