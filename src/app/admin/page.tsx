@@ -735,6 +735,68 @@ const PHASE_OPTIONS = [
   'SEMIFINALES','TERCER LUGAR','FINAL','SERIE A',
 ];
 
+const WC_TEAMS: { code: string; name: string }[] = [
+  { code: 'TBD', name: 'Por definir' },
+  { code: 'ALG', name: 'Argelia' },
+  { code: 'ARG', name: 'Argentina' },
+  { code: 'AUS', name: 'Australia' },
+  { code: 'AUT', name: 'Austria' },
+  { code: 'BEL', name: 'Bélgica' },
+  { code: 'BIH', name: 'Bosnia y Herzegovina' },
+  { code: 'BRA', name: 'Brasil' },
+  { code: 'CAN', name: 'Canadá' },
+  { code: 'CHI', name: 'Chile' },
+  { code: 'CHN', name: 'China' },
+  { code: 'CIV', name: 'Costa de Marfil' },
+  { code: 'COD', name: 'Rep. Dem. del Congo' },
+  { code: 'COL', name: 'Colombia' },
+  { code: 'CPV', name: 'Cabo Verde' },
+  { code: 'CRO', name: 'Croacia' },
+  { code: 'CUW', name: 'Curazao' },
+  { code: 'CZE', name: 'República Checa' },
+  { code: 'DEN', name: 'Dinamarca' },
+  { code: 'ECU', name: 'Ecuador' },
+  { code: 'EGY', name: 'Egipto' },
+  { code: 'ENG', name: 'Inglaterra' },
+  { code: 'ESP', name: 'España' },
+  { code: 'FRA', name: 'Francia' },
+  { code: 'GER', name: 'Alemania' },
+  { code: 'GHA', name: 'Ghana' },
+  { code: 'HAI', name: 'Haití' },
+  { code: 'IDN', name: 'Indonesia' },
+  { code: 'IRN', name: 'Irán' },
+  { code: 'IRQ', name: 'Irak' },
+  { code: 'JOR', name: 'Jordania' },
+  { code: 'JPN', name: 'Japón' },
+  { code: 'KOR', name: 'Corea del Sur' },
+  { code: 'KSA', name: 'Arabia Saudita' },
+  { code: 'MAR', name: 'Marruecos' },
+  { code: 'MEX', name: 'México' },
+  { code: 'NED', name: 'Países Bajos' },
+  { code: 'NGA', name: 'Nigeria' },
+  { code: 'NOR', name: 'Noruega' },
+  { code: 'NZL', name: 'Nueva Zelanda' },
+  { code: 'PAN', name: 'Panamá' },
+  { code: 'PAR', name: 'Paraguay' },
+  { code: 'PER', name: 'Perú' },
+  { code: 'POL', name: 'Polonia' },
+  { code: 'POR', name: 'Portugal' },
+  { code: 'QAT', name: 'Qatar' },
+  { code: 'RSA', name: 'Sudáfrica' },
+  { code: 'SCO', name: 'Escocia' },
+  { code: 'SEN', name: 'Senegal' },
+  { code: 'SRB', name: 'Serbia' },
+  { code: 'SUI', name: 'Suiza' },
+  { code: 'SWE', name: 'Suecia' },
+  { code: 'TUN', name: 'Túnez' },
+  { code: 'TUR', name: 'Turquía' },
+  { code: 'UKR', name: 'Ucrania' },
+  { code: 'URU', name: 'Uruguay' },
+  { code: 'USA', name: 'Estados Unidos' },
+  { code: 'UZB', name: 'Uzbekistán' },
+  { code: 'VEN', name: 'Venezuela' },
+];
+
 function MatchFormModal({ initial, onSave, onClose }: {
   initial?: DBMatch | null;
   onSave: (m: DBMatch) => void;
@@ -828,20 +890,40 @@ function MatchFormModal({ initial, onSave, onClose }: {
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
           <div>
-            <label style={labelStyle}>Código local (3 letras)</label>
-            <input value={homeCode} onChange={e => setHomeCode(e.target.value.toUpperCase())} placeholder="MEX" maxLength={4} style={inputStyle}/>
+            <label style={labelStyle}>🏠 Equipo local</label>
+            <select
+              value={homeCode}
+              onChange={e => {
+                const team = WC_TEAMS.find(t => t.code === e.target.value);
+                setHomeCode(e.target.value);
+                setHomeName(team?.name ?? '');
+              }}
+              style={{ ...inputStyle, background: '#0D1829', cursor: 'pointer' }}
+            >
+              {WC_TEAMS.map(t => (
+                <option key={t.code} value={t.code} style={{ background: '#0D1829' }}>
+                  {t.code} — {t.name}
+                </option>
+              ))}
+            </select>
           </div>
           <div>
-            <label style={labelStyle}>Nombre local</label>
-            <input value={homeName} onChange={e => setHomeName(e.target.value)} placeholder="México" style={inputStyle}/>
-          </div>
-          <div>
-            <label style={labelStyle}>Código visitante (3 letras)</label>
-            <input value={awayCode} onChange={e => setAwayCode(e.target.value.toUpperCase())} placeholder="USA" maxLength={4} style={inputStyle}/>
-          </div>
-          <div>
-            <label style={labelStyle}>Nombre visitante</label>
-            <input value={awayName} onChange={e => setAwayName(e.target.value)} placeholder="Estados Unidos" style={inputStyle}/>
+            <label style={labelStyle}>✈️ Equipo visitante</label>
+            <select
+              value={awayCode}
+              onChange={e => {
+                const team = WC_TEAMS.find(t => t.code === e.target.value);
+                setAwayCode(e.target.value);
+                setAwayName(team?.name ?? '');
+              }}
+              style={{ ...inputStyle, background: '#0D1829', cursor: 'pointer' }}
+            >
+              {WC_TEAMS.map(t => (
+                <option key={t.code} value={t.code} style={{ background: '#0D1829' }}>
+                  {t.code} — {t.name}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
 
