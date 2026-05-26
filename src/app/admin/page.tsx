@@ -2297,22 +2297,6 @@ function ViewCelulares() {
       {ok && <div style={{ marginBottom: 14, padding: '10px 14px', background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: 8, fontSize: 13, color: c.green }}>{ok}</div>}
       {err && <div style={{ marginBottom: 14, padding: '10px 14px', background: 'rgba(244,63,94,0.1)', border: '1px solid rgba(244,63,94,0.3)', borderRadius: 8, fontSize: 13, color: c.rose }}>{err}</div>}
 
-      {/* SQL hint */}
-      <div style={{ marginBottom: 18, padding: '12px 16px', background: 'rgba(26,175,255,0.07)', border: `1px solid ${c.blue}33`, borderRadius: 10, fontSize: 12, color: c.blue }}>
-        <strong>📋 SQL necesario:</strong> Corre esto en Supabase SQL Editor si aún no existe la tabla:
-        <pre style={{ margin: '8px 0 0', fontSize: 11, color: c.muted, overflow: 'auto', whiteSpace: 'pre-wrap' }}>{`create table if not exists public.allowed_phones (
-  phone text primary key,
-  name text, group_name text,
-  premium boolean default false,
-  created_at timestamptz default now()
-);
-alter table public.allowed_phones enable row level security;
-create policy "Admin manages allowed_phones" on public.allowed_phones
-  for all to authenticated using (
-    (select role from public.profiles where id = auth.uid()) = 'admin'
-  );`}</pre>
-      </div>
-
       {loadingList ? (
         <div style={{ textAlign: 'center', padding: '40px 24px', color: c.muted }}>Cargando…</div>
       ) : phones.length === 0 ? (
