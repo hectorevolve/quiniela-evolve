@@ -1,11 +1,12 @@
 'use client';
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import Link from 'next/link';
+import * as XLSX from 'xlsx';
 import { MATCHES, KNOCKOUT_MATCHES, USER_PREDICTIONS, GROUP_MATCH_IDS } from '@/lib/data';
 import { EvolveMark } from '@/components/brand/EvolveMark';
 import { Avatar } from '@/components/ui';
 import { supabase } from '@/lib/supabase';
-import { getRankings, type RankingEntry, getMatchResults, saveMatchResult } from '@/lib/db';
+import { getRankings, type RankingEntry, getMatchResults, saveMatchResult, getMatches, updateMatch, createMatch, deleteMatch, type DBMatch } from '@/lib/db';
 
 type View = 'dashboard' | 'usuarios' | 'rankings' | 'predicciones' | 'partidos' | 'grupos' | 'grupo-detalle';
 type AdminUser = { name: string; pts: number; group: string; city: string; pos: number; country: string };
@@ -726,38 +727,216 @@ function ViewPredicciones({ users }: { users: AdminUser[] }) {
   );
 }
 
+// ─── Match form modal (create + edit) ─────────────────────────────────────────
+const PHASE_OPTIONS = [
+  'GRUPO A','GRUPO B','GRUPO C','GRUPO D','GRUPO E','GRUPO F',
+  'GRUPO G','GRUPO H','GRUPO I','GRUPO J','GRUPO K','GRUPO L',
+  'DIECISEISAVOS','OCTAVOS DE FINAL','CUARTOS DE FINAL',
+  'SEMIFINALES','TERCER LUGAR','FINAL','SERIE A',
+];
+
+function MatchFormModal({ initial, onSave, onClose }: {
+  initial?: DBMatch | null;
+  onSave: (m: DBMatch) => void;
+  onClose: () => void;
+}) {
+  const isEdit = !!initial;
+  const [id, setId]             = useState(initial?.id ?? '');
+  const [groupName, setGroup]   = useState(initial?.group_name ?? 'GRUPO A');
+  const [homeCode, setHomeCode] = useState(initial?.home_code ?? '');
+  const [homeName, setHomeName] = useState(initial?.home_name ?? '');
+  const [awayCode, setAwayCode] = useState(initial?.away_code ?? '');
+  const [awayName, setAwayName] = useState(initial?.away_name ?? '');
+  const [matchDate, setDate]    = useState(initial?.match_date ?? '');
+  const [stadium, setStadium]   = useState(initial?.stadium ?? '');
+  const [sortOrder, setSort]    = useState(initial?.sort_order ?? 0);
+  const [loading, setLoading]   = useState(false);
+  const [error, setError]       = useState<string | null>(null);
+
+  const handleSave = async () => {
+    if (!id.trim() || !homeCode.trim() || !awayCode.trim()) {
+      setError('ID, equipo local y equipo visitante son obligatorios.');
+      return;
+    }
+    setLoading(true); setError(null);
+    const data: DBMatch = {
+      id: id.trim().toLowerCase(),
+      group_name: groupName,
+      home_code: homeCode.trim().toUpperCase(),
+      home_name: homeName.trim(),
+      away_code: awayCode.trim().toUpperCase(),
+      away_name: awayName.trim(),
+      match_date: matchDate.trim(),
+      stadium: stadium.trim() || null,
+      sort_order: sortOrder,
+      result_home: initial?.result_home ?? null,
+      result_away: initial?.result_away ?? null,
+    };
+    try {
+      if (isEdit) {
+        await updateMatch(id, {
+          group_name: data.group_name, home_code: data.home_code, home_name: data.home_name,
+          away_code: data.away_code, away_name: data.away_name, match_date: data.match_date,
+          stadium: data.stadium, sort_order: data.sort_order,
+        });
+      } else {
+        await createMatch(data);
+      }
+      onSave(data);
+    } catch {
+      setError('Error al guardar. Intenta de nuevo.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const inputStyle: React.CSSProperties = {
+    width: '100%', padding: '9px 12px', borderRadius: 8,
+    border: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.06)',
+    color: c.text, fontSize: 13, fontFamily: 'inherit', outline: 'none',
+    boxSizing: 'border-box',
+  };
+  const labelStyle: React.CSSProperties = {
+    display: 'block', fontSize: 11, fontWeight: 600, color: c.muted,
+    letterSpacing: 1, textTransform: 'uppercase', marginBottom: 5,
+  };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: 20 }}>
+      <div style={{ background: '#0D1829', border: `1px solid ${c.border}`, borderRadius: 18, padding: 28, width: '100%', maxWidth: 520, maxHeight: '90vh', overflowY: 'auto' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 22 }}>
+          <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: c.text }}>{isEdit ? '✏️ Editar partido' : '➕ Nuevo partido'}</h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: c.muted, fontSize: 20, cursor: 'pointer' }}>✕</button>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+          <div>
+            <label style={labelStyle}>ID del partido</label>
+            <input value={id} onChange={e => setId(e.target.value)} disabled={isEdit}
+              placeholder="ej. a1, qf1, final"
+              style={{ ...inputStyle, opacity: isEdit ? 0.6 : 1 }}/>
+          </div>
+          <div>
+            <label style={labelStyle}>Fase / Grupo</label>
+            <select value={groupName} onChange={e => setGroup(e.target.value)} style={{ ...inputStyle, background: '#0D1829' }}>
+              {PHASE_OPTIONS.map(p => <option key={p} value={p} style={{ background: '#0D1829' }}>{p}</option>)}
+            </select>
+          </div>
+        </div>
+
+        <div style={{ margin: '14px 0', borderTop: `1px solid ${c.border}` }}/>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+          <div>
+            <label style={labelStyle}>Código local (3 letras)</label>
+            <input value={homeCode} onChange={e => setHomeCode(e.target.value.toUpperCase())} placeholder="MEX" maxLength={4} style={inputStyle}/>
+          </div>
+          <div>
+            <label style={labelStyle}>Nombre local</label>
+            <input value={homeName} onChange={e => setHomeName(e.target.value)} placeholder="México" style={inputStyle}/>
+          </div>
+          <div>
+            <label style={labelStyle}>Código visitante (3 letras)</label>
+            <input value={awayCode} onChange={e => setAwayCode(e.target.value.toUpperCase())} placeholder="USA" maxLength={4} style={inputStyle}/>
+          </div>
+          <div>
+            <label style={labelStyle}>Nombre visitante</label>
+            <input value={awayName} onChange={e => setAwayName(e.target.value)} placeholder="Estados Unidos" style={inputStyle}/>
+          </div>
+        </div>
+
+        <div style={{ margin: '14px 0', borderTop: `1px solid ${c.border}` }}/>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
+          <div>
+            <label style={labelStyle}>Fecha / hora (ISO o texto)</label>
+            <input value={matchDate} onChange={e => setDate(e.target.value)} placeholder="2026-06-11T17:00:00Z" style={inputStyle}/>
+          </div>
+          <div>
+            <label style={labelStyle}>Estadio (opcional)</label>
+            <input value={stadium} onChange={e => setStadium(e.target.value)} placeholder="SoFi Stadium" style={inputStyle}/>
+          </div>
+          <div>
+            <label style={labelStyle}>Orden (sort)</label>
+            <input type="number" value={sortOrder} onChange={e => setSort(Number(e.target.value))} style={inputStyle}/>
+          </div>
+        </div>
+
+        {error && (
+          <div style={{ marginBottom: 14, padding: '9px 13px', background: 'rgba(244,63,94,0.1)', border: '1px solid rgba(244,63,94,0.3)', borderRadius: 8, fontSize: 13, color: c.rose }}>{error}</div>
+        )}
+
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button onClick={onClose} style={{ flex: 1, padding: '12px', background: 'transparent', border: `1px solid ${c.border}`, borderRadius: 10, color: c.muted, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Cancelar</button>
+          <button onClick={handleSave} disabled={loading} style={{ flex: 2, padding: '12px', background: loading ? `${c.blue}66` : c.blue, border: 'none', borderRadius: 10, color: '#fff', fontSize: 13, fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer' }}>
+            {loading ? 'Guardando…' : isEdit ? 'Guardar cambios' : 'Crear partido'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Partidos + Resultados (fusionados) ───────────────────────────────────────
 function ViewPartidos() {
-  const allMatches = [...MATCHES, ...(KNOCKOUT_MATCHES ?? [])];
-  const [matches] = useState<AdminMatch[]>(allMatches);
-  // results: loaded from Supabase, updated on save
+  const [matches, setMatches] = useState<DBMatch[]>([]);
+  const [loadingMatches, setLoadingMatches] = useState(true);
   const [results, setResults] = useState<Record<string, [number, number]>>({});
-  const [drafts, setDrafts] = useState<Record<string, { home: string; away: string }>>(() => {
-    const d: Record<string, { home: string; away: string }> = {};
-    allMatches.forEach(m => { d[m.id] = { home: '', away: '' }; });
-    return d;
-  });
+  const [drafts, setDrafts] = useState<Record<string, { home: string; away: string }>>({});
   const [phaseFilter, setPhaseFilter] = useState('Todos');
   const [search, setSearch] = useState('');
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState('');
   const [saving, setSaving] = useState<string | null>(null);
+  const [editingMatch, setEditingMatch] = useState<DBMatch | null | undefined>(undefined); // undefined=closed, null=new
+  const [deleteTarget, setDeleteTarget] = useState<DBMatch | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const isMobile = useIsMobile();
 
-  // Load existing results from Supabase on mount
+  // Load matches + results from Supabase on mount
   useEffect(() => {
-    getMatchResults().then(setResults).catch(console.error);
+    Promise.all([getMatches(), getMatchResults()]).then(([ms, rs]) => {
+      setMatches(ms);
+      setResults(rs);
+      // Pre-fill drafts with existing results so they're always editable
+      const d: Record<string, { home: string; away: string }> = {};
+      ms.forEach(m => {
+        const saved = rs[m.id];
+        d[m.id] = saved ? { home: String(saved[0]), away: String(saved[1]) } : { home: '', away: '' };
+      });
+      setDrafts(d);
+      setLoadingMatches(false);
+    });
   }, []);
 
-  const phases = useMemo(() => ['Todos', ...Array.from(new Set(matches.map(m => m.group)))], [matches]);
+  const phases = useMemo(() => ['Todos', ...Array.from(new Set(matches.map(m => m.group_name)))], [matches]);
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
     return matches.filter(m =>
-      (phaseFilter === 'Todos' || m.group === phaseFilter) &&
-      (!q || m.home.code.toLowerCase().includes(q) || m.away.code.toLowerCase().includes(q) || m.id.toLowerCase().includes(q))
+      (phaseFilter === 'Todos' || m.group_name === phaseFilter) &&
+      (!q || m.home_code.toLowerCase().includes(q) || m.away_code.toLowerCase().includes(q) || m.id.toLowerCase().includes(q))
     );
   }, [matches, phaseFilter, search]);
+
+  const handleMatchSaved = (saved: DBMatch) => {
+    setMatches(prev => {
+      const idx = prev.findIndex(m => m.id === saved.id);
+      if (idx >= 0) { const next = [...prev]; next[idx] = saved; return next; }
+      return [...prev, saved].sort((a, b) => a.sort_order - b.sort_order);
+    });
+    setDrafts(prev => ({ ...prev, [saved.id]: prev[saved.id] ?? { home: '', away: '' } }));
+    setEditingMatch(undefined);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    await deleteMatch(deleteTarget.id);
+    setMatches(prev => prev.filter(m => m.id !== deleteTarget.id));
+    setDeleteTarget(null);
+    setDeleting(false);
+  };
 
   // Save a result to Supabase
   const saveResult = async (matchId: string) => {
@@ -788,7 +967,6 @@ function ViewPartidos() {
         setSyncMsg(`⚠ ${json.error}`);
       } else {
         setSyncMsg(`✓ ${json.synced} resultado${json.synced !== 1 ? 's' : ''} sincronizado${json.synced !== 1 ? 's' : ''} (${json.total} partidos en la API)`);
-        // Reload results from DB
         const fresh = await getMatchResults();
         setResults(fresh);
       }
@@ -799,23 +977,61 @@ function ViewPartidos() {
     }
   };
 
+  const [seedingH2H, setSeedingH2H] = useState(false);
+  const [seedH2HMsg, setSeedH2HMsg] = useState('');
+  const handleSeedH2H = async () => {
+    setSeedingH2H(true); setSeedH2HMsg('');
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) { setSeedH2HMsg('⚠ Sin sesión'); return; }
+      const res = await fetch('/api/admin/seed-h2h', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${session.access_token}` },
+      });
+      const json = await res.json();
+      if (json.error) setSeedH2HMsg(`⚠ ${json.error}`);
+      else setSeedH2HMsg(`✓ ${json.seeded} partidos con historial migrados a Supabase`);
+    } catch { setSeedH2HMsg('⚠ Error de red'); }
+    finally { setSeedingH2H(false); }
+  };
+
   return (
     <div>
-      <SectionHeader title="Partidos y Resultados" sub={`${matches.length} partidos en el torneo · ${Object.keys(results).length} resultados registrados`}/>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20, gap: 12, flexWrap: 'wrap' }}>
+        <div>
+          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: c.text }}>Partidos y Resultados</h2>
+          <p style={{ margin: '4px 0 0', fontSize: 13, color: c.muted }}>
+            {loadingMatches ? 'Cargando…' : `${matches.length} partidos · ${Object.keys(results).length} resultados registrados`}
+          </p>
+        </div>
+        <button onClick={() => setEditingMatch(null)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 18px', background: c.blue, color: '#fff', border: 'none', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+          ＋ Agregar partido
+        </button>
+      </div>
 
-      {/* Sync bar */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, padding: '12px 16px', background: `${c.lime}0D`, border: `1px solid ${c.lime}33`, borderRadius: 12 }}>
+      {/* Sync results bar */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10, padding: '12px 16px', background: `${c.lime}0D`, border: `1px solid ${c.lime}33`, borderRadius: 12 }}>
         <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: c.lime }}>🔄 Sincronizar desde football-data.org</div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: c.lime }}>🔄 Sincronizar resultados</div>
           <div style={{ fontSize: 11, color: c.muted, marginTop: 2 }}>
             {syncMsg || 'Descarga automáticamente los resultados de partidos terminados del Mundial.'}
           </div>
         </div>
-        <button
-          onClick={handleSync}
-          disabled={syncing}
-          style={{ padding: '8px 18px', borderRadius: 8, border: 'none', background: syncing ? c.border : c.lime, color: syncing ? c.muted : '#000', fontWeight: 700, fontSize: 13, cursor: syncing ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}>
+        <button onClick={handleSync} disabled={syncing} style={{ padding: '8px 18px', borderRadius: 8, border: 'none', background: syncing ? c.border : c.lime, color: syncing ? c.muted : '#000', fontWeight: 700, fontSize: 13, cursor: syncing ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}>
           {syncing ? 'Sincronizando…' : 'Sincronizar ahora'}
+        </button>
+      </div>
+
+      {/* Seed H2H bar */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, padding: '12px 16px', background: `${c.blue}0D`, border: `1px solid ${c.blue}33`, borderRadius: 12 }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: c.blue }}>📊 Historial H2H — migrar a Supabase</div>
+          <div style={{ fontSize: 11, color: c.muted, marginTop: 2 }}>
+            {seedH2HMsg || 'Sube el historial de todos los partidos de grupos a la base de datos. Hazlo una sola vez.'}
+          </div>
+        </div>
+        <button onClick={handleSeedH2H} disabled={seedingH2H} style={{ padding: '8px 18px', borderRadius: 8, border: 'none', background: seedingH2H ? c.border : c.blue, color: '#fff', fontWeight: 700, fontSize: 13, cursor: seedingH2H ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}>
+          {seedingH2H ? 'Migrando…' : 'Migrar historial'}
         </button>
       </div>
 
@@ -831,50 +1047,62 @@ function ViewPartidos() {
       </div>
 
       {viewMode === 'grid' ? (
-        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(300px, 1fr))', gap: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
           {filtered.map(m => {
             const saved = results[m.id];
             const draft = drafts[m.id] ?? { home: '', away: '' };
+            const isDirty = saved ? (draft.home !== String(saved[0]) || draft.away !== String(saved[1])) : (draft.home !== '' || draft.away !== '');
             return (
               <div key={m.id} style={{ background: c.card, border: `1px solid ${saved ? c.lime + '44' : c.border}`, borderRadius: 14, padding: '16px 18px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: c.blue }}>{m.id.toUpperCase()}</span>
-                  <span style={{ fontSize: 10, color: c.muted }}>{m.group}</span>
-                </div>
-                <div style={{ fontSize: 15, fontWeight: 800, color: c.text, marginBottom: 4, textAlign: 'center' }}>
-                  {m.home.code} <span style={{ color: c.muted, fontWeight: 400 }}>vs</span> {m.away.code}
-                </div>
-                <div style={{ fontSize: 10, color: c.dim, textAlign: 'center', marginBottom: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.date}</div>
-                {saved ? (
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 10, padding: '6px 0', background: `${c.lime}11`, borderRadius: 8 }}>
-                    <span style={{ fontFamily: 'monospace', fontSize: 16, fontWeight: 800, color: c.lime }}>{saved[0]} – {saved[1]}</span>
-                    <button onClick={() => clearResult(m.id)} style={{ padding: '2px 6px', borderRadius: 4, border: `1px solid ${c.rose}44`, background: `${c.rose}11`, color: c.rose, fontSize: 10, fontWeight: 600, cursor: 'pointer' }}>✕</button>
+                {/* Header row */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: c.blue }}>{m.id.toUpperCase()}</span>
+                    <span style={{ fontSize: 9, color: c.muted }}>{m.group_name}</span>
                   </div>
-                ) : (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 10, justifyContent: 'center' }}>
-                    <input type="number" min={0} placeholder="0" value={draft.home}
-                      onChange={e => setDrafts(prev => ({ ...prev, [m.id]: { ...prev[m.id], home: e.target.value } }))}
-                      style={{ width: 44, padding: '5px 6px', borderRadius: 6, border: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.06)', color: c.text, fontSize: 14, fontWeight: 700, textAlign: 'center', fontFamily: 'inherit', outline: 'none' }}/>
-                    <span style={{ color: c.muted }}>–</span>
-                    <input type="number" min={0} placeholder="0" value={draft.away}
-                      onChange={e => setDrafts(prev => ({ ...prev, [m.id]: { ...prev[m.id], away: e.target.value } }))}
-                      style={{ width: 44, padding: '5px 6px', borderRadius: 6, border: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.06)', color: c.text, fontSize: 14, fontWeight: 700, textAlign: 'center', fontFamily: 'inherit', outline: 'none' }}/>
-                    <button onClick={() => saveResult(m.id)} disabled={saving === m.id} style={{ padding: '5px 10px', borderRadius: 6, border: 'none', background: saving === m.id ? c.border : c.lime, color: saving === m.id ? c.muted : '#000', fontSize: 11, fontWeight: 700, cursor: saving === m.id ? 'not-allowed' : 'pointer' }}>{saving === m.id ? '…' : 'Guardar'}</button>
+                  <div style={{ display: 'flex', gap: 4 }}>
+                    <button onClick={() => setEditingMatch(m)} title="Editar equipos/fecha"
+                      style={{ padding: '3px 7px', borderRadius: 5, border: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.06)', color: c.muted, fontSize: 11, cursor: 'pointer' }}>✏️</button>
+                    <button onClick={() => setDeleteTarget(m)} title="Borrar partido"
+                      style={{ padding: '3px 7px', borderRadius: 5, border: `1px solid ${c.rose}33`, background: `${c.rose}11`, color: c.rose, fontSize: 11, cursor: 'pointer' }}>🗑</button>
                   </div>
-                )}
+                </div>
+                {/* Teams */}
+                <div style={{ fontSize: 15, fontWeight: 800, color: c.text, marginBottom: 2, textAlign: 'center' }}>
+                  {m.home_code} <span style={{ color: c.muted, fontWeight: 400 }}>vs</span> {m.away_code}
+                </div>
+                <div style={{ fontSize: 10, color: c.dim, textAlign: 'center', marginBottom: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.match_date}</div>
+                {/* Result inputs — always editable, pre-filled */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5, justifyContent: 'center' }}>
+                  <input type="number" min={0} placeholder="–" value={draft.home}
+                    onChange={e => setDrafts(prev => ({ ...prev, [m.id]: { ...prev[m.id], home: e.target.value } }))}
+                    style={{ width: 44, padding: '5px 6px', borderRadius: 6, border: `1px solid ${isDirty ? c.amber : saved ? c.lime + '88' : c.border}`, background: 'rgba(255,255,255,0.06)', color: c.text, fontSize: 14, fontWeight: 700, textAlign: 'center', fontFamily: 'inherit', outline: 'none' }}/>
+                  <span style={{ color: c.muted }}>–</span>
+                  <input type="number" min={0} placeholder="–" value={draft.away}
+                    onChange={e => setDrafts(prev => ({ ...prev, [m.id]: { ...prev[m.id], away: e.target.value } }))}
+                    style={{ width: 44, padding: '5px 6px', borderRadius: 6, border: `1px solid ${isDirty ? c.amber : saved ? c.lime + '88' : c.border}`, background: 'rgba(255,255,255,0.06)', color: c.text, fontSize: 14, fontWeight: 700, textAlign: 'center', fontFamily: 'inherit', outline: 'none' }}/>
+                  <button onClick={() => saveResult(m.id)} disabled={saving === m.id || (!draft.home && !draft.away)}
+                    style={{ padding: '5px 10px', borderRadius: 6, border: 'none', background: saving === m.id ? c.border : isDirty ? c.amber : c.lime, color: saving === m.id ? c.muted : '#000', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
+                    {saving === m.id ? '…' : isDirty ? 'Actualizar' : 'Guardar'}
+                  </button>
+                  {saved && (
+                    <button onClick={() => { clearResult(m.id); setDrafts(prev => ({ ...prev, [m.id]: { home: '', away: '' } })); }} title="Borrar resultado"
+                      style={{ padding: '5px 7px', borderRadius: 6, border: `1px solid ${c.rose}44`, background: `${c.rose}11`, color: c.rose, fontSize: 11, cursor: 'pointer' }}>✕</button>
+                  )}
+                </div>
               </div>
             );
           })}
-          {filtered.length === 0 && <div style={{ gridColumn: '1/-1', padding: 40, textAlign: 'center', color: c.muted }}>Sin resultados</div>}
+          {filtered.length === 0 && <div style={{ gridColumn: '1/-1', padding: 40, textAlign: 'center', color: c.muted }}>Sin partidos</div>}
         </div>
       ) : (
         <div style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 14, overflow: 'hidden' }}>
           <TableWrap>
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 680 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 700 }}>
               <thead>
                 <tr style={{ borderBottom: `1px solid ${c.border}` }}>
-                  {['ID','Fase/Grupo','Partido','Fecha','Resultado guardado','Registrar resultado'].map(h => (
-                    <th key={h} style={{ padding: '11px 12px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: c.muted, letterSpacing: 0.8, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{h}</th>
+                  {['','ID','Fase/Grupo','Partido','Fecha','Resultado'].map(h => (
+                    <th key={h} style={{ padding: '11px 10px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: c.muted, letterSpacing: 0.8, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -882,34 +1110,44 @@ function ViewPartidos() {
                 {filtered.map((m, i) => {
                   const saved = results[m.id];
                   const draft = drafts[m.id] ?? { home: '', away: '' };
+                  const isDirty = saved ? (draft.home !== String(saved[0]) || draft.away !== String(saved[1])) : (draft.home !== '' || draft.away !== '');
                   return (
                     <tr key={m.id} style={{ borderBottom: i < filtered.length - 1 ? `1px solid ${c.border}` : 'none' }}
                       onMouseEnter={e => (e.currentTarget.style.background = c.rowHov)}
                       onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-                      <td style={{ padding: '10px 12px', fontSize: 12, fontWeight: 700, color: c.blue, whiteSpace: 'nowrap' }}>{m.id.toUpperCase()}</td>
-                      <td style={{ padding: '10px 12px', fontSize: 11, color: c.muted, whiteSpace: 'nowrap' }}>{m.group}</td>
-                      <td style={{ padding: '10px 12px', fontSize: 13, fontWeight: 700, color: c.text, whiteSpace: 'nowrap' }}>
-                        {m.home.code} <span style={{ color: c.muted, fontWeight: 400 }}>vs</span> {m.away.code}
+                      {/* Edit / Delete — FIRST column, always visible */}
+                      <td style={{ padding: '8px 8px 8px 12px', whiteSpace: 'nowrap' }}>
+                        <div style={{ display: 'flex', gap: 4 }}>
+                          <button onClick={() => setEditingMatch(m)} title="Editar equipos/fecha"
+                            style={{ padding: '4px 7px', borderRadius: 6, border: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.05)', color: c.muted, fontSize: 12, cursor: 'pointer' }}>✏️</button>
+                          <button onClick={() => setDeleteTarget(m)} title="Borrar partido"
+                            style={{ padding: '4px 7px', borderRadius: 6, border: `1px solid ${c.rose}33`, background: `${c.rose}11`, color: c.rose, fontSize: 12, cursor: 'pointer' }}>🗑</button>
+                        </div>
                       </td>
-                      <td style={{ padding: '10px 12px', fontSize: 11, color: c.muted, maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.date}</td>
-                      <td style={{ padding: '10px 12px' }}>
-                        {saved
-                          ? <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                              <span style={{ fontFamily: 'monospace', fontSize: 14, fontWeight: 800, color: c.lime }}>{saved[0]} – {saved[1]}</span>
-                              <button onClick={() => clearResult(m.id)} style={{ padding: '2px 6px', borderRadius: 4, border: `1px solid ${c.rose}44`, background: `${c.rose}11`, color: c.rose, fontSize: 10, fontWeight: 600, cursor: 'pointer' }}>✕</button>
-                            </div>
-                          : <span style={{ fontSize: 11, color: c.dim, fontStyle: 'italic' }}>—</span>}
+                      <td style={{ padding: '10px 10px', fontSize: 12, fontWeight: 700, color: c.blue, whiteSpace: 'nowrap' }}>{m.id.toUpperCase()}</td>
+                      <td style={{ padding: '10px 10px', fontSize: 11, color: c.muted, whiteSpace: 'nowrap' }}>{m.group_name}</td>
+                      <td style={{ padding: '10px 10px', fontSize: 13, fontWeight: 700, color: c.text, whiteSpace: 'nowrap' }}>
+                        {m.home_code} <span style={{ color: c.muted, fontWeight: 400 }}>vs</span> {m.away_code}
                       </td>
-                      <td style={{ padding: '10px 12px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                          <input type="number" min={0} placeholder="0" value={draft.home}
+                      <td style={{ padding: '10px 10px', fontSize: 11, color: c.muted, maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.match_date}</td>
+                      {/* Unified result cell — always editable, pre-filled with saved value */}
+                      <td style={{ padding: '8px 10px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <input type="number" min={0} placeholder="–" value={draft.home}
                             onChange={e => setDrafts(prev => ({ ...prev, [m.id]: { ...prev[m.id], home: e.target.value } }))}
-                            style={{ width: 40, padding: '4px 6px', borderRadius: 6, border: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.06)', color: c.text, fontSize: 13, fontWeight: 700, textAlign: 'center', fontFamily: 'inherit', outline: 'none' }}/>
-                          <span style={{ color: c.muted }}>–</span>
-                          <input type="number" min={0} placeholder="0" value={draft.away}
+                            style={{ width: 38, padding: '4px 4px', borderRadius: 6, border: `1px solid ${isDirty ? c.amber : saved ? c.lime + '88' : c.border}`, background: saved && !isDirty ? `${c.lime}11` : 'rgba(255,255,255,0.06)', color: saved && !isDirty ? c.lime : c.text, fontSize: 13, fontWeight: 700, textAlign: 'center', fontFamily: 'inherit', outline: 'none' }}/>
+                          <span style={{ color: c.muted, fontSize: 12 }}>–</span>
+                          <input type="number" min={0} placeholder="–" value={draft.away}
                             onChange={e => setDrafts(prev => ({ ...prev, [m.id]: { ...prev[m.id], away: e.target.value } }))}
-                            style={{ width: 40, padding: '4px 6px', borderRadius: 6, border: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.06)', color: c.text, fontSize: 13, fontWeight: 700, textAlign: 'center', fontFamily: 'inherit', outline: 'none' }}/>
-                          <button onClick={() => saveResult(m.id)} style={{ padding: '4px 9px', borderRadius: 6, border: 'none', background: c.lime, color: '#000', fontSize: 11, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>Guardar</button>
+                            style={{ width: 38, padding: '4px 4px', borderRadius: 6, border: `1px solid ${isDirty ? c.amber : saved ? c.lime + '88' : c.border}`, background: saved && !isDirty ? `${c.lime}11` : 'rgba(255,255,255,0.06)', color: saved && !isDirty ? c.lime : c.text, fontSize: 13, fontWeight: 700, textAlign: 'center', fontFamily: 'inherit', outline: 'none' }}/>
+                          <button onClick={() => saveResult(m.id)} disabled={saving === m.id || (!draft.home && !draft.away)}
+                            style={{ padding: '4px 8px', borderRadius: 6, border: 'none', background: saving === m.id ? c.border : isDirty && saved ? c.amber : c.lime, color: saving === m.id ? c.muted : '#000', fontSize: 11, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', opacity: (!draft.home && !draft.away) ? 0.4 : 1 }}>
+                            {saving === m.id ? '…' : isDirty && saved ? 'Actualizar' : 'Guardar'}
+                          </button>
+                          {saved && (
+                            <button onClick={() => { clearResult(m.id); setDrafts(prev => ({ ...prev, [m.id]: { home: '', away: '' } })); }} title="Borrar resultado"
+                              style={{ padding: '4px 6px', borderRadius: 6, border: `1px solid ${c.rose}44`, background: `${c.rose}11`, color: c.rose, fontSize: 11, cursor: 'pointer' }}>✕</button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -918,7 +1156,38 @@ function ViewPartidos() {
               </tbody>
             </table>
           </TableWrap>
-          {filtered.length === 0 && <div style={{ padding: 40, textAlign: 'center', color: c.muted }}>Sin resultados</div>}
+          {filtered.length === 0 && <div style={{ padding: 40, textAlign: 'center', color: c.muted }}>Sin partidos</div>}
+        </div>
+      )}
+
+      {/* Edit / Create modal */}
+      {editingMatch !== undefined && (
+        <MatchFormModal
+          initial={editingMatch}
+          onSave={handleMatchSaved}
+          onClose={() => setEditingMatch(undefined)}
+        />
+      )}
+
+      {/* Delete confirm */}
+      {deleteTarget && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: 20 }}>
+          <div style={{ background: '#0D1829', border: `1px solid ${c.rose}44`, borderRadius: 18, padding: 28, width: '100%', maxWidth: 400, textAlign: 'center' }}>
+            <div style={{ fontSize: 40, marginBottom: 12 }}>🗑</div>
+            <div style={{ fontSize: 18, fontWeight: 700, color: c.text, marginBottom: 8 }}>¿Borrar partido?</div>
+            <div style={{ fontSize: 14, color: c.muted, marginBottom: 6 }}>
+              <strong style={{ color: c.text }}>{deleteTarget.id.toUpperCase()}</strong> — {deleteTarget.home_code} vs {deleteTarget.away_code}
+            </div>
+            <div style={{ fontSize: 12, color: c.rose, marginBottom: 24 }}>
+              ⚠ Esto también borrará todas las predicciones de este partido.
+            </div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={() => setDeleteTarget(null)} style={{ flex: 1, padding: '12px', background: 'transparent', border: `1px solid ${c.border}`, borderRadius: 10, color: c.muted, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Cancelar</button>
+              <button onClick={handleDeleteConfirm} disabled={deleting} style={{ flex: 1, padding: '12px', background: c.rose, border: 'none', borderRadius: 10, color: '#fff', fontSize: 13, fontWeight: 700, cursor: deleting ? 'not-allowed' : 'pointer' }}>
+                {deleting ? 'Borrando…' : 'Sí, borrar'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -978,7 +1247,7 @@ function ViewGrupoDetalle({ group, liveUsers, onBack, onUserUpdated, onUserRemov
   const [applyResults, setApplyResults] = useState<Record<string, number>>({});
 
   useEffect(() => {
-    if (isSpecial) { setPrizesLoading(false); return; }
+    if (isSinGrupo) { setPrizesLoading(false); return; }
     setPrizesLoading(true);
     (async () => {
       const { data } = await supabase.from('group_settings')
@@ -1089,10 +1358,10 @@ function ViewGrupoDetalle({ group, liveUsers, onBack, onUserUpdated, onUserRemov
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: isSpecial ? '1fr' : 'minmax(0,1fr) minmax(0,1fr)', gap: 24, alignItems: 'start' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isSinGrupo ? '1fr' : 'minmax(0,1fr) minmax(0,1fr)', gap: 24, alignItems: 'start' }}>
 
-        {/* ── Premios del grupo (solo grupos reales) ── */}
-        {!isSpecial && <div>
+        {/* ── Premios del grupo ── */}
+        {!isSinGrupo && <div>
           <SectionHeader title="Premios del grupo" sub="Qué gana cada lugar dentro de este grupo"/>
           <div style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 14, padding: '20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
             {prizesLoading ? (
@@ -1179,8 +1448,8 @@ function ViewGrupoDetalle({ group, liveUsers, onBack, onUserUpdated, onUserRemov
 
       </div>
 
-      {/* ── Premios Bonus (solo grupos reales) ── */}
-      {!isSpecial && (
+      {/* ── Premios Bonus ── */}
+      {!isSinGrupo && (
         <div style={{ marginTop: 28 }}>
           <SectionHeader title="Premios bonus" sub="Predicciones especiales — elige si el premio son puntos o algo más"/>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 14 }}>
@@ -1338,11 +1607,361 @@ function ViewGrupos({ liveUsers, onSelectGroup }: { liveUsers: LiveUser[]; onSel
 }
 
 // ─── Crear / Gestionar Usuarios ──────────────────────────────────────────────
-function ViewUsuariosAdmin({ liveUsers, onUserCreated }: { liveUsers: { id: string; name: string; email: string; role: string; group_name: string | null; premium: boolean }[]; onUserCreated: (u: { id: string; name: string; email: string; role: string; group_name: string | null; premium: boolean }) => void }) {
+// ─── Import helpers ───────────────────────────────────────────────────────────
+const toSlug = (s: string) =>
+  s.trim().toLowerCase()
+   .normalize('NFD').replace(/[̀-ͯ]/g, '')
+   .replace(/\s+/g, '.')
+   .replace(/[^a-z0-9.]/g, '');
+
+const genPassword = () => {
+  const chars = 'abcdefghjkmnpqrstuvwxyz23456789';
+  return Array.from({ length: 8 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+};
+
+interface ImportRow {
+  numero:   string;
+  nombre:   string;
+  grupo:    string;
+  telefono: string;  // primary identifier — used as phone auth key
+  status:   'pending' | 'ok' | 'error';
+  errorMsg: string;
+}
+
+function normalizePhoneImport(raw: string): string {
+  const digits = raw.replace(/\D/g, '');
+  if (digits.length === 10) return `+52${digits}`;
+  if (digits.length === 12 && digits.startsWith('52')) return `+${digits}`;
+  if (raw.startsWith('+')) return raw.trim();
+  return `+${digits}`;
+}
+
+function ImportModal({ onClose, onDone }: {
+  onClose: () => void;
+  onDone: (created: ImportRow[]) => void;
+}) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [step, setStep] = useState<'upload' | 'preview' | 'importing' | 'done'>('upload');
+  const [rows, setRows] = useState<ImportRow[]>([]);
+  const [defaultGroup, setDefaultGroup] = useState('Evolve');
+  const [premium, setPremium] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [dragOver, setDragOver] = useState(false);
+
+  const parseFile = async (file: File) => {
+    const ext = file.name.split('.').pop()?.toLowerCase();
+    let rawRows: Record<string, unknown>[] = [];
+    if (ext === 'csv') {
+      const text = await file.text();
+      const lines = text.trim().split(/\r?\n/);
+      const headers = lines[0].split(',').map(h => h.trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''));
+      rawRows = lines.slice(1).map(line => {
+        const vals = line.split(',');
+        const obj: Record<string, unknown> = {};
+        headers.forEach((h, i) => { obj[h] = (vals[i] ?? '').trim(); });
+        return obj;
+      });
+    } else {
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: 'array' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      rawRows = XLSX.utils.sheet_to_json(ws, { defval: '' }) as Record<string, unknown>[];
+    }
+
+    const norm = (v: unknown) => String(v ?? '').trim();
+    const findCol = (obj: Record<string, unknown>, ...keys: string[]) => {
+      for (const k of Object.keys(obj)) {
+        const kl = k.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+        for (const target of keys) if (kl.includes(target)) return norm(obj[k]);
+      }
+      return '';
+    };
+
+    const parsed: ImportRow[] = rawRows
+      .filter(r => findCol(r, 'nombre', 'name') || findCol(r, 'telefono', 'tel', 'phone', 'celular', 'movil', 'cel'))
+      .map(r => {
+        const nombre   = findCol(r, 'nombre', 'name');
+        const numero   = findCol(r, 'numero', 'num', '#');
+        const grupo    = findCol(r, 'grupo', 'group') || defaultGroup;
+        const rawTel   = findCol(r, 'telefono', 'tel', 'phone', 'celular', 'movil', 'cel');
+        const telefono = rawTel ? normalizePhoneImport(rawTel) : '';
+        return { numero, nombre, grupo, telefono, status: 'pending' as const, errorMsg: '' };
+      });
+
+    setRows(parsed);
+    setStep('preview');
+  };
+
+  const handleFile = (file: File | null) => { if (file) parseFile(file); };
+
+  const handleImport = async () => {
+    setStep('importing');
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
+    const updated = [...rows];
+    for (let i = 0; i < updated.length; i++) {
+      const row = updated[i];
+      if (!row.telefono) {
+        updated[i] = { ...row, status: 'error', errorMsg: 'Sin teléfono' };
+        setProgress(Math.round(((i + 1) / updated.length) * 100));
+        setRows([...updated]);
+        continue;
+      }
+      try {
+        const res = await fetch('/api/admin/create-user', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+          body: JSON.stringify({ name: row.nombre || row.telefono, phone: row.telefono, group_name: row.grupo, role: 'user', premium }),
+        });
+        const json = await res.json();
+        updated[i] = { ...row, status: res.ok ? 'ok' : 'error', errorMsg: res.ok ? '' : (json.error ?? 'Error') };
+      } catch {
+        updated[i] = { ...row, status: 'error', errorMsg: 'Error de red' };
+      }
+      setProgress(Math.round(((i + 1) / updated.length) * 100));
+      setRows([...updated]);
+    }
+    setStep('done');
+    onDone(updated.filter(r => r.status === 'ok'));
+  };
+
+  const okCount    = rows.filter(r => r.status === 'ok').length;
+  const errorCount = rows.filter(r => r.status === 'error').length;
+  const noPhoneCount = rows.filter(r => !r.telefono).length;
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: 20 }}>
+      <div style={{ background: '#0D1829', border: `1px solid ${c.border}`, borderRadius: 20, width: '100%', maxWidth: 600, maxHeight: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+
+        {/* Header */}
+        <div style={{ padding: '20px 24px 16px', borderBottom: `1px solid ${c.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+          <div>
+            <div style={{ fontSize: 17, fontWeight: 700, color: c.text }}>📥 Importar usuarios</div>
+            <div style={{ fontSize: 12, color: c.muted, marginTop: 2 }}>
+              {step === 'upload' && 'Sube un archivo Excel o CSV con el número celular de cada empleado'}
+              {step === 'preview' && `${rows.length} usuarios detectados · ${noPhoneCount > 0 ? `⚠ ${noPhoneCount} sin teléfono` : 'todos con teléfono ✓'}`}
+              {step === 'importing' && `Importando… ${progress}%`}
+              {step === 'done' && `✓ ${okCount} creados · ${errorCount} errores`}
+            </div>
+          </div>
+          {step !== 'importing' && (
+            <button onClick={onClose} style={{ background: 'none', border: 'none', color: c.muted, fontSize: 22, cursor: 'pointer', lineHeight: 1 }}>✕</button>
+          )}
+        </div>
+
+        {/* Body */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: 24 }}>
+
+          {/* Step 1: Upload */}
+          {step === 'upload' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+              <div
+                onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+                onDragLeave={() => setDragOver(false)}
+                onDrop={e => { e.preventDefault(); setDragOver(false); handleFile(e.dataTransfer.files[0]); }}
+                onClick={() => fileRef.current?.click()}
+                style={{
+                  border: `2px dashed ${dragOver ? c.blue : c.border}`,
+                  borderRadius: 14, padding: '40px 24px',
+                  textAlign: 'center', cursor: 'pointer',
+                  background: dragOver ? `${c.blue}10` : 'rgba(255,255,255,0.02)',
+                  transition: 'all 200ms',
+                }}
+              >
+                <div style={{ fontSize: 40, marginBottom: 12 }}>📂</div>
+                <div style={{ fontSize: 15, fontWeight: 600, color: c.text, marginBottom: 6 }}>Arrastra tu archivo aquí o haz clic</div>
+                <div style={{ fontSize: 12, color: c.muted }}>.xlsx · .xls · .csv</div>
+                <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" style={{ display: 'none' }} onChange={e => handleFile(e.target.files?.[0] ?? null)}/>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: c.muted, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 6 }}>Grupo por defecto</label>
+                <select value={defaultGroup} onChange={e => setDefaultGroup(e.target.value)} style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: `1px solid ${c.border}`, background: '#0D1829', color: c.text, fontSize: 13, fontFamily: 'inherit', outline: 'none' }}>
+                  {ALL_GROUPS.map(g => <option key={g} value={g} style={{ background: '#0D1829' }}>{g}</option>)}
+                </select>
+                <div style={{ fontSize: 10, color: c.muted, marginTop: 4 }}>Se usa si la columna Grupo está vacía en el archivo</div>
+              </div>
+
+              <div style={{ padding: '14px 16px', background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, borderRadius: 10 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: c.muted, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.8 }}>Formato del archivo</div>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                    <thead>
+                      <tr>{['Numero', 'Nombre', 'Celular', 'Grupo'].map(h => (
+                        <th key={h} style={{ padding: '6px 10px', textAlign: 'left', color: c.blue, borderBottom: `1px solid ${c.border}`, fontWeight: 700 }}>{h}</th>
+                      ))}</tr>
+                    </thead>
+                    <tbody>
+                      {[['1', 'Juan Pérez', '8121234567', 'Evolve'], ['2', 'María García', '+528127654321', 'ADM'], ['3', 'Carlos López', '9991111222', '']].map((row, i) => (
+                        <tr key={i}>{row.map((v, j) => <td key={j} style={{ padding: '5px 10px', color: v ? c.text : c.dim, fontStyle: v || j < 3 ? 'normal' : 'italic' }}>{v || '(usa grupo por defecto)'}</td>)}</tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div style={{ marginTop: 10, fontSize: 11, color: c.muted, lineHeight: 1.5 }}>
+                  ✦ El celular es la <strong style={{ color: c.blue }}>llave de acceso</strong> de cada empleado — es obligatorio.<br/>
+                  ✦ Se acepta con o sin +52 — se normaliza automáticamente.
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Step 2: Preview */}
+          {step === 'preview' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 14px', background: 'rgba(255,255,255,0.04)', borderRadius: 10, border: `1px solid ${c.border}` }}>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: c.text }}>Acceso Premium</div>
+                  <div style={{ fontSize: 11, color: c.muted }}>Para todos los importados</div>
+                </div>
+                <button onClick={() => setPremium(v => !v)} style={{ width: 44, height: 24, borderRadius: 12, border: 'none', cursor: 'pointer', background: premium ? c.blue : 'rgba(255,255,255,0.15)', position: 'relative', flexShrink: 0, transition: 'background 200ms' }}>
+                  <div style={{ width: 18, height: 18, borderRadius: '50%', background: '#fff', position: 'absolute', top: 3, left: premium ? 23 : 3, transition: 'left 200ms' }}/>
+                </button>
+              </div>
+
+              {noPhoneCount > 0 && (
+                <div style={{ padding: '10px 14px', background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 8, fontSize: 12, color: c.amber }}>
+                  ⚠ {noPhoneCount} fila{noPhoneCount > 1 ? 's' : ''} sin número de celular — no se podrán importar
+                </div>
+              )}
+
+              <div style={{ border: `1px solid ${c.border}`, borderRadius: 12, overflow: 'hidden' }}>
+                <div style={{ overflowX: 'auto', maxHeight: 360, overflowY: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                    <thead style={{ position: 'sticky', top: 0, background: '#0D1829', zIndex: 1 }}>
+                      <tr>{['#', 'Nombre', 'Celular', 'Grupo'].map(h => (
+                        <th key={h} style={{ padding: '10px 12px', textAlign: 'left', color: c.muted, borderBottom: `1px solid ${c.border}`, fontWeight: 600 }}>{h}</th>
+                      ))}</tr>
+                    </thead>
+                    <tbody>
+                      {rows.map((row, i) => (
+                        <tr key={i} style={{ borderBottom: `1px solid ${c.border}`, opacity: row.telefono ? 1 : 0.5 }}>
+                          <td style={{ padding: '8px 12px', color: c.dim }}>{row.numero || i + 1}</td>
+                          <td style={{ padding: '8px 12px', color: c.text, fontWeight: 600 }}>{row.nombre || <span style={{ color: c.muted, fontStyle: 'italic' }}>sin nombre</span>}</td>
+                          <td style={{ padding: '8px 12px', color: row.telefono ? c.blue : c.rose, fontFamily: 'monospace', fontWeight: 600 }}>
+                            {row.telefono || <span style={{ fontStyle: 'italic', fontWeight: 400 }}>⚠ sin celular</span>}
+                          </td>
+                          <td style={{ padding: '8px 12px', color: c.muted }}>{row.grupo}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Step 3: Importing */}
+          {step === 'importing' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div style={{ background: 'rgba(255,255,255,0.04)', borderRadius: 10, overflow: 'hidden', height: 8 }}>
+                <div style={{ height: '100%', background: c.blue, width: `${progress}%`, transition: 'width 300ms ease', borderRadius: 10 }}/>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 400, overflowY: 'auto' }}>
+                {rows.map((row, i) => (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', background: 'rgba(255,255,255,0.03)', borderRadius: 8 }}>
+                    <span style={{ fontSize: 14, width: 20, flexShrink: 0 }}>
+                      {row.status === 'ok' ? '✅' : row.status === 'error' ? '❌' : '⏳'}
+                    </span>
+                    <span style={{ flex: 1, fontSize: 13, color: c.text }}>{row.nombre || row.telefono}</span>
+                    <span style={{ fontSize: 11, color: c.muted, fontFamily: 'monospace' }}>{row.telefono}</span>
+                    {row.status === 'error' && <span style={{ fontSize: 11, color: c.rose }}>{row.errorMsg}</span>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Step 4: Done */}
+          {step === 'done' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div style={{ padding: '16px', background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: 10, textAlign: 'center' }}>
+                  <div style={{ fontSize: 28, fontWeight: 800, color: '#22C55E' }}>{okCount}</div>
+                  <div style={{ fontSize: 12, color: c.muted, marginTop: 4 }}>Creados correctamente</div>
+                </div>
+                <div style={{ padding: '16px', background: errorCount > 0 ? 'rgba(244,63,94,0.1)' : 'rgba(255,255,255,0.04)', border: `1px solid ${errorCount > 0 ? 'rgba(244,63,94,0.3)' : c.border}`, borderRadius: 10, textAlign: 'center' }}>
+                  <div style={{ fontSize: 28, fontWeight: 800, color: errorCount > 0 ? c.rose : c.muted }}>{errorCount}</div>
+                  <div style={{ fontSize: 12, color: c.muted, marginTop: 4 }}>Con errores</div>
+                </div>
+              </div>
+
+              {okCount > 0 && (
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: c.muted, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 8 }}>Usuarios creados</div>
+                  <div style={{ border: `1px solid ${c.border}`, borderRadius: 10, overflow: 'hidden' }}>
+                    <div style={{ maxHeight: 280, overflowY: 'auto' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                        <thead style={{ position: 'sticky', top: 0, background: '#0D1829' }}>
+                          <tr>{['Nombre', 'Celular (acceso)', 'Grupo'].map(h => <th key={h} style={{ padding: '8px 12px', textAlign: 'left', color: c.muted, borderBottom: `1px solid ${c.border}`, fontWeight: 600 }}>{h}</th>)}</tr>
+                        </thead>
+                        <tbody>
+                          {rows.filter(r => r.status === 'ok').map((row, i) => (
+                            <tr key={i} style={{ borderBottom: `1px solid ${c.border}` }}>
+                              <td style={{ padding: '7px 12px', color: c.text, fontWeight: 600 }}>{row.nombre}</td>
+                              <td style={{ padding: '7px 12px', color: c.blue, fontFamily: 'monospace', fontWeight: 700 }}>{row.telefono}</td>
+                              <td style={{ padding: '7px 12px', color: c.muted }}>{row.grupo}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      const csvLines = ['Nombre,Celular,Grupo', ...rows.filter(r => r.status === 'ok').map(r => `${r.nombre},${r.telefono},${r.grupo}`)];
+                      const blob = new Blob([csvLines.join('\n')], { type: 'text/csv' });
+                      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'usuarios_importados.csv'; a.click();
+                    }}
+                    style={{ marginTop: 10, width: '100%', padding: '10px', background: 'rgba(255,255,255,0.06)', border: `1px solid ${c.border}`, borderRadius: 8, color: c.muted, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                  >
+                    ⬇ Descargar lista (.csv)
+                  </button>
+                </div>
+              )}
+
+              {errorCount > 0 && (
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: c.rose, marginBottom: 6 }}>Errores</div>
+                  {rows.filter(r => r.status === 'error').map((row, i) => (
+                    <div key={i} style={{ padding: '8px 12px', background: 'rgba(244,63,94,0.08)', border: '1px solid rgba(244,63,94,0.2)', borderRadius: 8, marginBottom: 6, fontSize: 12 }}>
+                      <span style={{ color: c.text, fontWeight: 600 }}>{row.nombre || row.telefono}</span>
+                      <span style={{ color: c.rose, marginLeft: 8 }}>{row.errorMsg}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div style={{ padding: '16px 24px', borderTop: `1px solid ${c.border}`, display: 'flex', gap: 10, flexShrink: 0 }}>
+          {step === 'upload' && (
+            <button onClick={onClose} style={{ flex: 1, padding: '11px', background: 'transparent', border: `1px solid ${c.border}`, borderRadius: 10, color: c.muted, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Cancelar</button>
+          )}
+          {step === 'preview' && (
+            <>
+              <button onClick={() => { setRows([]); setStep('upload'); }} style={{ flex: 1, padding: '11px', background: 'transparent', border: `1px solid ${c.border}`, borderRadius: 10, color: c.muted, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>← Volver</button>
+              <button onClick={handleImport} disabled={rows.filter(r => r.telefono).length === 0} style={{ flex: 2, padding: '11px', background: c.blue, border: 'none', borderRadius: 10, color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+                Importar {rows.filter(r => r.telefono).length} usuarios →
+              </button>
+            </>
+          )}
+          {step === 'done' && (
+            <button onClick={onClose} style={{ flex: 1, padding: '11px', background: c.blue, border: 'none', borderRadius: 10, color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>Listo ✓</button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ViewUsuariosAdmin({ liveUsers, onUserCreated }: { liveUsers: { id: string; name: string; email: string | null; phone?: string | null; role: string; group_name: string | null; premium: boolean }[]; onUserCreated: (u: { id: string; name: string; email: string | null; phone?: string | null; role: string; group_name: string | null; premium: boolean }) => void }) {
   const [showModal, setShowModal]   = useState(false);
+  const [showImport, setShowImport] = useState(false);
   const [name, setName]             = useState('');
-  const [email, setEmail]           = useState('');
-  const [password, setPassword]     = useState('evo2026');
+  const [phone, setPhone]           = useState('');
   const [group, setGroup]           = useState('Evolve');
   const [role, setRole]             = useState<'user' | 'admin'>('user');
   const [premium, setPremium]       = useState(false);
@@ -1352,10 +1971,12 @@ function ViewUsuariosAdmin({ liveUsers, onUserCreated }: { liveUsers: { id: stri
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [deleting, setDeleting]     = useState(false);
 
-  const resetForm = () => { setName(''); setEmail(''); setPassword('evo2026'); setGroup('Evolve'); setRole('user'); setPremium(false); setError(null); setSuccess(null); };
+  const resetForm = () => { setName(''); setPhone(''); setGroup('Evolve'); setRole('user'); setPremium(false); setError(null); setSuccess(null); };
 
   const handleCreate = async () => {
-    if (!name.trim() || !email.trim() || !password.trim()) { setError('Nombre, correo y contraseña son obligatorios.'); return; }
+    if (!name.trim() || !phone.trim()) { setError('Nombre y número de celular son obligatorios.'); return; }
+    const normalizedPhone = normalizePhoneImport(phone.trim());
+    if (normalizedPhone.length < 13) { setError('Número de celular inválido. Debe tener 10 dígitos.'); return; }
     setLoading(true); setError(null); setSuccess(null);
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -1363,12 +1984,12 @@ function ViewUsuariosAdmin({ liveUsers, onUserCreated }: { liveUsers: { id: stri
       const res = await fetch('/api/admin/create-user', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
-        body: JSON.stringify({ name: name.trim(), email: email.trim().toLowerCase(), password, group_name: group, role, premium }),
+        body: JSON.stringify({ name: name.trim(), phone: normalizedPhone, group_name: group, role, premium }),
       });
       const json = await res.json();
       if (!res.ok) { setError(json.error ?? 'Error al crear usuario.'); return; }
-      setSuccess(`✓ Usuario "${name.trim()}" creado correctamente.`);
-      onUserCreated({ id: json.userId, name: name.trim(), email: email.trim().toLowerCase(), role, group_name: group, premium });
+      setSuccess(`✓ Usuario "${name.trim()}" creado. Celular: ${normalizedPhone}`);
+      onUserCreated({ id: json.userId, name: name.trim(), email: null, phone: normalizedPhone, role, group_name: group, premium });
       resetForm();
     } catch { setError('Error de red. Verifica tu conexión.'); }
     finally { setLoading(false); }
@@ -1381,11 +2002,18 @@ function ViewUsuariosAdmin({ liveUsers, onUserCreated }: { liveUsers: { id: stri
           <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: c.text }}>Usuarios</h2>
           <p style={{ margin: '4px 0 0', fontSize: 13, color: c.muted }}>{liveUsers.length} usuarios registrados en Supabase</p>
         </div>
-        <button onClick={() => { resetForm(); setShowModal(true); }} style={{
-          display: 'flex', alignItems: 'center', gap: 8, padding: '10px 18px',
-          background: c.blue, color: '#fff', border: 'none', borderRadius: 10,
-          fontSize: 13, fontWeight: 700, cursor: 'pointer',
-        }}>+ Agregar usuario</button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={() => setShowImport(true)} style={{
+            display: 'flex', alignItems: 'center', gap: 6, padding: '10px 16px',
+            background: 'rgba(255,255,255,0.06)', color: c.muted, border: `1px solid ${c.border}`, borderRadius: 10,
+            fontSize: 13, fontWeight: 600, cursor: 'pointer',
+          }}>📥 Importar Excel/CSV</button>
+          <button onClick={() => { resetForm(); setShowModal(true); }} style={{
+            display: 'flex', alignItems: 'center', gap: 8, padding: '10px 18px',
+            background: c.blue, color: '#fff', border: 'none', borderRadius: 10,
+            fontSize: 13, fontWeight: 700, cursor: 'pointer',
+          }}>+ Agregar usuario</button>
+        </div>
       </div>
 
       {success && (
@@ -1404,7 +2032,9 @@ function ViewUsuariosAdmin({ liveUsers, onUserCreated }: { liveUsers: { id: stri
             <Avatar initials={(u.name.split(' ').map((w: string) => w[0]).slice(0,2).join('')).toUpperCase()} size={36}/>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 13, fontWeight: 600, color: c.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{u.name}</div>
-              <div style={{ fontSize: 11, color: c.muted, marginTop: 2 }}>{u.email}</div>
+              <div style={{ fontSize: 11, color: c.muted, marginTop: 2, fontFamily: 'monospace' }}>
+                {u.phone || u.email || <span style={{ fontStyle: 'italic', opacity: 0.5 }}>sin contacto</span>}
+              </div>
             </div>
             <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
               {u.role === 'admin' && <span style={{ padding: '2px 8px', borderRadius: 6, fontSize: 10, fontWeight: 700, background: `${c.rose}22`, color: c.rose, border: `1px solid ${c.rose}44` }}>ADMIN</span>}
@@ -1414,6 +2044,17 @@ function ViewUsuariosAdmin({ liveUsers, onUserCreated }: { liveUsers: { id: stri
           </div>
         ))}
       </div>
+
+      {/* Import modal */}
+      {showImport && (
+        <ImportModal
+          onClose={() => setShowImport(false)}
+          onDone={(created) => {
+            created.forEach(r => onUserCreated({ id: '', name: r.nombre, email: null, phone: r.telefono, role: 'user', group_name: r.grupo, premium: false }));
+            setShowImport(false);
+          }}
+        />
+      )}
 
       {/* Create user modal */}
       {showModal && (
@@ -1425,8 +2066,19 @@ function ViewUsuariosAdmin({ liveUsers, onUserCreated }: { liveUsers: { id: stri
             </div>
 
             <ModalInput label="Nombre completo" value={name} onChange={setName}/>
-            <ModalInput label="Correo electrónico" value={email} onChange={setEmail}/>
-            <ModalInput label="Contraseña" value={password} onChange={setPassword}/>
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: c.muted, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 6 }}>Número de celular</label>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <div style={{ height: 42, padding: '0 12px', border: `1px solid ${c.border}`, borderRadius: 8, display: 'flex', alignItems: 'center', background: 'rgba(255,255,255,0.04)', color: c.muted, fontSize: 13, fontWeight: 600, flexShrink: 0 }}>🇲🇽 +52</div>
+                <input
+                  type="tel" placeholder="81 1234 5678"
+                  value={phone} onChange={e => setPhone(e.target.value.replace(/[^\d\s]/g, ''))}
+                  inputMode="numeric" maxLength={12}
+                  style={{ flex: 1, padding: '10px 14px', borderRadius: 8, border: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.06)', color: c.text, fontSize: 13, fontFamily: 'inherit', outline: 'none' }}
+                />
+              </div>
+              <div style={{ fontSize: 10, color: c.muted, marginTop: 4 }}>Solo los 10 dígitos — sin código de país</div>
+            </div>
 
             <div style={{ marginBottom: 16 }}>
               <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: c.muted, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 6 }}>Grupo</label>
@@ -1477,7 +2129,7 @@ function ViewUsuariosAdmin({ liveUsers, onUserCreated }: { liveUsers: { id: stri
 }
 
 // ─── Root ─────────────────────────────────────────────────────────────────────
-type LiveUser = { id: string; name: string; email: string; role: string; group_name: string | null; premium: boolean };
+type LiveUser = { id: string; name: string; email: string | null; phone?: string | null; role: string; group_name: string | null; premium: boolean };
 
 export default function AdminPage() {
   const isMobile = useIsMobile();
@@ -1502,7 +2154,7 @@ export default function AdminPage() {
   // Load real users from Supabase on mount
   useEffect(() => {
     if (authState !== 'allowed') return;
-    supabase.from('profiles').select('id, name, email, role, group_name, premium').order('created_at')
+    supabase.from('profiles').select('id, name, email, phone, role, group_name, premium').order('created_at')
       .then(({ data }) => { if (data) setLiveUsers(data as LiveUser[]); });
   }, [authState]);
 

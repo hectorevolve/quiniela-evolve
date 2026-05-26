@@ -8,10 +8,24 @@ export const supabase = createClient(supabaseUrl, supabaseKey);
 export interface AppUser {
   id: string;
   name: string;
-  email: string;
+  email: string | null;
+  phone: string | null;
   role: 'user' | 'admin';
   group_name: string | null;
   premium: boolean;
+}
+
+/**
+ * Normalize a Mexican phone number to E.164 format (+52XXXXXXXXXX).
+ * Accepts: 10 digits, 12 digits starting with 52, or already formatted.
+ */
+export function normalizePhone(raw: string): string {
+  const digits = raw.replace(/\D/g, '');
+  if (digits.length === 10) return `+52${digits}`;
+  if (digits.length === 12 && digits.startsWith('52')) return `+${digits}`;
+  if (digits.length === 13 && digits.startsWith('152')) return `+52${digits.slice(3)}`;
+  if (raw.startsWith('+')) return raw.trim();
+  return `+${digits}`;
 }
 
 /** Derive 2-letter avatar initials from a display name. */

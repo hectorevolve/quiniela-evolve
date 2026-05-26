@@ -130,7 +130,7 @@ export default function Home() {
         return <PerfilScreen goto={goto} tweaks={tweaks} fireToast={fireToast}
           currentUser={currentUser} onLogout={handleLogout}/>;
       case 'premios':
-        return <PremiosScreen goto={goto} fireToast={fireToast} rank={tweaks.rank}/>;
+        return <PremiosScreen goto={goto} fireToast={fireToast} rank={tweaks.rank} currentUser={currentUser}/>;
       case 'admin':
         return <AdminScreen goto={goto}/>;
     }

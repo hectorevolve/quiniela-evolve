@@ -1,7 +1,8 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { theme as T } from '@/lib/theme';
 import { MATCHES, H2H_DATA, H2H_PRED, DEMO_LIVE_MATCH, isMatchStarted, isMatchOver45Min, type H2HEntry } from '@/lib/data';
+import { getMatchH2H, type H2HRow } from '@/lib/db';
 import { loadPrediction, savePrediction } from '@/lib/predictions';
 import { SpyModal } from '@/components/screens/SpyModal';
 import { Header, Card, PowerIcon, Modal, Eyebrow } from '@/components/ui';
@@ -172,7 +173,7 @@ export function DetalleScreen({ goto, tweaks, fireToast, matchId, usedPowers: us
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
                       <Flag code={match.home.code} size={28}/>
                       <input
-                        type="number" min={0} max={99} placeholder="0"
+                        type="number" min={0} max={99} placeholder="–"
                         value={homeScore}
                         readOnly={isLocked}
                         onChange={e => !isLocked && setHomeScore(e.target.value)}
@@ -185,7 +186,7 @@ export function DetalleScreen({ goto, tweaks, fireToast, matchId, usedPowers: us
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
                       <Flag code={match.away.code} size={28}/>
                       <input
-                        type="number" min={0} max={99} placeholder="0"
+                        type="number" min={0} max={99} placeholder="–"
                         value={awayScore}
                         readOnly={isLocked}
                         onChange={e => !isLocked && setAwayScore(e.target.value)}
@@ -313,14 +314,76 @@ export function DetalleScreen({ goto, tweaks, fireToast, matchId, usedPowers: us
 // ──────── H2H Section ────────
 import type { Match } from '@/lib/data';
 
-function H2HSection({ match }: { match: Match }) {
-  const codes = [match.home.code, match.away.code];
-  const key = [...codes].sort().join('-');
-  const h2h: H2HEntry | undefined = H2H_DATA[key];
-  const predRaw = H2H_PRED[key];
+// Unified H2H shape — already oriented to home/away of THIS match
+interface H2HResolved {
+  n: number; hw: number; d: number; aw: number;
+  hg: number; ag: number;
+  since?: number; desc: string;
+  past: H2HEntry['past'];
+  pred_home: number | null; pred_away: number | null;
+  source: 'db' | 'local';
+}
+
+function resolveFromLocal(match: Match): H2HResolved | null {
+  if (match.home.code === 'TBD' || match.away.code === 'TBD') return null;
+  const key = [match.home.code, match.away.code].sort().join('-');
+  const h2h = H2H_DATA[key];
+  if (!h2h) return null;
   const homeFirst = match.home.code < match.away.code;
-  const predHome = predRaw ? (homeFirst ? predRaw[0] : predRaw[1]) : null;
-  const predAway = predRaw ? (homeFirst ? predRaw[1] : predRaw[0]) : null;
+  const predRaw = H2H_PRED[key];
+  return {
+    n: h2h.n,
+    hw: homeFirst ? h2h.hw : h2h.aw,
+    d:  h2h.d,
+    aw: homeFirst ? h2h.aw : h2h.hw,
+    hg: homeFirst ? h2h.hg : h2h.ag,
+    ag: homeFirst ? h2h.ag : h2h.hg,
+    since: h2h.since,
+    desc:  h2h.desc,
+    past:  h2h.past,
+    pred_home: predRaw ? (homeFirst ? predRaw[0] : predRaw[1]) : null,
+    pred_away: predRaw ? (homeFirst ? predRaw[1] : predRaw[0]) : null,
+    source: 'local',
+  };
+}
+
+function resolveFromDB(row: H2HRow): H2HResolved {
+  return {
+    n:    row.n,
+    hw:   row.hw,
+    d:    row.d,
+    aw:   row.aw,
+    hg:   row.hg,
+    ag:   row.ag,
+    since: row.since ?? undefined,
+    desc:  row.summary,
+    past:  row.past,
+    pred_home: row.pred_home,
+    pred_away: row.pred_away,
+    source: 'db',
+  };
+}
+
+function H2HSection({ match }: { match: Match }) {
+  const [dbRow, setDbRow] = useState<H2HRow | null | 'loading'>('loading');
+
+  useEffect(() => {
+    if (match.home.code === 'TBD' || match.away.code === 'TBD') { setDbRow(null); return; }
+    getMatchH2H(match.id)
+      .then(row => setDbRow(row))
+      .catch(() => setDbRow(null));
+  }, [match.id]);
+
+  // DB data takes priority; fall back to local hardcoded
+  const data: H2HResolved | null = useMemo(() => {
+    if (dbRow === 'loading') return resolveFromLocal(match); // show local while loading
+    if (dbRow) return resolveFromDB(dbRow);
+    return resolveFromLocal(match);
+  }, [dbRow, match]);
+
+  const predHome = data?.pred_home ?? null;
+  const predAway = data?.pred_away ?? null;
+  const h2h = data;
 
   if (!h2h || h2h.n === 0) {
     return (
@@ -367,10 +430,11 @@ function H2HSection({ match }: { match: Match }) {
     );
   }
 
-  const homeWins  = homeFirst ? h2h.hw : h2h.aw;
-  const awayWins  = homeFirst ? h2h.aw : h2h.hw;
-  const homeGoals = homeFirst ? h2h.hg : h2h.ag;
-  const awayGoals = homeFirst ? h2h.ag : h2h.hg;
+  // Data is already oriented to this match's home/away
+  const homeWins  = h2h.hw;
+  const awayWins  = h2h.aw;
+  const homeGoals = h2h.hg;
+  const awayGoals = h2h.ag;
   const draws     = h2h.d;
   const total     = h2h.n;
 

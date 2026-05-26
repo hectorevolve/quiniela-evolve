@@ -6,7 +6,7 @@ import { calcPoints } from './points';
 export async function getProfile(userId: string): Promise<AppUser | null> {
   const { data, error } = await supabase
     .from('profiles')
-    .select('id, name, email, role, group_name, premium')
+    .select('id, name, email, phone, role, group_name, premium')
     .eq('id', userId)
     .single();
   if (error) { console.error('[db] getProfile:', error.message); return null; }
@@ -77,6 +77,47 @@ export async function getMatchResults(): Promise<Record<string, [number, number]
   const out: Record<string, [number, number]> = {};
   for (const m of data ?? []) out[m.id] = [m.result_home, m.result_away];
   return out;
+}
+
+// ─── Match CRUD ───────────────────────────────────────────────────────────────
+
+export interface DBMatch {
+  id: string;
+  group_name: string;
+  home_code: string; home_name: string;
+  away_code: string; away_name: string;
+  match_date: string;
+  stadium: string | null;
+  result_home: number | null;
+  result_away: number | null;
+  sort_order: number;
+}
+
+export async function getMatches(): Promise<DBMatch[]> {
+  const { data, error } = await supabase
+    .from('matches')
+    .select('id,group_name,home_code,home_name,away_code,away_name,match_date,stadium,result_home,result_away,sort_order')
+    .order('sort_order', { ascending: true });
+  if (error) { console.error('[db] getMatches:', error.message); return []; }
+  return (data ?? []) as DBMatch[];
+}
+
+export async function updateMatch(
+  id: string,
+  fields: Partial<Omit<DBMatch, 'id' | 'result_home' | 'result_away'>>,
+): Promise<void> {
+  const { error } = await supabase.from('matches').update(fields).eq('id', id);
+  if (error) console.error('[db] updateMatch:', error.message);
+}
+
+export async function createMatch(fields: Omit<DBMatch, 'result_home' | 'result_away'>): Promise<void> {
+  const { error } = await supabase.from('matches').insert({ ...fields, result_home: null, result_away: null });
+  if (error) console.error('[db] createMatch:', error.message);
+}
+
+export async function deleteMatch(id: string): Promise<void> {
+  const { error } = await supabase.from('matches').delete().eq('id', id);
+  if (error) console.error('[db] deleteMatch:', error.message);
 }
 
 export async function saveMatchResult(
@@ -151,6 +192,54 @@ export async function loadBonusPicks(userId: string) {
     .single();
   if (error && error.code !== 'PGRST116') console.error('[db] loadBonusPicks:', error.message);
   return data ?? null;
+}
+
+// ─── Group settings (prizes) ──────────────────────────────────────────────────
+
+export interface GroupSettings {
+  prize_1st: string;
+  prize_2nd: string;
+  prize_3rd: string;
+  bonus_champ_type: string;  bonus_champ_value: string;
+  bonus_runner_type: string; bonus_runner_value: string;
+  bonus_third_type: string;  bonus_third_value: string;
+  bonus_scorer_type: string; bonus_scorer_value: string;
+}
+
+export async function getGroupSettings(groupName: string): Promise<GroupSettings | null> {
+  if (!groupName) return null;
+  const { data, error } = await supabase
+    .from('group_settings')
+    .select('prize_1st,prize_2nd,prize_3rd,bonus_champ_type,bonus_champ_value,bonus_runner_type,bonus_runner_value,bonus_third_type,bonus_third_value,bonus_scorer_type,bonus_scorer_value')
+    .eq('group_name', groupName)
+    .single();
+  if (error) return null;
+  return data as GroupSettings;
+}
+
+// ─── H2H ──────────────────────────────────────────────────────────────────────
+
+export interface H2HRow {
+  id: string;
+  home_code: string; away_code: string;
+  n: number;
+  hw: number; d: number; aw: number;
+  hg: number; ag: number;
+  since: number | null;
+  summary: string;
+  past: Array<{ year: number; comp: string; h: string; hs: number; as: number; a: string }>;
+  pred_home: number | null;
+  pred_away: number | null;
+}
+
+export async function getMatchH2H(matchId: string): Promise<H2HRow | null> {
+  const { data, error } = await supabase
+    .from('match_h2h')
+    .select('id,home_code,away_code,n,hw,d,aw,hg,ag,since,summary,past,pred_home,pred_away')
+    .eq('id', matchId)
+    .single();
+  if (error || !data) return null;
+  return data as H2HRow;
 }
 
 export async function upsertBonusPicks(

@@ -3,9 +3,9 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { theme as T } from '@/lib/theme';
 import { MATCHES, KNOCKOUT_MATCHES, MOCK_RESULTS, resolveSlots, computeSlots, isMatchPast, isMatchStarted, isMatchOver45Min, isMatchPastEx, isMatchStartedEx, isMatchOver45MinEx, DEMO_LIVE_MATCH, DEMO_PAST_IDS, PREDICTION_DISTRIBUTIONS, GOLEADORES, SELECCIONES, USER, STADIUM_ALIASES, TEAM_ALIASES, type Match, type PredictionBucket, type SlotMap, type LiveMatch } from '@/lib/data';
 import { getInitials, type AppUser } from '@/lib/supabase';
-import { getRankings, type RankingEntry } from '@/lib/db';
+import { getRankings, getGroupSettings, type RankingEntry, type GroupSettings } from '@/lib/db';
 import { useLiveMatch } from '@/hooks/useLiveMatch';
-import { loadPrediction, loadBonus, saveBonus } from '@/lib/predictions';
+import { loadPrediction, savePrediction, loadBonus, saveBonus } from '@/lib/predictions';
 import {
   Header, Avatar, Pill, Chip, Card,
   PowerIcon, BottomSheet, Modal, Eyebrow,
@@ -239,6 +239,7 @@ export function TorneoScreen({ goto, tweaks, fireToast, usedPowers, setUsedPower
             subSelected={subSelected} setSubSelected={setSubSelected}
             thirdSelected={thirdSelected} goalPlayer={goalPlayer}
             openSub={openSub}
+            userGroup={displayGroup}
           />
         )}
         {tab === 'detalles'     && <TabDetalles goto={goto} openSub={openSub} userGroup={displayGroup} rankings={liveRankings}/>}
@@ -631,6 +632,7 @@ function TabPredicciones({ goto, tweaks, fireToast, usedPowers: usedPowersFromPa
                   else setModal({ kind, match });
                 }}
                 onView={(id) => goto('detalle', id)}
+                fireToast={fireToast}
               />
             ))}
           </div>
@@ -661,7 +663,7 @@ function TabPredicciones({ goto, tweaks, fireToast, usedPowers: usedPowersFromPa
   );
 }
 
-function MatchCard({ match, usedPowers, lateActiveMatchId, spyMatchId, matchStarted, matchOver45, onPower, onView }: {
+function MatchCard({ match, usedPowers, lateActiveMatchId, spyMatchId, matchStarted, matchOver45, onPower, onView, fireToast }: {
   match: Match;
   usedPowers: Set<string>;
   lateActiveMatchId: string | null;
@@ -670,26 +672,58 @@ function MatchCard({ match, usedPowers, lateActiveMatchId, spyMatchId, matchStar
   matchOver45?: boolean;
   onPower: (kind: 'double' | 'late' | 'spy') => void;
   onView: (matchId: string) => void;
+  fireToast: Props['fireToast'];
 }) {
   const localSaved = loadPrediction(match.id);
-  const saved = localSaved ?? (match.prediction
+  const initSaved = localSaved ?? (match.prediction
     ? { home: match.prediction[0], away: match.prediction[1], savedAt: '' }
     : null);
-  const hasPrediction = saved !== null;
 
-  const ScoreBox = ({ value }: { value: number | null }) => (
-    <div style={{
+  const [homeScore, setHomeScore] = useState<string>(initSaved ? String(initSaved.home) : '');
+  const [awayScore, setAwayScore] = useState<string>(initSaved ? String(initSaved.away) : '');
+  const [savedAt, setSavedAt] = useState<string | null>(initSaved?.savedAt ?? null);
+  const [focusedSide, setFocusedSide] = useState<'home' | 'away' | null>(null);
+
+  const hasPrediction = savedAt !== null || initSaved !== null;
+  const isDirty = (() => {
+    if (!initSaved) return homeScore !== '' || awayScore !== '';
+    return homeScore !== String(initSaved.home) || awayScore !== String(initSaved.away);
+  })();
+  const canConfirm = isDirty && homeScore !== '' && awayScore !== '';
+
+  const isTBD = match.home.code === 'TBD' || match.away.code === 'TBD';
+  const lateActive = lateActiveMatchId === match.id;
+  const started = matchStarted ?? isMatchStarted(match.date);
+  const over45  = matchOver45 ?? isMatchOver45Min(match.date);
+  const isLocked = isTBD || (started && !lateActive);
+
+  const handleConfirm = () => {
+    if (!canConfirm) return;
+    const pred = savePrediction(match.id, Number(homeScore), Number(awayScore));
+    setSavedAt(pred.savedAt);
+    fireToast('¡Predicción guardada! ✓', T.emerald, '#fff');
+  };
+
+  const scoreInputStyle = (side: 'home' | 'away'): React.CSSProperties => {
+    const isFocused = focusedSide === side;
+    const hasVal = side === 'home' ? homeScore !== '' : awayScore !== '';
+    const savedVal = side === 'home' ? initSaved?.home : initSaved?.away;
+    const currentVal = side === 'home' ? homeScore : awayScore;
+    const changed = isDirty && (hasVal ? currentVal !== String(savedVal) : savedVal !== undefined);
+    return {
       width: 48, height: 48, borderRadius: 10,
-      border: `2px solid ${hasPrediction ? T.lime : T.border}`,
-      background: hasPrediction ? T.limeSoft : T.bgSoft,
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      fontSize: 22, fontWeight: 800,
-      color: hasPrediction ? T.limeDeep : T.muted,
+      border: `2px solid ${isLocked ? (hasPrediction ? T.lime : T.border) : (isFocused ? T.blue : (isDirty ? T.amber : (hasPrediction ? T.lime : T.border)))}`,
+      background: isLocked ? (hasPrediction ? T.limeSoft : T.bgSoft) : (isDirty ? '#FFFBEB' : (hasPrediction ? T.limeSoft : T.bgSoft)),
+      textAlign: 'center' as const, fontSize: 22, fontWeight: 800,
+      color: isLocked ? (hasPrediction ? T.limeDeep : T.muted) : (isDirty ? T.amber : (hasPrediction ? T.limeDeep : T.ink)),
+      outline: 'none',
+      WebkitAppearance: 'none' as React.CSSProperties['WebkitAppearance'],
       fontFamily: 'var(--font-jetbrains), monospace',
-    }}>
-      {value !== null ? value : '–'}
-    </div>
-  );
+      cursor: isLocked ? 'default' : 'text',
+      transition: 'border-color 200ms, background 200ms',
+      caretColor: T.blue,
+    };
+  };
 
   return (
     <Card accent={T.blue} style={{ padding: '16px 16px 14px' }}>
@@ -699,68 +733,74 @@ function MatchCard({ match, usedPowers, lateActiveMatchId, spyMatchId, matchStar
           <div style={{ fontSize: 11, color: T.muted }}>{match.date}</div>
           <div style={{ fontSize: 11, color: T.muted, fontStyle: 'italic' }}>{match.stadium}</div>
         </div>
-        {hasPrediction
-          ? <Pill color={T.limeSoft} textColor={T.limeDeep} size="sm">✓ Guardado</Pill>
-          : <Pill color={T.bgSoft} textColor={T.muted} size="sm">Sin predicción</Pill>}
+        {isDirty
+          ? <Pill color={`${T.amber}20`} textColor={T.amber} size="sm">✎ Editando</Pill>
+          : hasPrediction
+            ? <Pill color={T.limeSoft} textColor={T.limeDeep} size="sm">✓ Guardado</Pill>
+            : <Pill color={T.bgSoft} textColor={T.muted} size="sm">Sin predicción</Pill>}
       </div>
 
-      {/* Teams + Score (read-only) */}
-      {(() => {
-        const isTBD = match.home.code === 'TBD' || match.away.code === 'TBD';
-        return (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-around', padding: '8px 0' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, flex: 1 }}>
-              {match.home.code === 'TBD' ? (
-                <div style={{ width: 56, height: 56, borderRadius: '50%', background: T.bgSoft, border: `2px solid ${T.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, color: T.muted }}>?</div>
-              ) : (
-                <Flag code={match.home.code} size={56}/>
-              )}
-              <div className="font-mono" style={{ fontSize: match.home.code === 'TBD' ? 9 : 12, fontWeight: 800, color: match.home.code === 'TBD' ? T.muted : T.ink, textAlign: 'center', letterSpacing: match.home.code === 'TBD' ? 0 : 1, maxWidth: 70, wordBreak: 'break-word', lineHeight: 1.2 }}>
-                {match.home.code === 'TBD' ? (match.home.placeholder ?? 'Por definir') : match.home.code}
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, flex: 0 }}>
-              {isTBD ? (
-                <div style={{ textAlign: 'center', padding: '12px 0', color: T.muted, fontSize: 12, fontStyle: 'italic' }}>
-                  Por definir · Equipos aún no clasificados
-                </div>
-              ) : (
-                <>
-                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                    <ScoreBox value={saved?.home ?? null}/>
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
-                      <SoccerBall size={18} spinning="2s" style={{ opacity: 0.7 }}/>
-                      <span style={{ fontSize: 9, fontWeight: 600, color: T.muted, letterSpacing: 0.5 }}>VS</span>
-                    </div>
-                    <ScoreBox value={saved?.away ?? null}/>
-                  </div>
-                  {saved?.savedAt && (
-                    <div style={{ fontSize: 9.5, color: T.muted }}>Guardado: {saved.savedAt}</div>
-                  )}
-                </>
-              )}
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, flex: 1 }}>
-              {match.away.code === 'TBD' ? (
-                <div style={{ width: 56, height: 56, borderRadius: '50%', background: T.bgSoft, border: `2px solid ${T.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, color: T.muted }}>?</div>
-              ) : (
-                <Flag code={match.away.code} size={56}/>
-              )}
-              <div className="font-mono" style={{ fontSize: match.away.code === 'TBD' ? 9 : 12, fontWeight: 800, color: match.away.code === 'TBD' ? T.muted : T.ink, textAlign: 'center', letterSpacing: match.away.code === 'TBD' ? 0 : 1, maxWidth: 70, wordBreak: 'break-word', lineHeight: 1.2 }}>
-                {match.away.code === 'TBD' ? (match.away.placeholder ?? 'Por definir') : match.away.code}
-              </div>
-            </div>
+      {/* Teams + Score */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-around', padding: '8px 0' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, flex: 1 }}>
+          {match.home.code === 'TBD'
+            ? <div style={{ width: 56, height: 56, borderRadius: '50%', background: T.bgSoft, border: `2px solid ${T.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, color: T.muted }}>?</div>
+            : <Flag code={match.home.code} size={56}/>}
+          <div className="font-mono" style={{ fontSize: match.home.code === 'TBD' ? 9 : 12, fontWeight: 800, color: match.home.code === 'TBD' ? T.muted : T.ink, textAlign: 'center', letterSpacing: match.home.code === 'TBD' ? 0 : 1, maxWidth: 70, wordBreak: 'break-word', lineHeight: 1.2 }}>
+            {match.home.code === 'TBD' ? (match.home.placeholder ?? 'Por definir') : match.home.code}
           </div>
-        );
-      })()}
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, flex: 0 }}>
+          {isTBD ? (
+            <div style={{ textAlign: 'center', padding: '12px 0', color: T.muted, fontSize: 12, fontStyle: 'italic' }}>
+              Por definir · Equipos aún no clasificados
+            </div>
+          ) : (
+            <>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <input
+                  type="number" min={0} max={99} placeholder="–"
+                  value={homeScore}
+                  readOnly={isLocked}
+                  onChange={e => !isLocked && setHomeScore(e.target.value)}
+                  onFocus={() => !isLocked && setFocusedSide('home')}
+                  onBlur={() => setFocusedSide(null)}
+                  style={scoreInputStyle('home')}
+                />
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+                  <SoccerBall size={18} spinning="2s" style={{ opacity: 0.7 }}/>
+                  <span style={{ fontSize: 9, fontWeight: 600, color: T.muted, letterSpacing: 0.5 }}>VS</span>
+                </div>
+                <input
+                  type="number" min={0} max={99} placeholder="–"
+                  value={awayScore}
+                  readOnly={isLocked}
+                  onChange={e => !isLocked && setAwayScore(e.target.value)}
+                  onFocus={() => !isLocked && setFocusedSide('away')}
+                  onBlur={() => setFocusedSide(null)}
+                  style={scoreInputStyle('away')}
+                />
+              </div>
+              {savedAt && !isDirty && (
+                <div style={{ fontSize: 9.5, color: T.muted }}>Guardado: {savedAt}</div>
+              )}
+            </>
+          )}
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, flex: 1 }}>
+          {match.away.code === 'TBD'
+            ? <div style={{ width: 56, height: 56, borderRadius: '50%', background: T.bgSoft, border: `2px solid ${T.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, color: T.muted }}>?</div>
+            : <Flag code={match.away.code} size={56}/>}
+          <div className="font-mono" style={{ fontSize: match.away.code === 'TBD' ? 9 : 12, fontWeight: 800, color: match.away.code === 'TBD' ? T.muted : T.ink, textAlign: 'center', letterSpacing: match.away.code === 'TBD' ? 0 : 1, maxWidth: 70, wordBreak: 'break-word', lineHeight: 1.2 }}>
+            {match.away.code === 'TBD' ? (match.away.placeholder ?? 'Por definir') : match.away.code}
+          </div>
+        </div>
+      </div>
 
       {/* Powers */}
-      {match.home.code !== 'TBD' && match.away.code !== 'TBD' && (() => {
-        const lateActive = lateActiveMatchId === match.id;
-        const started = matchStarted ?? isMatchStarted(match.date);
-        const over45  = matchOver45 ?? isMatchOver45Min(match.date);
+      {!isTBD && (() => {
         const spyUsed = spyMatchId === match.id;
         const spyUsedElsewhere = usedPowers.has('spy') && !spyUsed;
         const doubleLocked = started && !usedPowers.has('double') && !lateActive;
@@ -784,43 +824,38 @@ function MatchCard({ match, usedPowers, lateActiveMatchId, spyMatchId, matchStar
         );
       })()}
 
-      {(() => {
-        if (match.home.code === 'TBD' || match.away.code === 'TBD') {
-          return (
-            <div style={{ width: '100%', padding: '10px', background: T.bgSoft, border: `1px solid ${T.border}`, borderRadius: 10, fontSize: 12, color: T.muted, textAlign: 'center' }}>
-              🕐 Equipos por definir
-            </div>
-          );
-        }
-        const lateActive = lateActiveMatchId === match.id;
-        const locked = matchStarted && !lateActive;
-        if (locked) {
-          return (
-            <div style={{
-              width: '100%', padding: '10px',
-              background: 'rgba(0,0,0,0.04)', border: `1px solid ${T.border}`,
-              borderRadius: 10, fontSize: 12, fontWeight: 600,
-              color: T.muted, textAlign: 'center',
-            }}>
-              🔒 Partido en curso — predicción cerrada
-            </div>
-          );
-        }
-        return (
-          <button onClick={() => onView(match.id)} style={{
-            width: '100%', padding: '10px',
-            background: hasPrediction ? T.bgInk : T.lime,
-            color: hasPrediction ? '#fff' : T.ink,
-            border: 'none', borderRadius: 10, fontWeight: 700, fontSize: 13,
-            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-          }}>
-            {hasPrediction ? 'Editar predicción' : 'Agregar mi predicción'}
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M5 12h14m-7-7 7 7-7 7"/>
-            </svg>
-          </button>
-        );
-      })()}
+      {/* Action button */}
+      {isTBD ? (
+        <div style={{ width: '100%', padding: '10px', background: T.bgSoft, border: `1px solid ${T.border}`, borderRadius: 10, fontSize: 12, color: T.muted, textAlign: 'center' }}>
+          🕐 Equipos por definir
+        </div>
+      ) : started && !lateActive ? (
+        <div style={{ width: '100%', padding: '10px', background: 'rgba(0,0,0,0.04)', border: `1px solid ${T.border}`, borderRadius: 10, fontSize: 12, fontWeight: 600, color: T.muted, textAlign: 'center' }}>
+          🔒 Partido en curso — predicción cerrada
+        </div>
+      ) : canConfirm ? (
+        <button onClick={handleConfirm} style={{
+          width: '100%', padding: '10px',
+          background: T.lime, color: T.ink,
+          border: 'none', borderRadius: 10, fontWeight: 700, fontSize: 13,
+          cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+        }}>
+          Confirmar predicción ✓
+        </button>
+      ) : (
+        <button onClick={() => onView(match.id)} style={{
+          width: '100%', padding: '10px',
+          background: hasPrediction ? T.bgInk : T.lime,
+          color: hasPrediction ? '#fff' : T.ink,
+          border: 'none', borderRadius: 10, fontWeight: 700, fontSize: 13,
+          cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+        }}>
+          {hasPrediction ? 'Detalles del partido' : 'Agregar mi predicción'}
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M5 12h14m-7-7 7 7-7 7"/>
+          </svg>
+        </button>
+      )}
     </Card>
   );
 }
@@ -1141,18 +1176,29 @@ function RankingPodium({ top3, visible, userRank, userName, userPoints, userId }
 }
 
 // ──────── Tab: Bonus ────────
-function TabBonus({ fireToast, champSelected, setChampSelected, subSelected, setSubSelected, thirdSelected, goalPlayer, openSub }: {
+function TabBonus({ fireToast, champSelected, setChampSelected, subSelected, setSubSelected, thirdSelected, goalPlayer, openSub, userGroup }: {
   fireToast: Props['fireToast'];
   champSelected: string; setChampSelected: (v: string) => void;
   subSelected: string;   setSubSelected: (v: string) => void;
   thirdSelected: string; goalPlayer: string;
   openSub: (name: SubScreenName) => void;
+  userGroup: string;
 }) {
+  const [settings, setSettings] = useState<GroupSettings | null>(null);
+  useEffect(() => {
+    if (userGroup) getGroupSettings(userGroup).then(setSettings).catch(console.error);
+  }, [userGroup]);
+
+  const bonusPrize = (type: string | undefined, value: string | null | undefined): string => {
+    if (!value) return '';
+    return type === 'puntos' ? `+${value} pts` : value;
+  };
+
   const cards = [
-    { label: 'CAMPEÓN',     pts: 10, color: T.lime,  sub: 'campeon'   as SubScreenName, sel: champSelected,  clear: () => setChampSelected(''),  kind: 'country' as const },
-    { label: 'GOLEADOR',    pts: 8,  color: T.amber, sub: 'goleador'  as SubScreenName, sel: goalPlayer,     clear: () => {},                    kind: 'player'  as const },
-    { label: 'SUBCAMPEÓN',  pts: 5,  color: T.blue,  sub: 'subcampeon'as SubScreenName, sel: subSelected,    clear: () => setSubSelected(''),    kind: 'country' as const },
-    { label: 'TERCER LUGAR',pts: 3,  color: T.rose,  sub: 'tercero'   as SubScreenName, sel: thirdSelected,  clear: () => {},                    kind: 'country' as const },
+    { label: 'CAMPEÓN',     color: T.lime,  sub: 'campeon'   as SubScreenName, sel: champSelected,  clear: () => setChampSelected(''),  kind: 'country' as const, prize: bonusPrize(settings?.bonus_champ_type,  settings?.bonus_champ_value)  },
+    { label: 'GOLEADOR',    color: T.amber, sub: 'goleador'  as SubScreenName, sel: goalPlayer,     clear: () => {},                    kind: 'player'  as const, prize: bonusPrize(settings?.bonus_scorer_type, settings?.bonus_scorer_value) },
+    { label: 'SUBCAMPEÓN',  color: T.blue,  sub: 'subcampeon'as SubScreenName, sel: subSelected,    clear: () => setSubSelected(''),    kind: 'country' as const, prize: bonusPrize(settings?.bonus_runner_type, settings?.bonus_runner_value) },
+    { label: 'TERCER LUGAR',color: T.rose,  sub: 'tercero'   as SubScreenName, sel: thirdSelected,  clear: () => {},                    kind: 'country' as const, prize: bonusPrize(settings?.bonus_third_type,  settings?.bonus_third_value)  },
   ];
 
   return (
@@ -1166,7 +1212,9 @@ function TabBonus({ fireToast, champSelected, setChampSelected, subSelected, set
         <div key={card.label} style={{ borderRadius: 18, padding: '18px 20px', background: T.bgInk, border: `1px solid ${T.borderInk}` }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
             <div style={{ fontSize: 10.5, fontWeight: 700, color: card.color, letterSpacing: 1.2, textTransform: 'uppercase' }}>{card.label}</div>
-            <Pill color={`${card.color}25`} textColor={card.color}>{card.pts} pts</Pill>
+            {card.prize ? (
+              <Pill color={`${card.color}25`} textColor={card.color}>{card.prize}</Pill>
+            ) : null}
           </div>
           {card.sel ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -1243,11 +1291,15 @@ function GroupAvatar({ group, size = 80 }: { group: string; size?: number }) {
 
 // ──────── Tab: Detalles ────────
 function TabDetalles({ goto, openSub, userGroup, rankings }: { goto: (s: string) => void; openSub: (name: SubScreenName) => void; userGroup: string; rankings: RankingEntry[] }) {
+  const [settings, setSettings] = useState<GroupSettings | null>(null);
+  useEffect(() => {
+    if (userGroup) getGroupSettings(userGroup).then(setSettings).catch(console.error);
+  }, [userGroup]);
 
   const prizes = [
-    { icon: '🥇', label: '1er Lugar', sub: 'Ganador absoluto', val: '$15,000 MXN' },
-    { icon: '🥈', label: '2do Lugar', sub: 'Segundo lugar',    val: '$10,000 MXN' },
-    { icon: '🥉', label: '3er Lugar', sub: 'Tercer lugar',     val: '$5,000 MXN'  },
+    { icon: '🥇', label: '1er Lugar', color: '#F59E0B', val: settings?.prize_1st?.trim() || null },
+    { icon: '🥈', label: '2do Lugar', color: '#94A3B8', val: settings?.prize_2nd?.trim() || null },
+    { icon: '🥉', label: '3er Lugar', color: '#CD7C2F', val: settings?.prize_3rd?.trim() || null },
   ];
 
   const grp = getGroupInfo(userGroup);
@@ -1275,14 +1327,24 @@ function TabDetalles({ goto, openSub, userGroup, rankings }: { goto: (s: string)
         background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left', width: '100%',
       }}>
         <Card>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ fontSize: 22 }}>🏆</span>
               <div className="font-display" style={{ fontSize: 14, fontWeight: 700, color: T.ink }}>Premios</div>
             </div>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={T.blue} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
           </div>
-          <div style={{ fontSize: 12, color: T.slate, marginTop: 8 }}>Presiona aquí para ver el sistema de premiación</div>
+          {prizes.map(p => (
+            <div key={p.label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 8, borderTop: `1px solid ${T.border}` }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 16 }}>{p.icon}</span>
+                <span style={{ fontSize: 12, color: T.slate }}>{p.label}</span>
+              </div>
+              <span style={{ fontSize: 12, fontWeight: 700, color: p.val ? p.color : T.muted }}>
+                {p.val ?? 'Por definir'}
+              </span>
+            </div>
+          ))}
         </Card>
       </button>
 

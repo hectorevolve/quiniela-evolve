@@ -42,24 +42,22 @@ export async function POST(req: NextRequest) {
 
   // Parse body
   const body = await req.json() as {
-    email: string;
-    password: string;
+    phone: string;
     name: string;
     group_name?: string;
     premium?: boolean;
     role?: string;
   };
 
-  const { email, password, name, group_name, premium = false, role = 'user' } = body;
-  if (!email || !password || !name) {
-    return NextResponse.json({ error: 'email, password and name are required' }, { status: 400 });
+  const { phone, name, group_name, premium = false, role = 'user' } = body;
+  if (!phone || !name) {
+    return NextResponse.json({ error: 'phone and name are required' }, { status: 400 });
   }
 
-  // Create auth user
+  // Create auth user with phone (pre-confirmed so they can log in immediately)
   const { data: newUser, error: createErr } = await supabaseAdmin.auth.admin.createUser({
-    email,
-    password,
-    email_confirm: true,
+    phone,
+    phone_confirm: true,
   });
   if (createErr || !newUser.user) {
     return NextResponse.json({ error: createErr?.message ?? 'Failed to create user' }, { status: 400 });
@@ -69,7 +67,8 @@ export async function POST(req: NextRequest) {
   const { error: profileErr } = await supabaseAdmin.from('profiles').insert({
     id:         newUser.user.id,
     name,
-    email,
+    email:      null,
+    phone,
     role,
     group_name: group_name ?? null,
     premium,
