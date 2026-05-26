@@ -2786,6 +2786,7 @@ function ImportModalCelulares({ onClose, onDone }: { onClose: () => void; onDone
   const [progress, setProgress] = useState(0);
   const [okCount, setOkCount]   = useState(0);
   const [dragOver, setDragOver] = useState(false);
+  const [detectedHeaders, setDetectedHeaders] = useState<string[]>([]);
 
   // ── Parse any Excel/CSV ──────────────────────────────────────────────────────
   const parseFile = async (file: File) => {
@@ -2811,8 +2812,15 @@ function ImportModalCelulares({ onClose, onDone }: { onClose: () => void; onDone
 
     const norm = (v: unknown) => String(v ?? '').trim();
 
-    // Normalize column header for matching
-    const hdr = (k: string) => k.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim();
+    // Normalize column header for matching (remove accents, lowercase, collapse spaces)
+    const hdr = (k: string) =>
+      k.toLowerCase()
+       .normalize('NFD').replace(/[̀-ͯ]/g, '')
+       .replace(/\s+/g, ' ').trim();
+
+    // Capture all headers for debugging
+    const allHeaders = rawRows.length > 0 ? Object.keys(rawRows[0]).map(k => k) : [];
+    setDetectedHeaders(allHeaders);
 
     // Find first column whose header contains any of the given keywords
     const findCol = (obj: Record<string, unknown>, ...keys: string[]) => {
@@ -2831,9 +2839,9 @@ function ImportModalCelulares({ onClose, onDone }: { onClose: () => void; onDone
     const findPersonal = (obj: Record<string, unknown>) =>
       findCol(obj, 'personal');
 
-    // General phone fallback
+    // General phone fallback — matches any column with phone-like keywords
     const findGenericPhone = (obj: Record<string, unknown>) =>
-      findCol(obj, 'telefono', 'tel ', 'phone', 'celular', 'cel ', 'movil', 'cel');
+      findCol(obj, 'telefono', 'phone', 'celular', 'movil', 'cel', 'tel');
 
     const parsed: ImportRow[] = rawRows
       .filter(r => {
@@ -2845,7 +2853,7 @@ function ImportModalCelulares({ onClose, onDone }: { onClose: () => void; onDone
       .map(r => {
         const nombre  = findCol(r, 'nombre', 'name');
         const numero  = findCol(r, 'numero', 'num', '#');
-        const ciudad  = findCol(r, 'ciudad', 'city', 'localidad', 'estado');
+        const ciudad  = findCol(r, 'ciudad', 'city', 'localidad', 'estado', 'municipio');
         // Group from "Cuenta" first, then "Grupo", then default
         const grupo   = findCol(r, 'cuenta', 'account', 'grupo', 'group') || defaultGroup;
 
@@ -2976,6 +2984,20 @@ function ImportModalCelulares({ onClose, onDone }: { onClose: () => void; onDone
           {/* ── STEP 2: Preview ── */}
           {step === 'preview' && (
             <div>
+              {/* Debug: show detected headers when 0 rows parsed */}
+              {rows.length === 0 && detectedHeaders.length > 0 && (
+                <div style={{ marginBottom: 16, padding: '12px 14px', background: 'rgba(244,63,94,0.08)', border: '1px solid rgba(244,63,94,0.3)', borderRadius: 10 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: c.rose, marginBottom: 6 }}>⚠ No se encontraron números — columnas detectadas en tu archivo:</div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {detectedHeaders.map(h => (
+                      <span key={h} style={{ padding: '2px 8px', background: 'rgba(255,255,255,0.07)', borderRadius: 6, fontSize: 11, color: c.muted, fontFamily: 'monospace' }}>{h}</span>
+                    ))}
+                  </div>
+                  <div style={{ fontSize: 11, color: c.dim, marginTop: 8 }}>
+                    El sistema busca columnas que contengan: <strong style={{ color: c.text }}>laboral, empresarial, personal, celular, telefono, movil, tel</strong>
+                  </div>
+                </div>
+              )}
               <div style={{ maxHeight: 380, overflowY: 'auto', marginBottom: 18, borderRadius: 10, border: `1px solid ${c.border}`, overflow: 'hidden' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                   <thead>
