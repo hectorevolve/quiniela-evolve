@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { to10Digits, createSessionToken } from '@/lib/server-session';
+import { to10Digits, checkPhoneAllowed, createSessionToken } from '@/lib/server-session';
 
 export async function POST(req: NextRequest) {
   const { phone, code } = (await req.json()) as { phone?: string; code?: string };
@@ -17,11 +17,7 @@ export async function POST(req: NextRequest) {
       `&code_auth=${encodeURIComponent(code.trim())}`;
 
     const res = await fetch(url, { cache: 'no-store' });
-    const data = (await res.json()) as Array<{
-      success: boolean;
-      code: string;
-      message: string;
-    }>;
+    const data = (await res.json()) as Array<{ success: boolean; code: string }>;
     const result = data?.[0];
 
     if (!result) {
@@ -29,15 +25,33 @@ export async function POST(req: NextRequest) {
     }
 
     if (result.code === 'validation_01') {
-      // Correct code → create Supabase session
-      const session = await createSessionToken(phone10);
-      if ('error' in session) {
-        return NextResponse.json({ error: session.error }, { status: 500 });
+      // Código correcto — verificar si ya tiene cuenta
+      const phoneCheck = await checkPhoneAllowed(phone10);
+
+      if (phoneCheck.hasAccount) {
+        // Ya registrado → crear sesión y hacer login directo
+        const session = await createSessionToken(phone10);
+        if ('error' in session) {
+          return NextResponse.json({ error: session.error }, { status: 500 });
+        }
+        return NextResponse.json({
+          code: 'validation_01',
+          registered: true,
+          token_hash: session.token_hash,
+        });
+      } else {
+        // Celular verificado pero sin cuenta → mostrar formulario de registro
+        return NextResponse.json({
+          code: 'validation_01',
+          registered: false,
+          name: phoneCheck.name,
+          group_name: phoneCheck.group_name,
+        });
       }
-      return NextResponse.json({ code: 'validation_01', token_hash: session.token_hash });
     }
 
-    // validation_05 → wrong code  |  validation_04 → phone mismatch
+    // validation_05 → código incorrecto
+    // validation_04 → número de celular alterado
     return NextResponse.json({ code: result.code });
   } catch (err) {
     console.error('[emetrix-verify]', err);

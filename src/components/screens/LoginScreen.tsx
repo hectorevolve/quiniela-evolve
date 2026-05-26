@@ -13,22 +13,25 @@ interface Props {
   blocked?: boolean;
 }
 
-// Days until WC 2026 kick-off
 const WC_START = new Date('2026-06-11T00:00:00');
 function daysUntilWC(): number {
-  const diff = WC_START.getTime() - Date.now();
-  return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+  return Math.max(0, Math.ceil((WC_START.getTime() - Date.now()) / 86_400_000));
 }
-
-type Step = 'phone' | 'otp' | 'admin';
 
 /** Format 10-digit phone for display: "55 2888 5655" */
 function fmtPhone(raw: string): string {
   const d = raw.replace(/\D/g, '').slice(0, 10);
-  if (d.length <= 2)  return d;
-  if (d.length <= 6)  return `${d.slice(0,2)} ${d.slice(2)}`;
-  return `${d.slice(0,2)} ${d.slice(2,6)} ${d.slice(6)}`;
+  if (d.length <= 2) return d;
+  if (d.length <= 6) return `${d.slice(0, 2)} ${d.slice(2)}`;
+  return `${d.slice(0, 2)} ${d.slice(2, 6)} ${d.slice(6)}`;
 }
+
+// Steps:
+// 'phone'      → enter phone number
+// 'otp'        → enter SMS code
+// 'register'   → new user: choose email + password
+// 'email-login'→ returning user: login with email + password
+type Step = 'phone' | 'otp' | 'register' | 'email-login';
 
 export function LoginScreen({ onLogin, blocked = false }: Props) {
   const [step, setStep]       = useState<Step>('phone');
@@ -38,14 +41,26 @@ export function LoginScreen({ onLogin, blocked = false }: Props) {
   const [error, setError]     = useState<string | null>(null);
   const [info, setInfo]       = useState<string | null>(null);
 
-  // Admin fallback
-  const [adminEmail, setAdminEmail]       = useState('');
-  const [adminPass, setAdminPass]         = useState('');
-  const [showAdminPass, setShowAdminPass] = useState(false);
+  // Pre-filled from whitelist after OTP verification
+  const [prefilledName, setPrefilledName]           = useState('');
+  const [prefilledGroup, setPrefilledGroup]          = useState('');
+
+  // Registration form
+  const [regName, setRegName]             = useState('');
+  const [regEmail, setRegEmail]           = useState('');
+  const [regPassword, setRegPassword]     = useState('');
+  const [regConfirm, setRegConfirm]       = useState('');
+  const [showRegPass, setShowRegPass]     = useState(false);
+  const [showRegConfirm, setShowRegConfirm] = useState(false);
+
+  // Email login form
+  const [loginEmail, setLoginEmail]       = useState('');
+  const [loginPass, setLoginPass]         = useState('');
+  const [showLoginPass, setShowLoginPass] = useState(false);
 
   const otpInputRef = useRef<HTMLInputElement>(null);
 
-  // ─── Shared: establish Supabase session from token_hash and call onLogin ────
+  // ─── Shared: establish Supabase session from token_hash ─────────────────────
   const finishLogin = async (token_hash: string) => {
     const { data, error: verifyErr } = await supabase.auth.verifyOtp({
       token_hash,
@@ -68,16 +83,24 @@ export function LoginScreen({ onLogin, blocked = false }: Props) {
     return true;
   };
 
-  // ─── Step 1: Send OTP via emetrix ───────────────────────────────────────────
+  const goToOtp = (registered: boolean, name?: string, group?: string) => {
+    setPrefilledName(name ?? '');
+    setPrefilledGroup(group ?? '');
+    if (!registered) {
+      // Prepare register form
+      setRegName(name ?? '');
+    }
+    setStep('otp');
+    setOtp('');
+    setTimeout(() => otpInputRef.current?.focus(), 300);
+  };
+
+  // ─── Paso 1: Enviar código ───────────────────────────────────────────────────
   const handleSendOtp = async () => {
-    const raw = phone.trim();
-    if (!raw) { setError('Ingresa tu número de celular.'); return; }
-    const digits = raw.replace(/\D/g, '');
+    const digits = phone.replace(/\D/g, '');
     if (digits.length < 10) { setError('El número debe tener 10 dígitos.'); return; }
 
-    setLoading(true);
-    setError(null);
-    setInfo(null);
+    setLoading(true); setError(null); setInfo(null);
     try {
       const res = await fetch('/api/auth/emetrix-send', {
         method: 'POST',
@@ -86,11 +109,14 @@ export function LoginScreen({ onLogin, blocked = false }: Props) {
       });
       const data = await res.json() as {
         code?: string;
+        registered?: boolean;
         token_hash?: string;
+        name?: string;
+        group_name?: string;
         error?: string;
       };
 
-      if (data.error === 'not_registered') {
+      if (data.error === 'not_in_whitelist') {
         setError('Este número no está registrado. Contacta al administrador.');
         return;
       }
@@ -99,16 +125,20 @@ export function LoginScreen({ onLogin, blocked = false }: Props) {
         return;
       }
 
-      // verification_04: usuario ya registrado con emetrix → login directo
-      if (data.code === 'verification_04' && data.token_hash) {
-        await finishLogin(data.token_hash);
+      // verification_04: celular ya conocido por emetrix
+      if (data.code === 'verification_04') {
+        if (data.registered && data.token_hash) {
+          // Tiene cuenta → login directo
+          await finishLogin(data.token_hash);
+        } else {
+          // Sin cuenta → registro
+          goToOtp(false, data.name, data.group_name);
+        }
         return;
       }
 
-      // verification_01: código enviado al celular
-      setStep('otp');
-      setOtp('');
-      setTimeout(() => otpInputRef.current?.focus(), 300);
+      // verification_01: código enviado
+      goToOtp(data.registered ?? false, data.name, data.group_name);
     } catch {
       setError('Error de conexión. Inténtalo de nuevo.');
     } finally {
@@ -116,14 +146,12 @@ export function LoginScreen({ onLogin, blocked = false }: Props) {
     }
   };
 
-  // ─── Step 2: Verify OTP via emetrix ─────────────────────────────────────────
+  // ─── Paso 2: Verificar código ────────────────────────────────────────────────
   const handleVerifyOtp = async () => {
     if (!otp.trim()) { setError('Ingresa el código que recibiste.'); return; }
     const digits = phone.replace(/\D/g, '');
 
-    setLoading(true);
-    setError(null);
-    setInfo(null);
+    setLoading(true); setError(null); setInfo(null);
     try {
       const res = await fetch('/api/auth/emetrix-verify', {
         method: 'POST',
@@ -132,7 +160,10 @@ export function LoginScreen({ onLogin, blocked = false }: Props) {
       });
       const data = await res.json() as {
         code?: string;
+        registered?: boolean;
         token_hash?: string;
+        name?: string;
+        group_name?: string;
         error?: string;
       };
 
@@ -140,26 +171,28 @@ export function LoginScreen({ onLogin, blocked = false }: Props) {
         setError('Error de verificación. Inténtalo de nuevo.');
         return;
       }
-
-      if (data.code === 'validation_01' && data.token_hash) {
-        // Código correcto → crear sesión
-        await finishLogin(data.token_hash);
+      if (data.code === 'validation_01') {
+        if (data.registered && data.token_hash) {
+          // Ya tiene cuenta → login directo
+          await finishLogin(data.token_hash);
+        } else {
+          // Celular verificado pero sin cuenta → mostrar registro
+          setPrefilledName(data.name ?? '');
+          setPrefilledGroup(data.group_name ?? '');
+          setRegName(data.name ?? '');
+          setStep('register');
+        }
         return;
       }
-
       if (data.code === 'validation_05') {
-        // Código incorrecto
-        setError('Código incorrecto. Verifica y vuelve a intentarlo.');
+        setError('Código incorrecto. Verifica e intenta de nuevo.');
         return;
       }
-
       if (data.code === 'validation_04') {
-        // Número alterado
-        setError('Error en el número de celular. Reinicia el proceso e ingresa tu número nuevamente.');
+        setError('Error en el número. Reinicia el proceso e ingresa tu número nuevamente.');
         return;
       }
-
-      setError('Respuesta inesperada. Intenta de nuevo.');
+      setError('Respuesta inesperada. Inténtalo de nuevo.');
     } catch {
       setError('Error de conexión. Inténtalo de nuevo.');
     } finally {
@@ -171,40 +204,78 @@ export function LoginScreen({ onLogin, blocked = false }: Props) {
   const handleReset = async () => {
     const digits = phone.replace(/\D/g, '');
     setLoading(true);
-    setError(null);
-    setInfo(null);
     try {
       await fetch('/api/auth/emetrix-reset', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phone: digits }),
       });
-    } catch {/* silently ignore */} finally {
+    } catch { /* silently ignore */ } finally {
       setLoading(false);
     }
-    // Always go back to phone step and ask to re-enter
-    setStep('phone');
-    setPhone('');
-    setOtp('');
+    setStep('phone'); setPhone(''); setOtp('');
     setInfo('Proceso reiniciado. Ingresa nuevamente tu número de celular.');
   };
 
-  // ─── Admin email/password login ──────────────────────────────────────────────
-  const handleAdminLogin = async () => {
-    if (!adminEmail.trim() || !adminPass.trim()) {
-      setError('Ingresa correo y contraseña.');
-      return;
+  // ─── Paso 3: Crear cuenta ────────────────────────────────────────────────────
+  const handleRegister = async () => {
+    if (!regName.trim()) { setError('Ingresa tu nombre completo.'); return; }
+    if (!regEmail.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(regEmail.trim())) {
+      setError('Ingresa un correo electrónico válido.'); return;
     }
-    setLoading(true);
-    setError(null);
+    if (regPassword.length < 6) { setError('La contraseña debe tener al menos 6 caracteres.'); return; }
+    if (regPassword !== regConfirm) { setError('Las contraseñas no coinciden.'); return; }
+
+    setLoading(true); setError(null);
     try {
-      const { data, error: authError } = await supabase.auth.signInWithPassword({
-        email: adminEmail.trim().toLowerCase(),
-        password: adminPass,
+      const res = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phone: phone.replace(/\D/g, ''),
+          email: regEmail.trim().toLowerCase(),
+          password: regPassword,
+          name: regName.trim(),
+        }),
       });
-      if (authError) { setError('Correo o contraseña incorrectos.'); return; }
+      const data = await res.json() as { token_hash?: string; error?: string };
+
+      if (data.error === 'email_taken') {
+        setError('Este correo ya está en uso. Usa uno diferente o inicia sesión.');
+        return;
+      }
+      if (data.error === 'password_too_short') {
+        setError('La contraseña debe tener al menos 6 caracteres.');
+        return;
+      }
+      if (data.error || !data.token_hash) {
+        setError('Error al crear la cuenta. Inténtalo de nuevo.');
+        return;
+      }
+      await finishLogin(data.token_hash);
+    } catch {
+      setError('Error de conexión. Inténtalo de nuevo.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ─── Email + contraseña (login directo) ─────────────────────────────────────
+  const handleEmailLogin = async () => {
+    if (!loginEmail.trim() || !loginPass.trim()) {
+      setError('Ingresa tu correo y contraseña.'); return;
+    }
+    setLoading(true); setError(null);
+    try {
+      const { data, error: authErr } = await supabase.auth.signInWithPassword({
+        email: loginEmail.trim().toLowerCase(),
+        password: loginPass,
+      });
+      if (authErr || !data.user) {
+        setError('Correo o contraseña incorrectos.'); return;
+      }
       const profile = await getProfile(data.user.id);
-      if (!profile) { setError('No se encontró tu perfil.'); return; }
+      if (!profile) { setError('No se encontró tu perfil. Contacta al administrador.'); return; }
       await Promise.all([
         syncPredictionsFromDB(data.user.id),
         syncBonusFromDB(data.user.id),
@@ -240,13 +311,17 @@ export function LoginScreen({ onLogin, blocked = false }: Props) {
     );
   }
 
-  // ─── Common input style ──────────────────────────────────────────────────────
+  // ─── Common styles ───────────────────────────────────────────────────────────
   const inputStyle: React.CSSProperties = {
     width: '100%', height: 52, padding: '0 16px',
     border: `1.5px solid ${T.border}`, borderRadius: 14,
-    fontSize: 16, color: T.ink, background: '#fff',
+    fontSize: 15, color: T.ink, background: '#fff',
     outline: 'none', transition: 'border-color 150ms',
-    boxSizing: 'border-box',
+    boxSizing: 'border-box', fontFamily: 'inherit',
+  };
+  const labelStyle: React.CSSProperties = {
+    fontSize: 12, fontWeight: 600, color: T.slate,
+    letterSpacing: 0.3, display: 'block', marginBottom: 6,
   };
 
   return (
@@ -254,19 +329,17 @@ export function LoginScreen({ onLogin, blocked = false }: Props) {
 
       {/* Hero */}
       <div style={{
-        height: '38%', minHeight: 210,
-        background: T.bgInk,
+        height: '38%', minHeight: 200, background: T.bgInk,
         position: 'relative', overflow: 'hidden',
-        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-        gap: 12,
+        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12,
       }}>
         <div className="evo-grid-bg" style={{ position: 'absolute', inset: 0, opacity: 0.5 }}/>
         <div style={{ position: 'absolute', top: '30%', left: '50%', transform: 'translateX(-50%)', width: 260, height: 260, background: 'radial-gradient(circle, rgba(26,175,255,0.25) 0%, transparent 65%)', filter: 'blur(16px)', pointerEvents: 'none' }}/>
         <ChevronMotif size={180} opacity={0.06} style={{ position: 'absolute', top: -20, right: -30, pointerEvents: 'none' }}/>
         <ChevronMotif size={100} opacity={0.04} style={{ position: 'absolute', bottom: -10, left: -20, pointerEvents: 'none' }}/>
-        <FallingBall size={52} delay={0}   duration={4.5} x="22%"  glow />
-        <FallingBall size={36} delay={1.2} duration={5.5} x="68%"  />
-        <FallingBall size={28} delay={2.4} duration={4.0} x="50%"  />
+        <FallingBall size={52} delay={0}   duration={4.5} x="22%" glow/>
+        <FallingBall size={36} delay={1.2} duration={5.5} x="68%"/>
+        <FallingBall size={28} delay={2.4} duration={4.0} x="50%"/>
         <div style={{ position: 'relative', zIndex: 2, textAlign: 'center', animation: 'evo-slide-up 500ms ease 200ms both' }}>
           <QELockup size={32} mode="light" compact/>
         </div>
@@ -280,29 +353,208 @@ export function LoginScreen({ onLogin, blocked = false }: Props) {
       {/* Card */}
       <div style={{
         flex: 1, background: '#fff', borderRadius: '24px 24px 0 0',
-        padding: '28px 24px 32px', marginTop: -20,
+        padding: '24px 24px 32px', marginTop: -20,
         boxShadow: '0 -8px 32px rgba(0,0,0,0.08)',
-        display: 'flex', flexDirection: 'column',
-        overflowY: 'auto',
+        display: 'flex', flexDirection: 'column', overflowY: 'auto',
       }}>
 
-        {/* ── ADMIN email/password ── */}
-        {step === 'admin' && (
+        {/* ════ PASO 1: Número de celular ════ */}
+        {step === 'phone' && (
           <>
+            <div className="font-display" style={{ fontSize: 22, fontWeight: 700, color: T.ink, marginBottom: 6, letterSpacing: '-0.02em' }}>Bienvenido</div>
+            <div style={{ fontSize: 14, color: T.slate, marginBottom: 24, lineHeight: 1.5 }}>
+              Ingresa tu número de celular para recibir un código de acceso
+            </div>
+
+            <div style={{ marginBottom: 18 }}>
+              <label style={labelStyle}>Número de celular</label>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <div style={{ height: 52, padding: '0 12px', border: `1.5px solid ${T.border}`, borderRadius: 14, display: 'flex', alignItems: 'center', gap: 6, background: '#F8FAFC', flexShrink: 0, fontSize: 15, color: T.slate, fontWeight: 600 }}>
+                  🇲🇽 +52
+                </div>
+                <input
+                  type="tel" inputMode="numeric" placeholder="55 2888 5655"
+                  value={phone}
+                  onChange={e => { setPhone(e.target.value.replace(/[^\d\s]/g, '')); setError(null); setInfo(null); }}
+                  onKeyDown={e => e.key === 'Enter' && handleSendOtp()}
+                  disabled={loading} maxLength={14}
+                  style={{ ...inputStyle, flex: 1 }}
+                  onFocus={e => e.currentTarget.style.borderColor = T.blue}
+                  onBlur={e => e.currentTarget.style.borderColor = T.border}
+                />
+              </div>
+              <div style={{ fontSize: 11, color: T.muted, marginTop: 5 }}>Solo tus 10 dígitos — sin código de país</div>
+            </div>
+
+            {info  && <InfoBox msg={info}/>}
+            {error && <ErrorBox msg={error}/>}
+
+            <Button variant="ink" fullWidth onClick={handleSendOtp} size="lg" style={{ opacity: loading ? 0.7 : 1, marginBottom: 14 }}>
+              {loading ? 'Enviando…' : 'Enviar código SMS →'}
+            </Button>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '2px 0 14px' }}>
+              <div style={{ flex: 1, height: 1, background: T.border }}/>
+              <span style={{ fontSize: 11, color: T.muted }}>o</span>
+              <div style={{ flex: 1, height: 1, background: T.border }}/>
+            </div>
+
             <button
-              onClick={() => { setStep('phone'); setError(null); setInfo(null); }}
-              style={{ alignSelf: 'flex-start', background: 'none', border: 'none', cursor: 'pointer', color: T.blue, fontSize: 13, padding: '0 0 16px', display: 'flex', alignItems: 'center', gap: 4 }}
+              onClick={() => { setStep('email-login'); setError(null); setInfo(null); }}
+              style={{ width: '100%', padding: '14px', background: 'transparent', border: `1.5px solid ${T.border}`, borderRadius: 14, fontSize: 14, fontWeight: 600, color: T.slate, cursor: 'pointer', fontFamily: 'inherit' }}
             >
+              Iniciar sesión con correo y contraseña
+            </button>
+          </>
+        )}
+
+        {/* ════ PASO 2: Código OTP ════ */}
+        {step === 'otp' && (
+          <>
+            <button onClick={() => { setStep('phone'); setError(null); setInfo(null); setOtp(''); }} style={{ alignSelf: 'flex-start', background: 'none', border: 'none', cursor: 'pointer', color: T.blue, fontSize: 13, padding: '0 0 14px', display: 'flex', alignItems: 'center', gap: 4 }}>
+              ← Cambiar número
+            </button>
+
+            <div style={{ width: 52, height: 52, borderRadius: 14, background: 'rgba(26,175,255,0.1)', border: `1.5px solid rgba(26,175,255,0.2)`, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={T.blue} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+              </svg>
+            </div>
+
+            <div className="font-display" style={{ fontSize: 20, fontWeight: 700, color: T.ink, marginBottom: 4 }}>Código enviado</div>
+            <div style={{ fontSize: 13, color: T.slate, marginBottom: 22, lineHeight: 1.5 }}>
+              Ingresa el código que te enviamos al{' '}
+              <span style={{ fontWeight: 700, color: T.ink }}>+52 {fmtPhone(phone.replace(/\D/g, ''))}</span>
+            </div>
+
+            <div style={{ marginBottom: 18 }}>
+              <label style={labelStyle}>Código de verificación</label>
+              <input
+                ref={otpInputRef}
+                type="text" inputMode="numeric" placeholder="••••"
+                value={otp}
+                onChange={e => { setOtp(e.target.value.replace(/\D/g, '').slice(0, 6)); setError(null); }}
+                onKeyDown={e => e.key === 'Enter' && handleVerifyOtp()}
+                disabled={loading} maxLength={6}
+                style={{ ...inputStyle, fontSize: 32, fontWeight: 700, letterSpacing: 14, textAlign: 'center', fontFamily: 'var(--font-jetbrains-mono)' }}
+                onFocus={e => e.currentTarget.style.borderColor = T.blue}
+                onBlur={e => e.currentTarget.style.borderColor = T.border}
+              />
+            </div>
+
+            {error && <ErrorBox msg={error}/>}
+
+            <Button variant="ink" fullWidth onClick={handleVerifyOtp} size="lg" style={{ opacity: loading ? 0.7 : 1, marginBottom: 14 }}>
+              {loading ? 'Verificando…' : 'Verificar y continuar'}
+            </Button>
+
+            <button onClick={handleReset} disabled={loading} style={{ background: 'none', border: 'none', cursor: loading ? 'default' : 'pointer', color: T.rose, fontSize: 13, fontWeight: 600, padding: '4px 0', textAlign: 'center', display: 'block', width: '100%' }}>
+              🔄 Reiniciar proceso
+            </button>
+            <div style={{ fontSize: 11, color: T.muted, textAlign: 'center', marginTop: 4 }}>
+              Úsalo si el número era incorrecto o el SMS no llegó
+            </div>
+          </>
+        )}
+
+        {/* ════ PASO 3: Crear cuenta ════ */}
+        {step === 'register' && (
+          <>
+            <button onClick={() => { setStep('otp'); setError(null); }} style={{ alignSelf: 'flex-start', background: 'none', border: 'none', cursor: 'pointer', color: T.blue, fontSize: 13, padding: '0 0 14px', display: 'flex', alignItems: 'center', gap: 4 }}>
               ← Volver
             </button>
-            <div className="font-display" style={{ fontSize: 22, fontWeight: 700, color: T.ink, marginBottom: 6 }}>Acceso admin</div>
-            <div style={{ fontSize: 14, color: T.slate, marginBottom: 24 }}>Ingresa con tu correo y contraseña</div>
+
+            {/* Celular verificado badge */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: '#F0FDF4', border: '1px solid #86EFAC', borderRadius: 10, marginBottom: 18 }}>
+              <span style={{ fontSize: 16 }}>✅</span>
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#15803D' }}>Celular verificado</div>
+                <div style={{ fontSize: 11, color: '#16A34A' }}>+52 {fmtPhone(phone.replace(/\D/g, ''))}</div>
+              </div>
+            </div>
+
+            <div className="font-display" style={{ fontSize: 20, fontWeight: 700, color: T.ink, marginBottom: 4 }}>Crea tu cuenta</div>
+            <div style={{ fontSize: 13, color: T.slate, marginBottom: 20, lineHeight: 1.5 }}>
+              Elige tu correo y contraseña para acceder en el futuro
+            </div>
+
+            {/* Nombre */}
+            <div style={{ marginBottom: 14 }}>
+              <label style={labelStyle}>Nombre completo</label>
+              <input type="text" placeholder="Tu nombre" value={regName}
+                onChange={e => { setRegName(e.target.value); setError(null); }}
+                disabled={loading} style={inputStyle}
+                onFocus={e => e.currentTarget.style.borderColor = T.blue}
+                onBlur={e => e.currentTarget.style.borderColor = T.border}
+              />
+            </div>
+
+            {/* Correo */}
+            <div style={{ marginBottom: 14 }}>
+              <label style={labelStyle}>Correo electrónico</label>
+              <input type="email" placeholder="tu@correo.com" value={regEmail}
+                onChange={e => { setRegEmail(e.target.value); setError(null); }}
+                disabled={loading} style={inputStyle}
+                onFocus={e => e.currentTarget.style.borderColor = T.blue}
+                onBlur={e => e.currentTarget.style.borderColor = T.border}
+              />
+            </div>
+
+            {/* Contraseña */}
+            <div style={{ marginBottom: 14 }}>
+              <label style={labelStyle}>Contraseña</label>
+              <div style={{ position: 'relative' }}>
+                <input type={showRegPass ? 'text' : 'password'} placeholder="Mínimo 6 caracteres" value={regPassword}
+                  onChange={e => { setRegPassword(e.target.value); setError(null); }}
+                  disabled={loading} style={{ ...inputStyle, paddingRight: 46 }}
+                  onFocus={e => e.currentTarget.style.borderColor = T.blue}
+                  onBlur={e => e.currentTarget.style.borderColor = T.border}
+                />
+                <EyeBtn show={showRegPass} onToggle={() => setShowRegPass(v => !v)}/>
+              </div>
+            </div>
+
+            {/* Confirmar contraseña */}
+            <div style={{ marginBottom: 20 }}>
+              <label style={labelStyle}>Confirmar contraseña</label>
+              <div style={{ position: 'relative' }}>
+                <input type={showRegConfirm ? 'text' : 'password'} placeholder="Repite tu contraseña" value={regConfirm}
+                  onChange={e => { setRegConfirm(e.target.value); setError(null); }}
+                  onKeyDown={e => e.key === 'Enter' && handleRegister()}
+                  disabled={loading} style={{ ...inputStyle, paddingRight: 46, borderColor: regConfirm && regPassword !== regConfirm ? '#EF4444' : T.border }}
+                  onFocus={e => e.currentTarget.style.borderColor = regConfirm && regPassword !== regConfirm ? '#EF4444' : T.blue}
+                  onBlur={e => e.currentTarget.style.borderColor = regConfirm && regPassword !== regConfirm ? '#EF4444' : T.border}
+                />
+                <EyeBtn show={showRegConfirm} onToggle={() => setShowRegConfirm(v => !v)}/>
+              </div>
+              {regConfirm && regPassword !== regConfirm && (
+                <div style={{ fontSize: 11, color: '#EF4444', marginTop: 4 }}>Las contraseñas no coinciden</div>
+              )}
+            </div>
+
+            {error && <ErrorBox msg={error}/>}
+
+            <Button variant="ink" fullWidth onClick={handleRegister} size="lg" style={{ opacity: loading ? 0.7 : 1 }}>
+              {loading ? 'Creando cuenta…' : 'Crear cuenta y entrar →'}
+            </Button>
+          </>
+        )}
+
+        {/* ════ Login con correo + contraseña ════ */}
+        {step === 'email-login' && (
+          <>
+            <button onClick={() => { setStep('phone'); setError(null); }} style={{ alignSelf: 'flex-start', background: 'none', border: 'none', cursor: 'pointer', color: T.blue, fontSize: 13, padding: '0 0 14px', display: 'flex', alignItems: 'center', gap: 4 }}>
+              ← Volver
+            </button>
+
+            <div className="font-display" style={{ fontSize: 20, fontWeight: 700, color: T.ink, marginBottom: 6 }}>Iniciar sesión</div>
+            <div style={{ fontSize: 13, color: T.slate, marginBottom: 22 }}>Con tu correo y contraseña</div>
 
             <div style={{ marginBottom: 14 }}>
-              <label style={{ fontSize: 12, fontWeight: 600, color: T.slate, letterSpacing: 0.3, display: 'block', marginBottom: 6 }}>Correo electrónico</label>
-              <input type="email" placeholder="admin@correo.com" value={adminEmail}
-                onChange={e => setAdminEmail(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleAdminLogin()}
+              <label style={labelStyle}>Correo electrónico</label>
+              <input type="email" placeholder="tu@correo.com" value={loginEmail}
+                onChange={e => { setLoginEmail(e.target.value); setError(null); }}
+                onKeyDown={e => e.key === 'Enter' && handleEmailLogin()}
                 disabled={loading} style={inputStyle}
                 onFocus={e => e.currentTarget.style.borderColor = T.blue}
                 onBlur={e => e.currentTarget.style.borderColor = T.border}
@@ -310,178 +562,24 @@ export function LoginScreen({ onLogin, blocked = false }: Props) {
             </div>
 
             <div style={{ marginBottom: 20 }}>
-              <label style={{ fontSize: 12, fontWeight: 600, color: T.slate, letterSpacing: 0.3, display: 'block', marginBottom: 6 }}>Contraseña</label>
+              <label style={labelStyle}>Contraseña</label>
               <div style={{ position: 'relative' }}>
-                <input type={showAdminPass ? 'text' : 'password'} placeholder="••••••••" value={adminPass}
-                  onChange={e => setAdminPass(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && handleAdminLogin()}
-                  disabled={loading} style={{ ...inputStyle, paddingRight: 44 }}
+                <input type={showLoginPass ? 'text' : 'password'} placeholder="••••••••" value={loginPass}
+                  onChange={e => { setLoginPass(e.target.value); setError(null); }}
+                  onKeyDown={e => e.key === 'Enter' && handleEmailLogin()}
+                  disabled={loading} style={{ ...inputStyle, paddingRight: 46 }}
                   onFocus={e => e.currentTarget.style.borderColor = T.blue}
                   onBlur={e => e.currentTarget.style.borderColor = T.border}
                 />
-                <button onClick={() => setShowAdminPass(v => !v)} style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: T.muted }}>
-                  {showAdminPass ? (
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
-                      <line x1="1" y1="1" x2="23" y2="23"/>
-                    </svg>
-                  ) : (
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/>
-                    </svg>
-                  )}
-                </button>
+                <EyeBtn show={showLoginPass} onToggle={() => setShowLoginPass(v => !v)}/>
               </div>
             </div>
 
             {error && <ErrorBox msg={error}/>}
 
-            <Button variant="ink" fullWidth onClick={handleAdminLogin} size="lg" style={{ opacity: loading ? 0.7 : 1 }}>
-              {loading ? 'Ingresando…' : 'Entrar como admin'}
+            <Button variant="ink" fullWidth onClick={handleEmailLogin} size="lg" style={{ opacity: loading ? 0.7 : 1 }}>
+              {loading ? 'Ingresando…' : 'Entrar'}
             </Button>
-          </>
-        )}
-
-        {/* ── PASO 1: Celular ── */}
-        {step === 'phone' && (
-          <>
-            <div className="font-display" style={{ fontSize: 22, fontWeight: 700, color: T.ink, marginBottom: 6, letterSpacing: '-0.02em' }}>Bienvenido</div>
-            <div style={{ fontSize: 14, color: T.slate, marginBottom: 28, lineHeight: 1.5 }}>
-              Ingresa tu número de celular para recibir un código de acceso por SMS
-            </div>
-
-            <div style={{ marginBottom: 20 }}>
-              <label style={{ fontSize: 12, fontWeight: 600, color: T.slate, letterSpacing: 0.3, display: 'block', marginBottom: 8 }}>
-                Número de celular
-              </label>
-              <div style={{ display: 'flex', gap: 8 }}>
-                {/* Country prefix badge */}
-                <div style={{
-                  height: 52, padding: '0 12px',
-                  border: `1.5px solid ${T.border}`, borderRadius: 14,
-                  display: 'flex', alignItems: 'center', gap: 6,
-                  background: '#F8FAFC', flexShrink: 0, fontSize: 15, color: T.slate, fontWeight: 600,
-                }}>
-                  🇲🇽 +52
-                </div>
-                <input
-                  type="tel"
-                  inputMode="numeric"
-                  placeholder="55 2888 5655"
-                  value={phone}
-                  onChange={e => {
-                    const clean = e.target.value.replace(/[^\d\s]/g, '');
-                    setPhone(clean);
-                    setError(null);
-                    setInfo(null);
-                  }}
-                  onKeyDown={e => e.key === 'Enter' && handleSendOtp()}
-                  disabled={loading}
-                  maxLength={14}
-                  style={{ ...inputStyle, flex: 1 }}
-                  onFocus={e => e.currentTarget.style.borderColor = T.blue}
-                  onBlur={e => e.currentTarget.style.borderColor = T.border}
-                />
-              </div>
-              <div style={{ fontSize: 11, color: T.muted, marginTop: 6 }}>
-                Sin código de país — solo tus 10 dígitos
-              </div>
-            </div>
-
-            {info && <InfoBox msg={info}/>}
-            {error && <ErrorBox msg={error}/>}
-
-            <Button
-              variant="ink" fullWidth onClick={handleSendOtp} size="lg"
-              style={{ opacity: loading ? 0.7 : 1, marginBottom: 16 }}
-            >
-              {loading ? 'Enviando…' : 'Enviar código SMS →'}
-            </Button>
-
-            {/* Admin fallback */}
-            <button
-              onClick={() => { setStep('admin'); setError(null); setInfo(null); }}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: T.muted, fontSize: 12, padding: '4px 0', textAlign: 'center' }}
-            >
-              Acceso administrativo
-            </button>
-          </>
-        )}
-
-        {/* ── PASO 2: Código OTP ── */}
-        {step === 'otp' && (
-          <>
-            {/* Back */}
-            <button
-              onClick={() => { setStep('phone'); setError(null); setInfo(null); setOtp(''); }}
-              style={{ alignSelf: 'flex-start', background: 'none', border: 'none', cursor: 'pointer', color: T.blue, fontSize: 13, padding: '0 0 16px', display: 'flex', alignItems: 'center', gap: 4 }}
-            >
-              ← Cambiar número
-            </button>
-
-            {/* SMS icon */}
-            <div style={{ width: 56, height: 56, borderRadius: 16, background: 'rgba(26,175,255,0.1)', border: `1.5px solid rgba(26,175,255,0.2)`, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
-              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke={T.blue} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-              </svg>
-            </div>
-
-            <div className="font-display" style={{ fontSize: 22, fontWeight: 700, color: T.ink, marginBottom: 6 }}>Código enviado</div>
-            <div style={{ fontSize: 14, color: T.slate, marginBottom: 28, lineHeight: 1.5 }}>
-              Ingresa el código que te enviamos por SMS al{' '}
-              <span style={{ fontWeight: 600, color: T.ink }}>+52 {fmtPhone(phone.replace(/\D/g,''))}</span>
-            </div>
-
-            <div style={{ marginBottom: 20 }}>
-              <label style={{ fontSize: 12, fontWeight: 600, color: T.slate, letterSpacing: 0.3, display: 'block', marginBottom: 8 }}>
-                Código de verificación
-              </label>
-              <input
-                ref={otpInputRef}
-                type="text"
-                inputMode="numeric"
-                placeholder="••••"
-                value={otp}
-                onChange={e => {
-                  const val = e.target.value.replace(/\D/g, '').slice(0, 6);
-                  setOtp(val);
-                  setError(null);
-                }}
-                onKeyDown={e => e.key === 'Enter' && handleVerifyOtp()}
-                disabled={loading}
-                maxLength={6}
-                style={{
-                  ...inputStyle,
-                  fontSize: 32, fontWeight: 700, letterSpacing: 16,
-                  textAlign: 'center', fontFamily: 'var(--font-jetbrains-mono)',
-                }}
-                onFocus={e => e.currentTarget.style.borderColor = T.blue}
-                onBlur={e => e.currentTarget.style.borderColor = T.border}
-              />
-            </div>
-
-            {error && <ErrorBox msg={error}/>}
-
-            <Button
-              variant="ink" fullWidth onClick={handleVerifyOtp} size="lg"
-              style={{ opacity: loading ? 0.7 : 1, marginBottom: 16 }}
-            >
-              {loading ? 'Verificando…' : 'Verificar y entrar'}
-            </Button>
-
-            {/* Reiniciar proceso */}
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, marginTop: 4 }}>
-              <button
-                onClick={handleReset}
-                disabled={loading}
-                style={{ background: 'none', border: 'none', cursor: loading ? 'default' : 'pointer', color: T.rose, fontSize: 13, fontWeight: 600, padding: '4px 0' }}
-              >
-                🔄 Reiniciar proceso
-              </button>
-              <span style={{ fontSize: 11, color: T.muted, textAlign: 'center', maxWidth: 260, lineHeight: 1.4 }}>
-                Úsalo si ingresaste un número incorrecto o si el SMS no llegó a tiempo
-              </span>
-            </div>
           </>
         )}
       </div>
@@ -489,13 +587,28 @@ export function LoginScreen({ onLogin, blocked = false }: Props) {
   );
 }
 
+// ─── Sub-components ──────────────────────────────────────────────────────────
+
+function EyeBtn({ show, onToggle }: { show: boolean; onToggle: () => void }) {
+  return (
+    <button onClick={onToggle} type="button" style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#94A3B8', padding: 4 }}>
+      {show ? (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+          <line x1="1" y1="1" x2="23" y2="23"/>
+        </svg>
+      ) : (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/>
+        </svg>
+      )}
+    </button>
+  );
+}
+
 function ErrorBox({ msg }: { msg: string }) {
   return (
-    <div style={{
-      marginBottom: 14, padding: '10px 14px',
-      background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 10,
-      fontSize: 13, color: '#DC2626', lineHeight: 1.4,
-    }}>
+    <div style={{ marginBottom: 14, padding: '10px 14px', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 10, fontSize: 13, color: '#DC2626', lineHeight: 1.4 }}>
       {msg}
     </div>
   );
@@ -503,11 +616,7 @@ function ErrorBox({ msg }: { msg: string }) {
 
 function InfoBox({ msg }: { msg: string }) {
   return (
-    <div style={{
-      marginBottom: 14, padding: '10px 14px',
-      background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 10,
-      fontSize: 13, color: '#1D4ED8', lineHeight: 1.4,
-    }}>
+    <div style={{ marginBottom: 14, padding: '10px 14px', background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 10, fontSize: 13, color: '#1D4ED8', lineHeight: 1.4 }}>
       {msg}
     </div>
   );
