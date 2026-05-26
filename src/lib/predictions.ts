@@ -7,22 +7,20 @@ export function setCurrentUserId(id: string | null): void {
   _userId = id;
 }
 
+// ─── In-memory prediction cache (populated from Supabase on login) ────────────
+// This replaces localStorage entirely. The cache is loaded via syncPredictionsFromDB
+// before TorneoScreen renders, so MatchCards always initialise with real data.
+
 export interface SavedPrediction {
   home: number;
   away: number;
   savedAt: string; // human-readable locale string
 }
 
-const storageKey = (matchId: string) => `evo_pred_${matchId}`;
+const _predCache: Record<string, SavedPrediction> = {};
 
 export function loadPrediction(matchId: string): SavedPrediction | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    const raw = localStorage.getItem(storageKey(matchId));
-    return raw ? (JSON.parse(raw) as SavedPrediction) : null;
-  } catch {
-    return null;
-  }
+  return _predCache[matchId] ?? null;
 }
 
 export function savePrediction(
@@ -38,11 +36,9 @@ export function savePrediction(
       hour: '2-digit', minute: '2-digit',
     }),
   };
-  // 1. Write to localStorage for immediate synchronous access
-  if (typeof window !== 'undefined') {
-    localStorage.setItem(storageKey(matchId), JSON.stringify(pred));
-  }
-  // 2. Also persist to Supabase if user is logged in
+  // 1. Update in-memory cache for instant UI feedback
+  _predCache[matchId] = pred;
+  // 2. Persist to Supabase
   if (_userId) {
     upsertPrediction(_userId, matchId, home, away).catch(console.error);
   }
@@ -50,16 +46,17 @@ export function savePrediction(
 }
 
 /**
- * After login, load all predictions from Supabase and hydrate localStorage.
- * Call this once immediately after setting the current user.
+ * After login, load all predictions from Supabase and populate the in-memory cache.
+ * Call this once immediately after auth, before rendering TorneoScreen.
  */
 export async function syncPredictionsFromDB(userId: string): Promise<void> {
   setCurrentUserId(userId);
-  if (typeof window === 'undefined') return;
   try {
     const preds = await loadAllPredictions(userId);
+    // Clear previous cache (handles user switch)
+    for (const key of Object.keys(_predCache)) delete _predCache[key];
     for (const [matchId, { home, away }] of Object.entries(preds)) {
-      const pred: SavedPrediction = {
+      _predCache[matchId] = {
         home,
         away,
         savedAt: new Date().toLocaleString('es-MX', {
@@ -67,11 +64,15 @@ export async function syncPredictionsFromDB(userId: string): Promise<void> {
           hour: '2-digit', minute: '2-digit',
         }),
       };
-      localStorage.setItem(storageKey(matchId), JSON.stringify(pred));
     }
   } catch (err) {
     console.error('[predictions] syncPredictionsFromDB:', err);
   }
+}
+
+/** Returns a snapshot of all cached predictions (used for "sin predicción" filter). */
+export function getAllCachedPredictions(): Record<string, SavedPrediction> {
+  return { ..._predCache };
 }
 
 // ── Bonus predictions ──────────────────────────────────────────────────────────
@@ -82,52 +83,39 @@ export interface BonusPrediction {
   goalPlayer?: string;
 }
 
-const BONUS_KEY = 'evo_bonus';
+let _bonusCache: BonusPrediction | null = null;
 
 export function loadBonus(): BonusPrediction | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    const raw = localStorage.getItem(BONUS_KEY);
-    return raw ? (JSON.parse(raw) as BonusPrediction) : null;
-  } catch { return null; }
+  return _bonusCache;
 }
 
 export function saveBonus(data: Partial<BonusPrediction>): void {
-  const existing = loadBonus() ?? {};
-  const merged = { ...existing, ...data };
-  if (typeof window !== 'undefined') {
-    localStorage.setItem(BONUS_KEY, JSON.stringify(merged));
-  }
+  _bonusCache = { ...(_bonusCache ?? {}), ...data };
   // Sync to Supabase if logged in
   if (_userId) {
     upsertBonusPicks(_userId, {
-      champ_code:    merged.champCode,
-      runner_up_code: merged.subCode,
-      third_code:    merged.thirdCode,
-      top_scorer:    merged.goalPlayer,
+      champ_code:     _bonusCache.champCode,
+      runner_up_code: _bonusCache.subCode,
+      third_code:     _bonusCache.thirdCode,
+      top_scorer:     _bonusCache.goalPlayer,
     }).catch(console.error);
   }
 }
 
-/** Load bonus picks from Supabase and hydrate localStorage.
- *  If the user has no picks in DB yet, clears any stale localStorage data. */
+/** Load bonus picks from Supabase and populate the in-memory cache. */
 export async function syncBonusFromDB(userId: string): Promise<void> {
   try {
     const picks = await loadBonusPicks(userId);
     if (!picks) {
-      // No picks saved — wipe any leftover mock/dev data from localStorage
-      if (typeof window !== 'undefined') localStorage.removeItem(BONUS_KEY);
+      _bonusCache = null;
       return;
     }
-    const bonus: BonusPrediction = {
+    _bonusCache = {
       champCode:  picks.champ_code    ?? undefined,
       subCode:    picks.runner_up_code ?? undefined,
       thirdCode:  picks.third_code    ?? undefined,
       goalPlayer: picks.top_scorer    ?? undefined,
     };
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(BONUS_KEY, JSON.stringify(bonus));
-    }
   } catch (err) {
     console.error('[predictions] syncBonusFromDB:', err);
   }

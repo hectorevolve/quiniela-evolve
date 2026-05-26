@@ -5,7 +5,7 @@ import { MATCHES, KNOCKOUT_MATCHES, MOCK_RESULTS, resolveSlots, computeSlots, is
 import { getInitials, type AppUser } from '@/lib/supabase';
 import { getRankings, getGroupSettings, type RankingEntry, type GroupSettings } from '@/lib/db';
 import { useLiveMatch } from '@/hooks/useLiveMatch';
-import { loadPrediction, savePrediction, loadBonus, saveBonus } from '@/lib/predictions';
+import { loadPrediction, savePrediction, loadBonus, saveBonus, getAllCachedPredictions } from '@/lib/predictions';
 import {
   Header, Avatar, Pill, Chip, Card,
   PowerIcon, BottomSheet, Modal, Eyebrow,
@@ -139,7 +139,7 @@ export function TorneoScreen({ goto, tweaks, fireToast, usedPowers, setUsedPower
   const [tab, setTab] = useState<Tab>('predicciones');
   const [subScreen, setSubScreen] = useState<SubScreenName | null>(null);
 
-  // Bonus selections — initialised from localStorage (synced from DB on login)
+  // Bonus selections — initialised from in-memory cache (synced from Supabase on login)
   const [champSelected, setChampSelected] = useState(() => loadBonus()?.champCode ?? '');
   const [subSelected,   setSubSelected]   = useState(() => loadBonus()?.subCode   ?? '');
   const [thirdSelected, setThirdSelected] = useState(() => loadBonus()?.thirdCode ?? '');
@@ -329,11 +329,12 @@ function TabPredicciones({ goto, tweaks, fireToast, usedPowers: usedPowersFromPa
 
   const filtered = useMemo(() => {
     const q = norm(search.trim());
-    // Read saved predictions from localStorage only when the filter is active
+    // Read saved predictions from in-memory cache (Supabase-backed) when filter is active
     const savedPreds = new Set<string>();
-    if (onlyUnpredicted && typeof window !== 'undefined') {
+    if (onlyUnpredicted) {
+      const cache = getAllCachedPredictions();
       for (const m of allMatches) {
-        if (localStorage.getItem(`evo_pred_${m.id}`)) savedPreds.add(m.id);
+        if (cache[m.id]) savedPreds.add(m.id);
       }
     }
     return allMatches.filter(m => {

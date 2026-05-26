@@ -55,12 +55,15 @@ export default function Home() {
         if (session?.user) {
           const profile = await getProfile(session.user.id);
           if (profile) {
+            // Sync predictions + bonus before showing the screen so MatchCards
+            // initialise from DB data (in-memory cache, no localStorage)
+            await Promise.all([
+              syncPredictionsFromDB(session.user.id).catch(console.error),
+              syncBonusFromDB(session.user.id).catch(console.error),
+            ]);
+            getMatchDates().then(setMatchDates).catch(console.error);
             setCurrentUser(profile);
             setScreen('torneo');
-            // Sync predictions + dates in the background
-            syncPredictionsFromDB(session.user.id).catch(console.error);
-            syncBonusFromDB(session.user.id).catch(console.error);
-            getMatchDates().then(setMatchDates).catch(console.error);
           }
         }
       } catch (err) {
