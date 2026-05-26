@@ -17,7 +17,7 @@ const NAV: { id: View; label: string }[] = [
   { id: 'dashboard',    label: 'Dashboard' },
   { id: 'encuesta',     label: 'Encuesta' },
   { id: 'celulares',    label: 'Celulares' },
-  { id: 'grupos-config',label: 'Grupos' },
+  { id: 'grupos',        label: 'Grupos' },
   { id: 'usuarios',     label: 'Usuarios' },
   { id: 'rankings',     label: 'Rankings' },
   { id: 'partidos',     label: 'Partidos' },
@@ -85,7 +85,7 @@ const GROUP_LOGOS: Record<string, string> = {
   'Disney':          '/logos/disney.png',
   'Ruz':             '/logos/ruz.png',
   'Zuru':            '/logos/zuru.png',
-  'AGEMEX':          '/logos/agemex.png',
+  'AJEMEX':          '/logos/ajemex.png',
   'Delongi':         '/logos/delongi.png',
 };
 
@@ -1651,7 +1651,7 @@ const COLOR_PRESETS = [
   '#F43F5E','#84CC16','#06B6D4','#A855F7','#FB923C',
 ];
 
-function ViewGruposConfig({ onSelectGroup }: { onSelectGroup: (g: string) => void }) {
+function ViewGruposConfig({ onSelectGroup, onBack }: { onSelectGroup: (g: string) => void; onBack?: () => void }) {
   const isMobile = useIsMobile();
   const [dbGroups, setDbGroups] = useState<DBGroup[]>([]);
   const [loading, setLoading]   = useState(true);
@@ -1715,11 +1715,16 @@ function ViewGruposConfig({ onSelectGroup }: { onSelectGroup: (g: string) => voi
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24, gap: 12, flexWrap: 'wrap' }}>
-        <div>
-          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: c.text }}>Grupos</h2>
-          <p style={{ margin: '4px 0 0', fontSize: 13, color: c.muted }}>
-            {loading ? 'Cargando…' : `${dbGroups.length} grupos configurados`}
-          </p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          {onBack && (
+            <button onClick={onBack} style={{ padding: '7px 14px', borderRadius: 8, border: `1px solid ${c.border}`, background: c.card, color: c.muted, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>← Grupos</button>
+          )}
+          <div>
+            <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: c.text }}>Configurar grupos</h2>
+            <p style={{ margin: '4px 0 0', fontSize: 13, color: c.muted }}>
+              {loading ? 'Cargando…' : `${dbGroups.length} grupos configurados`}
+            </p>
+          </div>
         </div>
         <button onClick={() => { setAdding(true); setErr(null); }} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 18px', background: c.blue, color: '#fff', border: 'none', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
           + Nuevo grupo
@@ -1735,9 +1740,7 @@ function ViewGruposConfig({ onSelectGroup }: { onSelectGroup: (g: string) => voi
         <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12, marginBottom: 24 }}>
           {dbGroups.map(g => (
             <div key={g.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', background: c.card, border: `1px solid ${g.color}44`, borderRadius: 14 }}>
-              <div style={{ width: 40, height: 40, borderRadius: '50%', background: g.color, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 13, fontWeight: 800, color: '#fff' }}>
-                {g.name.slice(0, 2).toUpperCase()}
-              </div>
+              <GroupIcon group={g.name} size={40}/>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 14, fontWeight: 700, color: c.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.name}</div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3 }}>
@@ -1857,7 +1860,7 @@ function GroupCard({ label, col, icon, memberCount, totalUsers, onClick }: {
   );
 }
 
-function ViewGrupos({ liveUsers, onSelectGroup }: { liveUsers: LiveUser[]; onSelectGroup: (g: string) => void }) {
+function ViewGrupos({ liveUsers, onSelectGroup, onConfigure }: { liveUsers: LiveUser[]; onSelectGroup: (g: string) => void; onConfigure?: () => void }) {
   const isMobile = useIsMobile();
   const nonAdmins = liveUsers.filter(u => u.role !== 'admin');
   const sinGrupo = nonAdmins.filter(u => !u.group_name);
@@ -1865,7 +1868,17 @@ function ViewGrupos({ liveUsers, onSelectGroup }: { liveUsers: LiveUser[]; onSel
 
   return (
     <div>
-      <SectionHeader title="Grupos" sub={`${ALL_GROUPS.length} grupos · ${totalUsers} usuarios`}/>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20, gap: 12, flexWrap: 'wrap' }}>
+        <div>
+          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: c.text }}>Grupos</h2>
+          <p style={{ margin: '4px 0 0', fontSize: 13, color: c.muted }}>{ALL_GROUPS.length} grupos · {totalUsers} usuarios</p>
+        </div>
+        {onConfigure && (
+          <button onClick={onConfigure} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 16px', background: 'rgba(255,255,255,0.06)', border: `1px solid ${c.border}`, borderRadius: 10, color: c.muted, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+            ⚙️ Configurar grupos
+          </button>
+        )}
+      </div>
       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(auto-fill, minmax(260px, 1fr))', gap: 14 }}>
 
         {/* Nacional — todos */}
@@ -3160,17 +3173,17 @@ export default function AdminPage() {
         {view === 'dashboard'     && <ViewDashboard liveUsers={liveUsers} setView={setView}/>}
         {view === 'encuesta'      && <ViewEncuesta/>}
         {view === 'celulares'     && <ViewCelulares/>}
-        {view === 'grupos-config' && <ViewGruposConfig onSelectGroup={g => { setSelectedGroup(g); navigate('grupo-detalle'); }}/>}
+        {view === 'grupos-config' && <ViewGruposConfig onBack={() => navigate('grupos')} onSelectGroup={g => { setSelectedGroup(g); navigate('grupo-detalle'); }}/>}
         {view === 'usuarios'      && <ViewUsuariosAdmin liveUsers={liveUsers} onUserCreated={u => setLiveUsers(prev => [...prev, u])}/>}
         {view === 'rankings'      && <ViewRankings/>}
         {view === 'predicciones'  && <ViewPredicciones users={users}/>}
         {view === 'partidos'      && <ViewPartidos/>}
-        {view === 'grupos'        && <ViewGrupos liveUsers={liveUsers} onSelectGroup={goToGroup}/>}
+        {view === 'grupos'        && <ViewGrupos liveUsers={liveUsers} onSelectGroup={goToGroup} onConfigure={() => navigate('grupos-config')}/>}
         {view === 'grupo-detalle' && selectedGroup && (
           <ViewGrupoDetalle
             group={selectedGroup}
             liveUsers={liveUsers}
-            onBack={() => navigate('grupos-config')}
+            onBack={() => navigate('grupos')}
             onUserUpdated={updated => setLiveUsers(prev => prev.map(u => u.id === updated.id ? updated : u))}
             onUserRemoved={id => setLiveUsers(prev => prev.filter(u => u.id !== id))}
           />
