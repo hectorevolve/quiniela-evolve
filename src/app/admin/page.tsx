@@ -1933,13 +1933,14 @@ const genPassword = () => {
 };
 
 interface ImportRow {
-  numero:   string;
-  nombre:   string;
-  grupo:    string;
-  ciudad:   string;
-  telefono: string;  // priority: Celular Laboral → Celular Personal
-  status:   'pending' | 'ok' | 'error';
-  errorMsg: string;
+  numero:     string;
+  nombre:     string;
+  grupo:      string;
+  ciudad:     string;
+  telefono:   string;  // priority: Celular Laboral → Celular Personal
+  phone_type: 'laboral' | 'personal' | null;
+  status:     'pending' | 'ok' | 'error';
+  errorMsg:   string;
 }
 
 function normalizePhoneImport(raw: string): string {
@@ -1999,7 +2000,7 @@ function ImportModal({ onClose, onDone }: {
         const grupo    = findCol(r, 'grupo', 'group') || defaultGroup;
         const rawTel   = findCol(r, 'telefono', 'tel', 'phone', 'celular', 'movil', 'cel');
         const telefono = rawTel ? normalizePhoneImport(rawTel) : '';
-        return { numero, nombre, grupo, ciudad: '', telefono, status: 'pending' as const, errorMsg: '' };
+        return { numero, nombre, grupo, ciudad: '', telefono, phone_type: null, status: 'pending' as const, errorMsg: '' };
       });
 
     setRows(parsed);
@@ -2625,7 +2626,7 @@ function ViewEncuesta() {
 }
 
 // ─── Celulares autorizados ────────────────────────────────────────────────────
-type AllowedPhone = { phone: string; name: string | null; group_name: string | null; premium: boolean };
+type AllowedPhone = { phone: string; name: string | null; group_name: string | null; premium: boolean; phone_type: string | null };
 
 function ViewCelulares() {
   const [phones, setPhones]       = useState<AllowedPhone[]>([]);
@@ -2643,7 +2644,7 @@ function ViewCelulares() {
 
   const load = async () => {
     setLoadingList(true);
-    const { data } = await supabase.from('allowed_phones').select('phone, name, group_name, premium').order('phone');
+    const { data } = await supabase.from('allowed_phones').select('phone, name, group_name, premium, phone_type').order('phone');
     setPhones((data ?? []) as AllowedPhone[]);
     setLoadingList(false);
   };
@@ -2725,6 +2726,7 @@ function ViewCelulares() {
                 <div style={{ fontSize: 11, color: c.muted, marginTop: 2 }}>
                   {p.name ?? <span style={{ fontStyle: 'italic' }}>Sin nombre</span>}
                   {p.group_name && <span style={{ marginLeft: 8, padding: '1px 6px', borderRadius: 4, background: `${c.blue}22`, color: c.blue, fontSize: 10, fontWeight: 700 }}>{p.group_name}</span>}
+                  {p.phone_type === 'personal' && <span style={{ marginLeft: 4, padding: '1px 6px', borderRadius: 4, background: 'rgba(245,158,11,0.15)', color: '#F59E0B', fontSize: 10, fontWeight: 700 }}>Personal</span>}
                   {p.premium && <span style={{ marginLeft: 4, padding: '1px 6px', borderRadius: 4, background: `${c.amber}22`, color: c.amber, fontSize: 10, fontWeight: 700 }}>PRO</span>}
                 </div>
               </div>
@@ -2883,8 +2885,9 @@ function ImportModalCelulares({ onClose, onDone }: { onClose: () => void; onDone
         const rawGeneric  = findGenericPhone(r);
         const rawTel      = rawLaboral || rawPersonal || rawGeneric;
         const telefono    = rawTel ? normalizePhoneImport(rawTel) : '';
+        const phone_type: ImportRow['phone_type'] = rawLaboral ? 'laboral' : rawPersonal ? 'personal' : null;
 
-        return { numero, nombre, grupo, ciudad, telefono, status: 'pending' as const, errorMsg: '' };
+        return { numero, nombre, grupo, ciudad, telefono, phone_type, status: 'pending' as const, errorMsg: '' };
       });
 
     // Deduplicate by phone (keep first occurrence)
@@ -2915,9 +2918,10 @@ function ImportModalCelulares({ onClose, onDone }: { onClose: () => void; onDone
         body: JSON.stringify({
           rows: chunk.map(r => ({
             phone:      r.telefono,
-            name:       r.nombre  || null,
-            group_name: r.grupo   || null,
-            city:       r.ciudad  || null,
+            name:       r.nombre     || null,
+            group_name: r.grupo      || null,
+            city:       r.ciudad     || null,
+            phone_type: r.phone_type || null,
           })),
         }),
       });
@@ -3022,7 +3026,7 @@ function ImportModalCelulares({ onClose, onDone }: { onClose: () => void; onDone
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                   <thead>
                     <tr style={{ background: 'rgba(255,255,255,0.05)', position: 'sticky', top: 0 }}>
-                      {['Nombre', 'Ciudad', 'Celular', 'Grupo'].map(h => (
+                      {['Nombre', 'Ciudad', 'Celular', 'Tipo', 'Grupo'].map(h => (
                         <th key={h} style={{ padding: '10px 12px', textAlign: 'left', color: c.muted, fontWeight: 600, borderBottom: `1px solid ${c.border}`, whiteSpace: 'nowrap' }}>{h}</th>
                       ))}
                     </tr>
@@ -3033,6 +3037,13 @@ function ImportModalCelulares({ onClose, onDone }: { onClose: () => void; onDone
                         <td style={{ padding: '8px 12px', color: c.text }}>{r.nombre || <span style={{ fontStyle: 'italic', color: c.muted }}>—</span>}</td>
                         <td style={{ padding: '8px 12px', color: c.muted, fontSize: 11 }}>{r.ciudad || '—'}</td>
                         <td style={{ padding: '8px 12px', color: r.telefono ? c.green : c.rose, fontFamily: 'monospace', fontSize: 11 }}>{r.telefono || '⚠ sin tel.'}</td>
+                        <td style={{ padding: '8px 12px' }}>
+                          {r.phone_type === 'personal'
+                            ? <span style={{ padding: '2px 8px', borderRadius: 20, fontSize: 10, fontWeight: 700, background: 'rgba(245,158,11,0.15)', color: '#F59E0B', border: '1px solid rgba(245,158,11,0.3)' }}>Personal</span>
+                            : r.phone_type === 'laboral'
+                            ? <span style={{ padding: '2px 8px', borderRadius: 20, fontSize: 10, fontWeight: 700, background: 'rgba(34,197,94,0.12)', color: '#22C55E', border: '1px solid rgba(34,197,94,0.3)' }}>Laboral</span>
+                            : <span style={{ color: c.dim, fontSize: 11 }}>—</span>}
+                        </td>
                         <td style={{ padding: '8px 12px' }}>
                           {r.grupo ? <GroupBadge group={r.grupo}/> : <span style={{ color: c.dim, fontSize: 11 }}>—</span>}
                         </td>
