@@ -2641,6 +2641,7 @@ function ViewCelulares() {
   const [deleting, setDeleting]   = useState<string | null>(null);
   const [err, setErr]             = useState<string | null>(null);
   const [ok, setOk]               = useState<string | null>(null);
+  const [search, setSearch]       = useState('');
 
   const load = async () => {
     setLoadingList(true);
@@ -2710,15 +2711,40 @@ function ViewCelulares() {
       {ok && <div style={{ marginBottom: 14, padding: '10px 14px', background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: 8, fontSize: 13, color: c.green }}>{ok}</div>}
       {err && <div style={{ marginBottom: 14, padding: '10px 14px', background: 'rgba(244,63,94,0.1)', border: '1px solid rgba(244,63,94,0.3)', borderRadius: 8, fontSize: 13, color: c.rose }}>{err}</div>}
 
+      {/* Buscador */}
+      <div style={{ position: 'relative', marginBottom: 16 }}>
+        <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 14, pointerEvents: 'none', opacity: 0.4 }}>🔍</span>
+        <input
+          type="text"
+          placeholder="Buscar por nombre, número o grupo…"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          style={{ width: '100%', padding: '10px 12px 10px 36px', borderRadius: 10, border: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.05)', color: c.text, fontSize: 13, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }}
+        />
+        {search && (
+          <button onClick={() => setSearch('')} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: c.muted, cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>✕</button>
+        )}
+      </div>
+
       {loadingList ? (
         <div style={{ textAlign: 'center', padding: '40px 24px', color: c.muted }}>Cargando…</div>
       ) : phones.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '48px 24px', color: c.muted, fontSize: 14 }}>
           No hay celulares autorizados. ¡Agrega el primero!
         </div>
-      ) : (
+      ) : (() => {
+        const q = search.toLowerCase();
+        const filtered = search
+          ? phones.filter(p =>
+              p.phone.includes(q) ||
+              (p.name ?? '').toLowerCase().includes(q) ||
+              (p.group_name ?? '').toLowerCase().includes(q)
+            )
+          : phones;
+        return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {phones.map(p => (
+          {search && <div style={{ fontSize: 12, color: c.muted, marginBottom: 4 }}>{filtered.length} resultado{filtered.length !== 1 ? 's' : ''} de {phones.length}</div>}
+          {filtered.map(p => (
             <div key={p.phone} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', background: c.card, border: `1px solid ${c.border}`, borderRadius: 10 }}>
               <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'rgba(26,175,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>📱</div>
               <div style={{ flex: 1, minWidth: 0 }}>
@@ -2733,8 +2759,12 @@ function ViewCelulares() {
               <button onClick={() => handleDelete(p.phone)} disabled={deleting === p.phone} style={{ background: 'none', border: 'none', cursor: 'pointer', color: c.rose, fontSize: 16, opacity: deleting === p.phone ? 0.4 : 1 }}>🗑</button>
             </div>
           ))}
+          {filtered.length === 0 && (
+            <div style={{ textAlign: 'center', padding: '32px 24px', color: c.muted, fontSize: 13 }}>Sin resultados para &quot;{search}&quot;</div>
+          )}
         </div>
-      )}
+        );
+      })()}
 
       {/* Add modal */}
       {showAdd && (
