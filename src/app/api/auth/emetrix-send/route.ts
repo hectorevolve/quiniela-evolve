@@ -33,16 +33,22 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'emetrix_error' }, { status: 500 });
     }
 
-    // verification_04 → celular ya registrado en emetrix, hacer reset para enviar nuevo código
+    // verification_04 → celular ya registrado en emetrix
+    // 1) Resetear sesión anterior  2) Volver a enviar OTP
     if (result.code === 'verification_04') {
       const resetUrl =
         `https://emetrix.com.mx/servicio_notificaciones.php` +
         `?tipo=sms_auth_reinicio` +
         `&destinatarios=${phone10}`;
       await fetch(resetUrl, { cache: 'no-store' });
-      // Siempre pedir código — nunca auto-login
+
+      // Re-enviar OTP después del reset
+      const resend = await fetch(url, { cache: 'no-store' });
+      const resendData = (await resend.json()) as Array<{ success: boolean; code: string }>;
+      const resendResult = resendData?.[0];
+
       return NextResponse.json({
-        code: 'verification_01',
+        code: resendResult?.code ?? 'verification_01',
         registered: phoneCheck.hasAccount,
         name: phoneCheck.name,
         group_name: phoneCheck.group_name,
