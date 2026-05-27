@@ -3,21 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
-// Adaptador de sessionStorage: la sesión dura mientras el navegador está abierto
-// pero se borra al cerrar la pestaña/ventana → OTP requerido en cada sesión nueva
-const sessionStorageAdapter = typeof window !== 'undefined' ? {
-  getItem:    (key: string) => window.sessionStorage.getItem(key),
-  setItem:    (key: string, value: string) => window.sessionStorage.setItem(key, value),
-  removeItem: (key: string) => window.sessionStorage.removeItem(key),
-} : undefined;
-
-export const supabase = createClient(supabaseUrl, supabaseKey, {
-  auth: {
-    persistSession:  true,
-    autoRefreshToken: true,
-    storage: sessionStorageAdapter,
-  },
-});
+export const supabase = createClient(supabaseUrl, supabaseKey);
 
 export interface AppUser {
   id: string;
