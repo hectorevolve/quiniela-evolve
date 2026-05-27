@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { to10Digits, checkPhoneAllowed, createSessionToken } from '@/lib/server-session';
+import { to10Digits, checkPhoneAllowed } from '@/lib/server-session';
 
 const NOMBRE_CLIENTE = process.env.EMETRIX_NOMBRE_CLIENTE ?? 'Quiniela Evolve';
 
@@ -33,28 +33,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'emetrix_error' }, { status: 500 });
     }
 
-    // verification_04 → celular ya registrado en emetrix
+    // verification_04 → celular ya registrado en emetrix, hacer reset para enviar nuevo código
     if (result.code === 'verification_04') {
-      if (phoneCheck.hasAccount) {
-        // Ya tiene cuenta → generar sesión y hacer login directo
-        const session = await createSessionToken(phone10);
-        if ('error' in session) {
-          return NextResponse.json({ error: session.error }, { status: 500 });
-        }
-        return NextResponse.json({
-          code: 'verification_04',
-          registered: true,
-          token_hash: session.token_hash,
-        });
-      } else {
-        // En whitelist pero sin cuenta → mostrar formulario de registro
-        return NextResponse.json({
-          code: 'verification_04',
-          registered: false,
-          name: phoneCheck.name,
-          group_name: phoneCheck.group_name,
-        });
-      }
+      const resetUrl =
+        `https://emetrix.com.mx/servicio_notificaciones.php` +
+        `?tipo=sms_auth_reinicio` +
+        `&destinatarios=${phone10}`;
+      await fetch(resetUrl, { cache: 'no-store' });
+      // Siempre pedir código — nunca auto-login
+      return NextResponse.json({
+        code: 'verification_01',
+        registered: phoneCheck.hasAccount,
+        name: phoneCheck.name,
+        group_name: phoneCheck.group_name,
+      });
     }
 
     // verification_01 → código enviado al celular

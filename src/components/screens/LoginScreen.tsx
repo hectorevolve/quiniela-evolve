@@ -129,7 +129,7 @@ export function LoginScreen({ onLogin, blocked = false }: Props) {
   };
 
   // ─── Enviar OTP (llamado para ambos flujos) ─────────────────────────────────
-  const sendOtp = async (): Promise<'sent' | 'auto-login' | 'auto-register' | 'error'> => {
+  const sendOtp = async (): Promise<'sent' | 'error'> => {
     const digits = phone.replace(/\D/g, '');
     try {
       const res = await fetch('/api/auth/emetrix-send', {
@@ -137,27 +137,10 @@ export function LoginScreen({ onLogin, blocked = false }: Props) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phone: digits }),
       });
-      const data = await res.json() as {
-        code?: string;
-        registered?: boolean;
-        token_hash?: string;
-        error?: string;
-      };
+      const data = await res.json() as { code?: string; registered?: boolean; error?: string };
 
       if (data.error) return 'error';
-
-      // verification_04: emetrix ya conoce este número
-      if (data.code === 'verification_04') {
-        if (data.registered && data.token_hash) {
-          await finishLogin(data.token_hash);
-          return 'auto-login';
-        } else {
-          // Número conocido por emetrix pero sin cuenta → registrar directamente
-          return 'auto-register';
-        }
-      }
-
-      // verification_01: código enviado al celular
+      // Siempre pedir código, sin importar si es usuario nuevo o existente
       return 'sent';
     } catch {
       return 'error';
@@ -193,12 +176,11 @@ export function LoginScreen({ onLogin, blocked = false }: Props) {
         const result = await sendOtp();
         if (result === 'error') {
           setError('No pudimos enviar el código. Inténtalo de nuevo.');
-        } else if (result === 'sent') {
+        } else {
           setOtp('');
           setStep('otp');
           setTimeout(() => otpInputRef.current?.focus(), 300);
         }
-        // 'auto-login' ya hizo el login en sendOtp
       } else {
         // Nuevo usuario → encuesta
         setIsNewUser(true);
@@ -221,15 +203,11 @@ export function LoginScreen({ onLogin, blocked = false }: Props) {
       const result = await sendOtp();
       if (result === 'error') {
         setError('No pudimos enviar el código SMS. Inténtalo de nuevo.');
-      } else if (result === 'auto-register') {
-        // Número ya conocido por emetrix → registrar directamente sin OTP
-        await registerAndLogin();
-      } else if (result === 'sent') {
+      } else {
         setOtp('');
         setStep('otp');
         setTimeout(() => otpInputRef.current?.focus(), 300);
       }
-      // 'auto-login' ya hizo el login
     } catch {
       setError('Error de conexión. Inténtalo de nuevo.');
     } finally {
