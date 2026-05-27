@@ -176,7 +176,7 @@ export function LoginScreen({ onLogin, blocked = false }: Props) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phone: digits }),
       });
-      const data = await res.json() as { hasAccount?: boolean; error?: string };
+      const data = await res.json() as { hasAccount?: boolean; isAdmin?: boolean; error?: string };
 
       if (data.error === 'not_in_whitelist') {
         setError('Este número no está autorizado. Contacta al administrador.');
@@ -187,8 +187,8 @@ export function LoginScreen({ onLogin, blocked = false }: Props) {
         return;
       }
 
-      if (data.hasAccount) {
-        // Usuario registrado → enviar OTP directamente
+      if (data.hasAccount || data.isAdmin) {
+        // Usuario registrado o admin → enviar OTP directamente (sin encuesta)
         setIsNewUser(false);
         const result = await sendOtp();
         if (result === 'error') {

@@ -20,5 +20,6 @@ export async function POST(req: NextRequest) {
     hasAccount:  check.hasAccount,
     name:        check.name ?? null,
     group_name:  check.group_name ?? null,
+    isAdmin:     check.role === 'admin',
   });
 }

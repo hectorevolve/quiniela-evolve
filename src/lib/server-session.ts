@@ -33,6 +33,7 @@ export interface PhoneCheck {
   group_name?: string;
   city?: string;
   premium?: boolean;
+  role?: string;
 }
 
 /**
@@ -53,7 +54,7 @@ export async function checkPhoneAllowed(phone10: string): Promise<PhoneCheck> {
       .maybeSingle(),
     admin
       .from('profiles')
-      .select('id, name, group_name, city, premium')
+      .select('id, name, group_name, city, premium, role')
       .eq('phone', phoneE164)
       .maybeSingle(),
   ]);
@@ -66,6 +67,7 @@ export async function checkPhoneAllowed(phone10: string): Promise<PhoneCheck> {
     group_name:  profile?.group_name ?? wl?.group_name ?? undefined,
     city:        profile?.city ?? wl?.city ?? undefined,
     premium:     profile?.premium ?? wl?.premium ?? false,
+    role:        profile?.role ?? undefined,
   };
 }
 
