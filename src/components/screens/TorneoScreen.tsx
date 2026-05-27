@@ -1017,7 +1017,13 @@ function TabRanking({ rankings, loading, userId, userName, userGroup }: {
     return <div style={{ padding: '40px 14px', textAlign: 'center', color: T.muted, fontSize: 14 }}>Cargando ranking…</div>;
   }
   if (total === 0) {
-    return <div style={{ padding: '40px 14px', textAlign: 'center', color: T.muted, fontSize: 14 }}>El ranking estará disponible cuando comiencen los partidos.</div>;
+    return (
+      <div style={{ padding: '40px 14px', textAlign: 'center', color: T.muted, fontSize: 14 }}>
+        {subTab === 'grupo'
+          ? `Todavía no hay jugadores registrados en ${userGroup}.`
+          : 'El ranking estará disponible cuando haya jugadores registrados.'}
+      </div>
+    );
   }
 
   return (
@@ -1119,6 +1125,18 @@ function RankingPodium({ top3, visible, userRank, userName, userPoints, userId }
       <div style={{ display: 'flex', alignItems: 'flex-end', padding: '0 16px' }}>
         {order.map((player, i) => {
           const isCenter = i === 1;
+          // Slot might be empty if fewer than 3 players — show a ghost placeholder
+          if (!player) {
+            return (
+              <div key={`ghost-${i}`} style={{
+                flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
+                opacity: 0.2,
+              }}>
+                <div style={{ width: isCenter ? 54 : 42, height: isCenter ? 54 : 42, borderRadius: '50%', background: colors[i] + '44', marginBottom: 6 }}/>
+                <div style={{ width: '100%', height: heights[i], borderRadius: '8px 8px 0 0', background: colors[i] + '22', border: `1px solid ${colors[i]}44`, borderBottom: 'none' }}/>
+              </div>
+            );
+          }
           return (
             <div key={player.pos} style={{
               flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
