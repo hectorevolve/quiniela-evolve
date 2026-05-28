@@ -48,19 +48,34 @@ export async function POST(req: NextRequest) {
       .eq('user_id', userId)
       .maybeSingle();
 
-    const payload = {
-      user_id: userId,
-      points:  body.bonus_points,
-      reason:  body.bonus_reason ?? null,
-    };
+    if (existing) {
+      // Update existing record
+      const { error } = await admin
+        .from('bonus_awards')
+        .update({ points: body.bonus_points, reason: body.bonus_reason ?? null })
+        .eq('user_id', userId);
+      if (error) {
+        console.error('[update-player] bonus_awards update:', error.message);
+        return NextResponse.json({ error: error.message }, { status: 500 });
+      }
+    } else {
+      // Insert new record — fetch group_name from profile to satisfy NOT NULL
+      const { data: profile } = await admin
+        .from('profiles')
+        .select('group_name')
+        .eq('id', userId)
+        .maybeSingle();
 
-    const { error } = existing
-      ? await admin.from('bonus_awards').update({ points: payload.points, reason: payload.reason }).eq('user_id', userId)
-      : await admin.from('bonus_awards').insert(payload);
-
-    if (error) {
-      console.error('[update-player] bonus_awards upsert:', error.message);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      const { error } = await admin.from('bonus_awards').insert({
+        user_id:    userId,
+        points:     body.bonus_points,
+        reason:     body.bonus_reason ?? null,
+        group_name: profile?.group_name ?? body.group_name ?? null,
+      });
+      if (error) {
+        console.error('[update-player] bonus_awards insert:', error.message);
+        return NextResponse.json({ error: error.message }, { status: 500 });
+      }
     }
   }
 
