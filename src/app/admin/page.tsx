@@ -204,7 +204,7 @@ function ViewToggle({ mode, onChange }: { mode: 'grid' | 'list'; onChange: (m: '
 function ViewDashboard({ liveUsers, setView }: { liveUsers: LiveUser[]; setView: (v: View) => void }) {
   const isMobile = useIsMobile();
   const groups = useMemo(() => Array.from(new Set(liveUsers.map(u => u.group_name ?? 'Sin grupo'))), [liveUsers]);
-  const nonAdmins = liveUsers.filter(u => u.role !== 'admin');
+  const nonAdmins = liveUsers.filter(u => u.role !== 'superadmin');
   return (
     <div>
       <SectionHeader title="Dashboard" sub="Resumen general del torneo"/>
@@ -241,7 +241,7 @@ function ViewDashboard({ liveUsers, setView }: { liveUsers: LiveUser[]; setView:
         {/* Group cards — always show all groups */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, alignContent: 'start' }}>
           {ALL_GROUPS.map(g => {
-            const members = liveUsers.filter(u => u.group_name === g && u.role !== 'admin');
+            const members = liveUsers.filter(u => u.group_name === g && u.role !== 'superadmin');
             const col = GROUP_COLORS[g] ?? c.blue;
             return (
               <div key={g} style={{ background: c.card, border: `1px solid ${col}33`, borderRadius: 12, padding: '14px 16px' }}>
@@ -1981,7 +1981,7 @@ function ViewGrupoDetalle({ group, liveUsers, onBack, onUserUpdated, onUserRemov
   const displayName = isNacional ? 'Nacional' : isSinGrupo ? 'Sin grupo' : group;
   const col = isNacional ? c.blue : isSinGrupo ? c.dim : (GROUP_COLORS[group] ?? c.blue);
 
-  const nonAdmins = liveUsers.filter(u => u.role !== 'admin');
+  const nonAdmins = liveUsers.filter(u => u.role !== 'superadmin');
   const members = isNacional
     ? nonAdmins
     : isSinGrupo
@@ -2591,7 +2591,7 @@ function GroupCard({ label, col, icon, memberCount, totalUsers, onClick }: {
 
 function ViewGrupos({ liveUsers, onSelectGroup, onConfigure }: { liveUsers: LiveUser[]; onSelectGroup: (g: string) => void; onConfigure?: () => void }) {
   const isMobile = useIsMobile();
-  const nonAdmins = liveUsers.filter(u => u.role !== 'admin');
+  const nonAdmins = liveUsers.filter(u => u.role !== 'superadmin');
   const sinGrupo = nonAdmins.filter(u => !u.group_name);
   const totalUsers = nonAdmins.length;
 
