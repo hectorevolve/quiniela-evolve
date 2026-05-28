@@ -3774,7 +3774,7 @@ export default function AdminPage() {
       if (!session) { setAuthState('denied'); return; }
       const { data } = await supabase
         .from('profiles').select('role').eq('id', session.user.id).single();
-      setAuthState(data?.role === 'admin' ? 'allowed' : 'denied');
+      setAuthState(data?.role === 'admin' || data?.role === 'superadmin' ? 'allowed' : 'denied');
     });
   }, []);
 
