@@ -199,15 +199,8 @@ export function TorneoScreen({ goto, tweaks, fireToast, usedPowers, setUsedPower
       {/* Group strip */}
       <div style={{ background: '#fff', borderBottom: `1px solid ${T.border}`, padding: '10px 16px' }}>
         <div style={{ display: 'flex', alignItems: 'center', flexDirection: 'column', width: 60 }}>
-          <div style={{
-            width: 50, height: 50, borderRadius: '50%',
-            background: T.bgInk,
-            border: `2px solid ${T.lime}`,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>
-            <EvolveMark size={28} color={T.lime}/>
-          </div>
-          <div style={{ fontSize: 8, fontWeight: 700, color: T.ink, textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 4, textAlign: 'center', lineHeight: 1.2, whiteSpace: 'nowrap' }}>Grupo<br/>Evolve</div>
+          <GroupLogo group={displayGroup} size={50}/>
+          <div style={{ fontSize: 8, fontWeight: 700, color: T.ink, textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 4, textAlign: 'center', lineHeight: 1.2, whiteSpace: 'nowrap' }}>Grupo<br/>{displayGroup}</div>
         </div>
       </div>
 
