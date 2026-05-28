@@ -940,8 +940,12 @@ function ViewRankings() {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
   const [rankings, setRankings] = useState<RankingEntry[]>([]);
   const [loading, setLoading] = useState(true);
-  const [editEntry, setEditEntry] = useState<RankingEntry | null>(null);
-  const [predsEntry, setPredsEntry] = useState<RankingEntry | null>(null);
+  const [editEntry,      setEditEntry]      = useState<RankingEntry | null>(null);
+  const [predsEntry,     setPredsEntry]     = useState<RankingEntry | null>(null);
+  const [showCreate,     setShowCreate]     = useState(false);
+  const [deleteUser,     setDeleteUser]     = useState<RankingEntry | null>(null);
+  const [deletingUser,   setDeletingUser]   = useState(false);
+  const [deleteUserErr,  setDeleteUserErr]  = useState<string | null>(null);
 
   const reload = () => {
     setLoading(true);
@@ -961,9 +965,29 @@ function ViewRankings() {
     setRankings(prev => prev.map(u => u.userId === editEntry?.userId ? { ...u, ...updated } : u));
   };
 
+  const handleDeleteUser = async () => {
+    if (!deleteUser) return;
+    setDeletingUser(true); setDeleteUserErr(null);
+    try {
+      const res = await fetch('/api/admin/delete-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: deleteUser.userId }),
+      });
+      if (!res.ok) { const d = await res.json(); setDeleteUserErr(d.error ?? 'Error'); return; }
+      setRankings(prev => prev.filter(u => u.userId !== deleteUser.userId));
+      setDeleteUser(null);
+    } catch (e) {
+      setDeleteUserErr(e instanceof Error ? e.message : 'Error');
+    } finally { setDeletingUser(false); }
+  };
+
   return (
     <div>
-      <SectionHeader title="Rankings" sub="Clasificaciones por grupo y nacional"/>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6, flexWrap: 'wrap', gap: 10 }}>
+        <SectionHeader title="Rankings" sub="Clasificaciones por grupo y nacional"/>
+        <button onClick={() => setShowCreate(true)} style={{ padding: '9px 18px', borderRadius: 9, background: c.green, border: 'none', color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap' }}>+ Agregar usuario</button>
+      </div>
       <div style={{ display: 'flex', gap: 6, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center' }}>
         <button onClick={() => setTab('nacional')} style={{ padding: '8px 16px', borderRadius: 8, border: `1px solid ${tab === 'nacional' ? c.blue : c.border}`, background: tab === 'nacional' ? `${c.blue}22` : c.card, color: tab === 'nacional' ? c.blue : c.muted, fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>Nacional</button>
         {ALL_GROUPS.map(g => {
@@ -1020,6 +1044,7 @@ function ViewRankings() {
                       <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
                         <button onClick={() => setPredsEntry(u)} style={{ padding: '5px 12px', borderRadius: 7, background: 'rgba(201,243,29,0.1)', border: `1px solid ${c.lime}40`, color: c.lime, fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>📋 Predicciones</button>
                         <button onClick={() => setEditEntry(u)} style={{ padding: '5px 12px', borderRadius: 7, background: `${c.blue}20`, border: `1px solid ${c.blue}50`, color: c.blue, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>✏️ Editar</button>
+                        <button onClick={() => { setDeleteUser(u); setDeleteUserErr(null); }} style={{ padding: '5px 10px', borderRadius: 7, background: `${c.rose}15`, border: `1px solid ${c.rose}40`, color: c.rose, fontSize: 13, cursor: 'pointer' }} title="Eliminar usuario">🗑</button>
                       </div>
                     </td>
                   </tr>
@@ -1043,6 +1068,7 @@ function ViewRankings() {
               <div style={{ fontSize: 14, fontWeight: 800, color: c.lime, flexShrink: 0 }}>{u.points} pts</div>
               <button onClick={() => setPredsEntry(u)} style={{ background: 'none', border: 'none', color: c.lime, cursor: 'pointer', fontSize: 16, flexShrink: 0 }} title="Predicciones">📋</button>
               <button onClick={() => setEditEntry(u)} style={{ background: 'none', border: 'none', color: c.blue, cursor: 'pointer', fontSize: 16, flexShrink: 0 }} title="Editar">✏️</button>
+              <button onClick={() => { setDeleteUser(u); setDeleteUserErr(null); }} style={{ background: 'none', border: 'none', color: c.rose, cursor: 'pointer', fontSize: 16, flexShrink: 0 }} title="Eliminar">🗑</button>
             </div>
           ))}
         </div>
@@ -1063,6 +1089,128 @@ function ViewRankings() {
           onClose={() => setPredsEntry(null)}
         />
       )}
+
+      {/* Create user modal */}
+      {showCreate && (
+        <CreateUserModal
+          onClose={() => setShowCreate(false)}
+          onCreated={() => { reload(); setShowCreate(false); }}
+        />
+      )}
+
+      {/* Delete user confirmation */}
+      {deleteUser && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: 20 }}>
+          <div style={{ background: '#0D1829', border: `1px solid ${c.rose}44`, borderRadius: 18, padding: 28, width: '100%', maxWidth: 400, textAlign: 'center' }}>
+            <div style={{ fontSize: 40, marginBottom: 12 }}>🗑</div>
+            <div style={{ fontSize: 18, fontWeight: 700, color: c.text, marginBottom: 8 }}>¿Eliminar jugador?</div>
+            <div style={{ fontSize: 14, color: c.muted, marginBottom: 6 }}>
+              <strong style={{ color: c.text }}>{deleteUser.name}</strong>
+            </div>
+            <div style={{ fontSize: 12, color: c.rose, marginBottom: 20 }}>⚠ Esto borrará su cuenta, predicciones y puntos permanentemente.</div>
+            {deleteUserErr && (
+              <div style={{ marginBottom: 14, padding: '10px 14px', background: `${c.rose}20`, border: `1px solid ${c.rose}`, borderRadius: 8, fontSize: 13, color: c.rose, textAlign: 'left' }}>⚠️ {deleteUserErr}</div>
+            )}
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={() => setDeleteUser(null)} style={{ flex: 1, padding: '12px', background: 'transparent', border: `1px solid ${c.border}`, borderRadius: 10, color: c.muted, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Cancelar</button>
+              <button onClick={handleDeleteUser} disabled={deletingUser} style={{ flex: 1, padding: '12px', background: c.rose, border: 'none', borderRadius: 10, color: '#fff', fontSize: 13, fontWeight: 700, cursor: deletingUser ? 'not-allowed' : 'pointer' }}>
+                {deletingUser ? 'Eliminando…' : 'Sí, eliminar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Reusable Create User Modal ───────────────────────────────────────────────
+function CreateUserModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+  const [name,    setName]    = useState('');
+  const [phone,   setPhone]   = useState('');
+  const [group,   setGroup]   = useState('Evolve');
+  const [role,    setRole]    = useState<'user' | 'admin'>('user');
+  const [loading, setLoading] = useState(false);
+  const [error,   setError]   = useState<string | null>(null);
+  const groups = useGroups();
+
+  const handleCreate = async () => {
+    if (!name.trim() || !phone.trim()) { setError('Nombre y celular son obligatorios.'); return; }
+    const digits = phone.replace(/\D/g, '');
+    if (digits.length < 10) { setError('Celular inválido. Mínimo 10 dígitos.'); return; }
+    const normalizedPhone = `+52${digits.slice(-10)}`;
+    setLoading(true); setError(null);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) { setError('Sin sesión activa.'); return; }
+      const res = await fetch('/api/admin/create-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+        body: JSON.stringify({ name: name.trim(), phone: normalizedPhone, group_name: group, role, premium: false }),
+      });
+      const json = await res.json();
+      if (!res.ok) { setError(json.error ?? 'Error al crear.'); return; }
+      onCreated();
+    } catch { setError('Error de red.'); }
+    finally { setLoading(false); }
+  };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: 20 }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div style={{ background: '#0D1829', border: `1px solid ${c.border}`, borderRadius: 18, padding: 28, width: '100%', maxWidth: 440 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+          <div style={{ fontSize: 18, fontWeight: 700, color: c.text }}>+ Agregar jugador</div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: c.muted, fontSize: 20, cursor: 'pointer' }}>✕</button>
+        </div>
+
+        {/* Name */}
+        <div style={{ marginBottom: 16 }}>
+          <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: c.muted, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 6 }}>Nombre completo</label>
+          <input value={name} onChange={e => setName(e.target.value)} placeholder="Ej. Juan García"
+            style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.06)', color: c.text, fontSize: 14, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }}/>
+        </div>
+
+        {/* Phone */}
+        <div style={{ marginBottom: 16 }}>
+          <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: c.muted, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 6 }}>Celular (10 dígitos)</label>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <div style={{ height: 42, padding: '0 12px', border: `1px solid ${c.border}`, borderRadius: 8, display: 'flex', alignItems: 'center', background: 'rgba(255,255,255,0.04)', color: c.muted, fontSize: 13, fontWeight: 600, flexShrink: 0 }}>🇲🇽 +52</div>
+            <input type="tel" placeholder="81 1234 5678" value={phone} onChange={e => setPhone(e.target.value.replace(/[^\d\s]/g, ''))} inputMode="numeric" maxLength={12}
+              style={{ flex: 1, padding: '10px 14px', borderRadius: 8, border: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.06)', color: c.text, fontSize: 13, fontFamily: 'inherit', outline: 'none' }}/>
+          </div>
+        </div>
+
+        {/* Group */}
+        <div style={{ marginBottom: 16 }}>
+          <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: c.muted, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 6 }}>Grupo</label>
+          <select value={group} onChange={e => setGroup(e.target.value)}
+            style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: `1px solid ${c.border}`, background: '#0D1829', color: c.text, fontSize: 14, fontFamily: 'inherit', outline: 'none' }}>
+            {groups.map(g => <option key={g} value={g} style={{ background: '#0D1829' }}>{g}</option>)}
+          </select>
+        </div>
+
+        {/* Role */}
+        <div style={{ marginBottom: 24 }}>
+          <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: c.muted, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 6 }}>Rol</label>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {(['user', 'admin'] as const).map(r => (
+              <button key={r} onClick={() => setRole(r)} style={{ flex: 1, padding: '9px', borderRadius: 8, border: `1px solid ${role === r ? c.blue : c.border}`, background: role === r ? `${c.blue}22` : 'transparent', color: role === r ? c.blue : c.muted, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+                {r === 'admin' ? 'Admin' : 'Jugador'}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {error && <div style={{ marginBottom: 16, padding: '10px 14px', background: `${c.rose}15`, border: `1px solid ${c.rose}40`, borderRadius: 8, fontSize: 13, color: c.rose }}>{error}</div>}
+
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button onClick={onClose} style={{ flex: 1, padding: '12px', background: 'transparent', border: `1px solid ${c.border}`, borderRadius: 10, color: c.muted, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Cancelar</button>
+          <button onClick={handleCreate} disabled={loading} style={{ flex: 2, padding: '12px', background: c.blue, border: 'none', borderRadius: 10, color: '#fff', fontSize: 13, fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.7 : 1 }}>
+            {loading ? 'Creando…' : 'Crear jugador'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
