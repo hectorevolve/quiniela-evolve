@@ -3,14 +3,6 @@ import { getAdminClient } from '@/lib/server-session';
 
 /**
  * Admin-only: update a player's profile + bonus points.
- * Body: {
- *   userId: string,
- *   name?: string,
- *   group_name?: string | null,
- *   used_powers?: string[],
- *   bonus_points?: number,
- *   bonus_reason?: string,
- * }
  */
 export async function POST(req: NextRequest) {
   const admin = getAdminClient();
@@ -40,9 +32,10 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // ── Upsert bonus points ─────────────────────────────────────────────────────
-  // Only write to bonus_awards if bonus_points is non-zero OR there's already a record
-  if (body.bonus_points !== undefined) {
+  // ── Bonus points ────────────────────────────────────────────────────────────
+  // Only touch bonus_awards if bonus_points is explicitly set AND > 0
+  const bonusPts = body.bonus_points;
+  if (bonusPts !== undefined && bonusPts !== 0) {
     const { data: existing } = await admin
       .from('bonus_awards')
       .select('user_id')
@@ -50,31 +43,34 @@ export async function POST(req: NextRequest) {
       .maybeSingle();
 
     if (existing) {
-      // Always update existing record (even to 0)
       const { error } = await admin
         .from('bonus_awards')
-        .update({ points: body.bonus_points, reason: body.bonus_reason ?? null })
+        .update({ points: bonusPts, reason: body.bonus_reason ?? null })
         .eq('user_id', userId);
       if (error) {
         console.error('[update-player] bonus_awards update:', error.message);
         return NextResponse.json({ error: error.message }, { status: 500 });
       }
-    } else if (body.bonus_points !== 0) {
-      // Only insert a new record when there are actual bonus points to award
-      // group_name: use what admin set in modal, fallback to empty string (satisfies NOT NULL)
-      const groupName = body.group_name ?? '';
+    } else {
+      // Insert — only mandatory fields we control; schema must allow NULLs on others
       const { error } = await admin.from('bonus_awards').insert({
         user_id:    userId,
-        points:     body.bonus_points,
+        points:     bonusPts,
         reason:     body.bonus_reason ?? null,
-        group_name: groupName,
+        group_name: body.group_name ?? null,
+        category:   null,
       });
       if (error) {
+        // If schema still rejects NULLs, surface a clear message to admin
         console.error('[update-player] bonus_awards insert:', error.message);
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        return NextResponse.json({
+          error: `Error al guardar puntos bonus: ${error.message}. Corre en Supabase: ALTER TABLE public.bonus_awards ALTER COLUMN group_name DROP NOT NULL; ALTER TABLE public.bonus_awards ALTER COLUMN category DROP NOT NULL;`,
+        }, { status: 500 });
       }
     }
-    // If bonus_points === 0 and no existing record → skip (nothing to store)
+  } else if (bonusPts === 0) {
+    // If admin explicitly cleared bonus to 0, delete any existing record
+    await admin.from('bonus_awards').delete().eq('user_id', userId);
   }
 
   return NextResponse.json({ ok: true });
