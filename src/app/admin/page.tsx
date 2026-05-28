@@ -565,28 +565,34 @@ interface EditPlayerState {
   pred_count: number; match_points: number;
 }
 
-function EditPlayerModal({ entry, onClose, onSaved }: {
+function EditPlayerModal({ entry, onClose, onSaved, onReload }: {
   entry: RankingEntry;
   onClose: () => void;
   onSaved: (updated: Partial<RankingEntry>) => void;
+  onReload: () => void;
 }) {
   const [name,        setName]        = useState(entry.name);
   const [group,       setGroup]       = useState(entry.group_name ?? '');
   const [powers,      setPowers]      = useState<string[]>(entry.used_powers ?? []);
-  const [bonusPts,    setBonusPts]    = useState<number | ''>('');
+  // totalPts = what the admin wants the player's final score to be
+  const [totalPts,    setTotalPts]    = useState<number | ''>(entry.points);
+  const [matchPts,    setMatchPts]    = useState<number>(entry.points); // pts from matches only (no bonus)
   const [bonusReason, setBonusReason] = useState('');
   const [saving,      setSaving]      = useState(false);
   const [err,         setErr]         = useState<string | null>(null);
   const groups = useGroups();
 
-  // Load current bonus points for this user
+  // Load existing bonus so we can compute match-only pts
   useEffect(() => {
     supabase.from('bonus_awards').select('points, reason').eq('user_id', entry.userId).maybeSingle()
       .then(({ data }) => {
-        if (data) { setBonusPts(data.points ?? 0); setBonusReason(data.reason ?? ''); }
-        else        { setBonusPts(0); }
+        const existingBonus = data?.points ?? 0;
+        // match-only pts = total - existing bonus
+        setMatchPts(entry.points - existingBonus);
+        setBonusReason(data?.reason ?? '');
+        // Keep totalPts as entry.points (already correct)
       });
-  }, [entry.userId]);
+  }, [entry.userId, entry.points]);
 
   const togglePower = (p: string) => {
     setPowers(prev => prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p]);
@@ -594,6 +600,9 @@ function EditPlayerModal({ entry, onClose, onSaved }: {
 
   const handleSave = async () => {
     setSaving(true); setErr(null);
+    const newTotal = totalPts === '' ? 0 : Number(totalPts);
+    // bonus to store = desired total minus the match-only pts
+    const bonusToStore = newTotal - matchPts;
     try {
       const res = await fetch('/api/admin/update-player', {
         method: 'POST',
@@ -603,12 +612,13 @@ function EditPlayerModal({ entry, onClose, onSaved }: {
           name:         name.trim() || entry.name,
           group_name:   group || null,
           used_powers:  powers,
-          bonus_points: bonusPts === '' ? 0 : bonusPts,
+          bonus_points: bonusToStore,
           bonus_reason: bonusReason.trim() || null,
         }),
       });
       if (!res.ok) { const d = await res.json(); throw new Error(d.error ?? 'Error'); }
       onSaved({ name: name.trim() || entry.name, group_name: group || null, used_powers: powers });
+      onReload(); // refresh full rankings so new total is reflected
       onClose();
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : 'Error al guardar');
@@ -678,18 +688,30 @@ function EditPlayerModal({ entry, onClose, onSaved }: {
           </div>
         </div>
 
-        {/* Bonus points */}
+        {/* Points override */}
         <div style={{ marginBottom: 20 }}>
-          <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: c.muted, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 6 }}>Puntos Bonus (admin)</label>
-          <div style={{ display: 'flex', gap: 10 }}>
-            <input type="number" value={bonusPts} onChange={e => setBonusPts(e.target.value === '' ? '' : Number(e.target.value))}
-              placeholder="0"
-              style={{ width: 100, padding: '10px 14px', borderRadius: 8, border: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.06)', color: c.lime, fontSize: 16, fontWeight: 700, fontFamily: 'inherit', outline: 'none' }}/>
-            <input value={bonusReason} onChange={e => setBonusReason(e.target.value)}
-              placeholder="Motivo (ej. ganó la rifa extra)"
-              style={{ flex: 1, padding: '10px 14px', borderRadius: 8, border: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.06)', color: c.text, fontSize: 13, fontFamily: 'inherit', outline: 'none' }}/>
+          <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: c.muted, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 6 }}>Puntos totales del jugador</label>
+          {/* Big editable total */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
+            <input
+              type="number"
+              value={totalPts}
+              onChange={e => setTotalPts(e.target.value === '' ? '' : Number(e.target.value))}
+              placeholder={String(entry.points)}
+              style={{ width: 120, padding: '12px 16px', borderRadius: 10, border: `2px solid ${c.lime}60`, background: 'rgba(201,243,29,0.06)', color: c.lime, fontSize: 22, fontWeight: 800, fontFamily: 'inherit', outline: 'none', textAlign: 'center' }}
+            />
+            <div style={{ fontSize: 12, color: c.muted, lineHeight: 1.6 }}>
+              <div>pts partidos: <strong style={{ color: c.text }}>{matchPts}</strong></div>
+              <div>pts bonus: <strong style={{ color: (totalPts === '' ? 0 : Number(totalPts)) - matchPts >= 0 ? c.green : c.rose }}>
+                {(totalPts === '' ? 0 : Number(totalPts)) - matchPts >= 0 ? '+' : ''}{(totalPts === '' ? 0 : Number(totalPts)) - matchPts}
+              </strong></div>
+            </div>
           </div>
-          <div style={{ fontSize: 11, color: c.muted, marginTop: 6 }}>Puntos de partidos: {entry.points - (bonusPts === '' ? 0 : bonusPts)} pts + bonus: {bonusPts === '' ? 0 : bonusPts} pts = {entry.points} pts totales</div>
+          {/* Reason */}
+          <input value={bonusReason} onChange={e => setBonusReason(e.target.value)}
+            placeholder="Motivo del ajuste (opcional)"
+            style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.06)', color: c.text, fontSize: 13, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }}/>
+          <div style={{ fontSize: 11, color: c.muted, marginTop: 6 }}>Escribe el total final que quieres que tenga el jugador. El ajuste se guarda como bonus.</div>
         </div>
 
         {err && <div style={{ marginBottom: 14, padding: '10px 14px', background: `${c.rose}15`, border: `1px solid ${c.rose}40`, borderRadius: 8, fontSize: 13, color: c.rose }}>{err}</div>}
@@ -820,6 +842,7 @@ function ViewRankings() {
           entry={editEntry}
           onClose={() => setEditEntry(null)}
           onSaved={handleSaved}
+          onReload={reload}
         />
       )}
     </div>
