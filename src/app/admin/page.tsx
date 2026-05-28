@@ -1415,6 +1415,7 @@ function ViewPartidos() {
   const [editingMatch, setEditingMatch] = useState<DBMatch | null | undefined>(undefined); // undefined=closed, null=new
   const [deleteTarget, setDeleteTarget] = useState<DBMatch | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const isMobile = useIsMobile();
 
   // Load matches + results from Supabase on mount
@@ -1455,10 +1456,27 @@ function ViewPartidos() {
   const handleDeleteConfirm = async () => {
     if (!deleteTarget) return;
     setDeleting(true);
-    await deleteMatch(deleteTarget.id);
-    setMatches(prev => prev.filter(m => m.id !== deleteTarget.id));
-    setDeleteTarget(null);
-    setDeleting(false);
+    setDeleteError(null);
+    try {
+      const res = await fetch('/api/admin/delete-match', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ matchId: deleteTarget.id }),
+      });
+      if (!res.ok) {
+        const d = await res.json();
+        setDeleteError(d.error ?? 'Error al borrar');
+        return;
+      }
+      // Only remove from UI after confirmed DB delete
+      setMatches(prev => prev.filter(m => m.id !== deleteTarget.id));
+      setDrafts(prev => { const n = { ...prev }; delete n[deleteTarget.id]; return n; });
+      setDeleteTarget(null);
+    } catch (e) {
+      setDeleteError(e instanceof Error ? e.message : 'Error al borrar');
+    } finally {
+      setDeleting(false);
+    }
   };
 
   // Save a result to Supabase
@@ -1704,8 +1722,13 @@ function ViewPartidos() {
             <div style={{ fontSize: 12, color: c.rose, marginBottom: 24 }}>
               ⚠ Esto también borrará todas las predicciones de este partido.
             </div>
+            {deleteError && (
+              <div style={{ marginBottom: 14, padding: '10px 14px', background: `${c.rose}20`, border: `1px solid ${c.rose}`, borderRadius: 8, fontSize: 13, color: c.rose, textAlign: 'left' }}>
+                ⚠️ {deleteError}
+              </div>
+            )}
             <div style={{ display: 'flex', gap: 10 }}>
-              <button onClick={() => setDeleteTarget(null)} style={{ flex: 1, padding: '12px', background: 'transparent', border: `1px solid ${c.border}`, borderRadius: 10, color: c.muted, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Cancelar</button>
+              <button onClick={() => { setDeleteTarget(null); setDeleteError(null); }} style={{ flex: 1, padding: '12px', background: 'transparent', border: `1px solid ${c.border}`, borderRadius: 10, color: c.muted, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Cancelar</button>
               <button onClick={handleDeleteConfirm} disabled={deleting} style={{ flex: 1, padding: '12px', background: c.rose, border: 'none', borderRadius: 10, color: '#fff', fontSize: 13, fontWeight: 700, cursor: deleting ? 'not-allowed' : 'pointer' }}>
                 {deleting ? 'Borrando…' : 'Sí, borrar'}
               </button>
