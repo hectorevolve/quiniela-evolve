@@ -637,6 +637,13 @@ function EditPlayerModal({ entry, onClose, onSaved, onReload }: {
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
       <div style={{ background: '#0D1829', border: `1px solid ${c.border}`, borderRadius: 18, width: '100%', maxWidth: 520, maxHeight: '90vh', overflowY: 'auto', padding: 28 }}>
+        {/* Error banner — always visible at top */}
+        {err && (
+          <div style={{ marginBottom: 20, padding: '12px 16px', background: `${c.rose}20`, border: `1.5px solid ${c.rose}`, borderRadius: 10, fontSize: 13, color: c.rose, lineHeight: 1.5, wordBreak: 'break-word' }}>
+            ⚠️ <strong>Error al guardar:</strong> {err}
+          </div>
+        )}
+
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
           <div>
@@ -713,8 +720,6 @@ function EditPlayerModal({ entry, onClose, onSaved, onReload }: {
             style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.06)', color: c.text, fontSize: 13, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }}/>
           <div style={{ fontSize: 11, color: c.muted, marginTop: 6 }}>Escribe el total final que quieres que tenga el jugador. El ajuste se guarda como bonus.</div>
         </div>
-
-        {err && <div style={{ marginBottom: 14, padding: '10px 14px', background: `${c.rose}15`, border: `1px solid ${c.rose}40`, borderRadius: 8, fontSize: 13, color: c.rose }}>{err}</div>}
 
         {/* Actions */}
         <div style={{ display: 'flex', gap: 10 }}>

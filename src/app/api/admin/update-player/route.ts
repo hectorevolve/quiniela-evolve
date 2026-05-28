@@ -52,20 +52,17 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: error.message }, { status: 500 });
       }
     } else {
-      // Insert — only mandatory fields we control; schema must allow NULLs on others
+      // Insert — use safe defaults for any NOT NULL columns in the schema
       const { error } = await admin.from('bonus_awards').insert({
         user_id:    userId,
         points:     bonusPts,
         reason:     body.bonus_reason ?? null,
-        group_name: body.group_name ?? null,
-        category:   null,
+        group_name: body.group_name ?? 'General',   // never null — satisfies NOT NULL constraint
+        category:   'admin',                         // never null — satisfies NOT NULL constraint
       });
       if (error) {
-        // If schema still rejects NULLs, surface a clear message to admin
         console.error('[update-player] bonus_awards insert:', error.message);
-        return NextResponse.json({
-          error: `Error al guardar puntos bonus: ${error.message}. Corre en Supabase: ALTER TABLE public.bonus_awards ALTER COLUMN group_name DROP NOT NULL; ALTER TABLE public.bonus_awards ALTER COLUMN category DROP NOT NULL;`,
-        }, { status: 500 });
+        return NextResponse.json({ error: `DB error: ${error.message}` }, { status: 500 });
       }
     }
   } else if (bonusPts === 0) {
