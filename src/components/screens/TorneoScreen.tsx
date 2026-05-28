@@ -913,7 +913,7 @@ const GROUP_LOGOS: Record<string, string> = {
   'Disney':          '/logos/disney.png',
   'Ruz':             '/logos/ruz.png',
   'Zuru':            '/logos/zuru.png',
-  'AJEMEX':          '/logos/agemex.png',
+  'AJEMEX':          '/logos/ajemex.png',
   'Delongi':         '/logos/delongi.png',
 };
 
