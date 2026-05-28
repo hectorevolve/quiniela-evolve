@@ -40,6 +40,26 @@ function useGroups() {
   return groups;
 }
 
+/** Loads group colors from DB; returns a map groupName → color.
+ *  Falls back to GROUP_COLORS for any group not in DB. */
+function useGroupColors() {
+  const [colorMap, setColorMap] = useState<Record<string, string>>(GROUP_COLORS);
+  useEffect(() => {
+    fetch('/api/groups')
+      .then(r => r.json())
+      .then((rows: { name: string; color: string }[]) => {
+        if (!rows?.length) return;
+        setColorMap(prev => {
+          const next = { ...prev };
+          for (const g of rows) if (g.name && g.color) next[g.name] = g.color;
+          return next;
+        });
+      })
+      .catch(() => {});
+  }, []);
+  return colorMap;
+}
+
 /** Shared group select dropdown backed by live DB list. */
 function GroupSelect({ value, onChange, style }: { value: string; onChange: (v: string) => void; style?: React.CSSProperties }) {
   const groups = useGroups();
@@ -129,16 +149,16 @@ function SectionHeader({ title, sub }: { title: string; sub?: string }) {
   );
 }
 
-function GroupBadge({ group }: { group: string }) {
-  const col = GROUP_COLORS[group] ?? c.blue;
+function GroupBadge({ group, colorOverride }: { group: string; colorOverride?: string }) {
+  const col = colorOverride ?? GROUP_COLORS[group] ?? c.blue;
   return (
     <span style={{ display: 'inline-block', padding: '2px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700, background: `${col}22`, color: col, border: `1px solid ${col}44`, whiteSpace: 'nowrap' }}>{group}</span>
   );
 }
 
-function GroupIcon({ group, size = 32 }: { group: string; size?: number }) {
+function GroupIcon({ group, size = 32, colorOverride }: { group: string; size?: number; colorOverride?: string }) {
   const [failed, setFailed] = useState(false);
-  const col = GROUP_COLORS[group] ?? c.blue;
+  const col = colorOverride ?? GROUP_COLORS[group] ?? c.blue;
   const logo = GROUP_LOGOS[group];
   const initials = group.trim().split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase();
   if (group === 'Evolve') return (
@@ -945,6 +965,7 @@ function ViewRankings() {
   const [showCreate,     setShowCreate]     = useState(false);
   const [deleteUser,     setDeleteUser]     = useState<RankingEntry | null>(null);
   const [deletingUser,   setDeletingUser]   = useState(false);
+  const groupColors = useGroupColors();
   const [deleteUserErr,  setDeleteUserErr]  = useState<string | null>(null);
 
   const reload = () => {
@@ -996,7 +1017,7 @@ function ViewRankings() {
       <div style={{ display: 'flex', gap: 6, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center' }}>
         <button onClick={() => setTab('nacional')} style={{ padding: '8px 16px', borderRadius: 8, border: `1px solid ${tab === 'nacional' ? c.blue : c.border}`, background: tab === 'nacional' ? `${c.blue}22` : c.card, color: tab === 'nacional' ? c.blue : c.muted, fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>Nacional</button>
         {ALL_GROUPS.map(g => {
-          const col = GROUP_COLORS[g] ?? c.blue;
+          const col = groupColors[g] ?? c.blue;
           return <button key={g} onClick={() => setTab(g)} style={{ padding: '8px 14px', borderRadius: 8, border: `1px solid ${tab === g ? col : c.border}`, background: tab === g ? `${col}22` : c.card, color: tab === g ? col : c.muted, fontWeight: 700, fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap' }}>{g}</button>;
         })}
         <div style={{ marginLeft: 'auto' }}><ViewToggle mode={viewMode} onChange={setViewMode}/></div>
@@ -1032,7 +1053,7 @@ function ViewRankings() {
                         <span style={{ fontSize: 13, fontWeight: 600, color: c.text, whiteSpace: 'nowrap' }}>{u.name}</span>
                       </div>
                     </td>
-                    <td style={{ padding: '11px 14px' }}>{u.group_name ? <GroupBadge group={u.group_name}/> : <span style={{ color: c.dim, fontSize: 12 }}>—</span>}</td>
+                    <td style={{ padding: '11px 14px' }}>{u.group_name ? <GroupBadge group={u.group_name} colorOverride={groupColors[u.group_name]}/> : <span style={{ color: c.dim, fontSize: 12 }}>—</span>}</td>
                     <td style={{ padding: '11px 14px' }}>
                       <div style={{ display: 'flex', gap: 4 }}>
                         {(['double','late','spy'] as const).map(p => {
@@ -2330,7 +2351,7 @@ function ViewGruposConfig({ onSelectGroup, onBack }: { onSelectGroup: (g: string
         <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12, marginBottom: 24 }}>
           {dbGroups.map(g => (
             <div key={g.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', background: c.card, border: `1px solid ${g.color}44`, borderRadius: 14 }}>
-              <GroupIcon group={g.name} size={40}/>
+              <GroupIcon group={g.name} size={40} colorOverride={g.color}/>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 14, fontWeight: 700, color: c.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.name}</div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3 }}>
