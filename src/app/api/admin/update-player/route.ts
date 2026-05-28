@@ -7,8 +7,8 @@ import { getAdminClient } from '@/lib/server-session';
  *   userId: string,
  *   name?: string,
  *   group_name?: string | null,
- *   used_powers?: string[],   // full array of used powers (replaces current)
- *   bonus_points?: number,    // total bonus pts for this user (upsert)
+ *   used_powers?: string[],
+ *   bonus_points?: number,
  *   bonus_reason?: string,
  * }
  */
@@ -40,7 +40,8 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // ── Upsert bonus points (manual: check exists → update or insert) ──────────
+  // ── Upsert bonus points ─────────────────────────────────────────────────────
+  // Only write to bonus_awards if bonus_points is non-zero OR there's already a record
   if (body.bonus_points !== undefined) {
     const { data: existing } = await admin
       .from('bonus_awards')
@@ -49,7 +50,7 @@ export async function POST(req: NextRequest) {
       .maybeSingle();
 
     if (existing) {
-      // Update existing record
+      // Always update existing record (even to 0)
       const { error } = await admin
         .from('bonus_awards')
         .update({ points: body.bonus_points, reason: body.bonus_reason ?? null })
@@ -58,25 +59,22 @@ export async function POST(req: NextRequest) {
         console.error('[update-player] bonus_awards update:', error.message);
         return NextResponse.json({ error: error.message }, { status: 500 });
       }
-    } else {
-      // Insert new record — fetch group_name from profile to satisfy NOT NULL
-      const { data: profile } = await admin
-        .from('profiles')
-        .select('group_name')
-        .eq('id', userId)
-        .maybeSingle();
-
+    } else if (body.bonus_points !== 0) {
+      // Only insert a new record when there are actual bonus points to award
+      // group_name: use what admin set in modal, fallback to empty string (satisfies NOT NULL)
+      const groupName = body.group_name ?? '';
       const { error } = await admin.from('bonus_awards').insert({
         user_id:    userId,
         points:     body.bonus_points,
         reason:     body.bonus_reason ?? null,
-        group_name: profile?.group_name ?? body.group_name ?? null,
+        group_name: groupName,
       });
       if (error) {
         console.error('[update-player] bonus_awards insert:', error.message);
         return NextResponse.json({ error: error.message }, { status: 500 });
       }
     }
+    // If bonus_points === 0 and no existing record → skip (nothing to store)
   }
 
   return NextResponse.json({ ok: true });
