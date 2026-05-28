@@ -35,11 +35,13 @@ export async function GET() {
   for (const m of resultsRes.data ?? []) resultMap[m.id] = [m.result_home, m.result_away];
 
   const pointsMap: Record<string, number> = {};
+  const exactMap: Record<string, number> = {};   // tiebreaker: exact score count
   for (const p of predsRes.data ?? []) {
     const result = resultMap[p.match_id];
     if (!result) continue;
     const pts = calcPoints([p.home_score, p.away_score], result);
     pointsMap[p.user_id] = (pointsMap[p.user_id] ?? 0) + pts;
+    if (pts === 3) exactMap[p.user_id] = (exactMap[p.user_id] ?? 0) + 1;
   }
 
   for (const b of bonusRes.data ?? []) {
@@ -51,11 +53,17 @@ export async function GET() {
     name: p.name,
     group_name: p.group_name,
     points: pointsMap[p.id] ?? 0,
+    exactScores: exactMap[p.id] ?? 0,
     pos: 0,
     used_powers: p.used_powers ?? [],
   }));
 
-  entries.sort((a, b) => b.points - a.points);
+  // Primary: most points. Tiebreaker: most exact scores (3-pt predictions). Final: name A→Z.
+  entries.sort((a, b) =>
+    b.points - a.points ||
+    b.exactScores - a.exactScores ||
+    a.name.localeCompare(b.name),
+  );
   entries.forEach((e, i) => (e.pos = i + 1));
 
   return NextResponse.json(entries);

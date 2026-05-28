@@ -1223,6 +1223,9 @@ function RankingPodium({ top3, visible, userRank, userName, userPoints, userId, 
 }
 
 // ──────── Tab: Bonus ────────
+// Bonus picks close June 11 2026 at 1:00 PM Mexico City time (UTC-6 = 19:00 UTC)
+const BONUS_DEADLINE = new Date('2026-06-11T19:00:00Z');
+
 function TabBonus({ fireToast, champSelected, setChampSelected, subSelected, setSubSelected, thirdSelected, goalPlayer, openSub, userGroup }: {
   fireToast: Props['fireToast'];
   champSelected: string; setChampSelected: (v: string) => void;
@@ -1235,6 +1238,8 @@ function TabBonus({ fireToast, champSelected, setChampSelected, subSelected, set
   useEffect(() => {
     if (userGroup) getGroupSettings(userGroup).then(setSettings).catch(console.error);
   }, [userGroup]);
+
+  const bonusLocked = Date.now() >= BONUS_DEADLINE.getTime();
 
   const bonusPrize = (type: string | undefined, value: string | null | undefined): string => {
     if (!value) return '';
@@ -1255,8 +1260,23 @@ function TabBonus({ fireToast, champSelected, setChampSelected, subSelected, set
         <div style={{ fontSize: 13, color: T.slate, lineHeight: 1.5 }}>Haz tus predicciones especiales y escala en el ranking.</div>
       </div>
 
+      {/* Deadline banner */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px',
+        borderRadius: 12, marginBottom: 4,
+        background: bonusLocked ? 'rgba(244,63,94,0.08)' : 'rgba(245,158,11,0.08)',
+        border: `1px solid ${bonusLocked ? 'rgba(244,63,94,0.3)' : 'rgba(245,158,11,0.3)'}`,
+      }}>
+        <span style={{ fontSize: 16 }}>{bonusLocked ? '🔒' : '⏰'}</span>
+        <span style={{ fontSize: 12, fontWeight: 600, color: bonusLocked ? T.rose : T.amber }}>
+          {bonusLocked
+            ? 'Picks bonus cerrados — jue. 11 jun. 2026 01:00 pm'
+            : 'Cierre: jue. 11 jun. 2026 01:00 pm'}
+        </span>
+      </div>
+
       {cards.map((card) => (
-        <div key={card.label} style={{ borderRadius: 18, padding: '18px 20px', background: T.bgInk, border: `1px solid ${T.borderInk}` }}>
+        <div key={card.label} style={{ borderRadius: 18, padding: '18px 20px', background: T.bgInk, border: `1px solid ${T.borderInk}`, opacity: bonusLocked ? 0.75 : 1 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
             <div style={{ fontSize: 10.5, fontWeight: 700, color: card.color, letterSpacing: 1.2, textTransform: 'uppercase' }}>{card.label}</div>
             {card.prize ? (
@@ -1273,11 +1293,17 @@ function TabBonus({ fireToast, champSelected, setChampSelected, subSelected, set
                 <div style={{ fontSize: 16, fontWeight: 700, color: '#fff' }}>
                   {card.kind === 'country' ? (SELECCIONES.find(s => s[0] === card.sel)?.[1] ?? card.sel) : card.sel}
                 </div>
-                <button onClick={() => openSub(card.sub)}
-                  style={{ background: 'none', border: 'none', fontSize: 12, color: card.color, cursor: 'pointer', fontWeight: 600, padding: '4px 0', textDecoration: 'underline', textUnderlineOffset: 2 }}>
-                  Cambiar
-                </button>
+                {!bonusLocked && (
+                  <button onClick={() => openSub(card.sub)}
+                    style={{ background: 'none', border: 'none', fontSize: 12, color: card.color, cursor: 'pointer', fontWeight: 600, padding: '4px 0', textDecoration: 'underline', textUnderlineOffset: 2 }}>
+                    Cambiar
+                  </button>
+                )}
               </div>
+            </div>
+          ) : bonusLocked ? (
+            <div style={{ textAlign: 'center', padding: '10px', fontSize: 13, color: T.muted, fontStyle: 'italic' }}>
+              🔒 Sin selección — cierre pasado
             </div>
           ) : (
             <button onClick={() => openSub(card.sub)} style={{
@@ -1292,10 +1318,6 @@ function TabBonus({ fireToast, champSelected, setChampSelected, subSelected, set
           )}
         </div>
       ))}
-
-      <div style={{ fontSize: 11.5, color: T.muted, textAlign: 'center', fontStyle: 'italic', lineHeight: 1.6 }}>
-        ⚠️ Las predicciones cierran al iniciar el primer partido. Después no se pueden cambiar.
-      </div>
     </div>
   );
 }
