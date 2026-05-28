@@ -224,7 +224,7 @@ export function TorneoScreen({ goto, tweaks, fireToast, usedPowers, setUsedPower
       {/* Group strip */}
       <div style={{ background: '#fff', borderBottom: `1px solid ${T.border}`, padding: '10px 16px' }}>
         <div style={{ display: 'flex', alignItems: 'center', flexDirection: 'column', width: 60 }}>
-          <GroupLogo group={displayGroup} size={50} colorOverride={getGroupColor(displayGroup)} logoUrlOverride={getGroupLogo(displayGroup)}/>
+          <GroupLogo key={getGroupLogo(displayGroup) ?? displayGroup} group={displayGroup} size={50} colorOverride={getGroupColor(displayGroup)} logoUrlOverride={getGroupLogo(displayGroup)}/>
           <div style={{ fontSize: 8, fontWeight: 700, color: T.ink, textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 4, textAlign: 'center', lineHeight: 1.2, whiteSpace: 'nowrap' }}>Grupo<br/>{displayGroup}</div>
         </div>
       </div>
