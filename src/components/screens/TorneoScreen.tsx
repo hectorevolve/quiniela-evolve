@@ -902,6 +902,8 @@ const GROUP_COLORS: Record<string, string> = {
   'Zuru':            '#22C55E',
   'AJEMEX':          '#EF4444',
   'Delongi':         '#F97316',
+  'Juguetimax':      '#EC4899',
+  'Hanes':           '#14B8A6',
 };
 
 // Drop any PNG/SVG into /public/logos/ with the filename below.
@@ -915,6 +917,8 @@ const GROUP_LOGOS: Record<string, string> = {
   'Zuru':            '/logos/zuru.png',
   'AJEMEX':          '/logos/ajemex.png',
   'Delongi':         '/logos/delongi.png',
+  'Juguetimax':      '/logos/juguetimax.png',
+  'Hanes':           '/logos/hanes.png',
 };
 
 function groupInitials(name: string): string {
@@ -1283,6 +1287,8 @@ const GROUP_INFO: Record<string, GroupInfo> = {
   'Zuru':            { label: 'Zuru',            description: 'Quiniela Zuru — predicciones al máximo nivel' },
   'AJEMEX':          { label: 'AJEMEX',          description: 'Quiniela oficial AGEMEX para el Mundial 2026' },
   'Delongi':         { label: "De'Longhi",       description: "Quiniela De'Longhi — el mejor café, las mejores predicciones" },
+  'Juguetimax':      { label: 'Juguetimax',      description: 'Quiniela Juguetimax para el Mundial 2026' },
+  'Hanes':           { label: 'Hanes',           description: 'Quiniela Hanes para el Mundial 2026' },
 };
 function getGroupInfo(group: string): GroupInfo {
   return GROUP_INFO[group] ?? { label: group || 'Mi Grupo', description: `Quiniela del grupo ${group || 'Evolve'} para el Torneo 2026` };
