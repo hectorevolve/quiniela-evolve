@@ -574,9 +574,9 @@ function EditPlayerModal({ entry, onClose, onSaved, onReload }: {
   const [name,        setName]        = useState(entry.name);
   const [group,       setGroup]       = useState(entry.group_name ?? '');
   const [powers,      setPowers]      = useState<string[]>(entry.used_powers ?? []);
-  // totalPts = what the admin wants the player's final score to be
-  const [totalPts,    setTotalPts]    = useState<number | ''>(entry.points);
-  const [matchPts,    setMatchPts]    = useState<number>(entry.points); // pts from matches only (no bonus)
+  // ptsInput: raw text the admin types ("100", "+10", "-5", "10+10", etc.)
+  const [ptsInput,    setPtsInput]    = useState<string>(String(entry.points));
+  const [matchPts,    setMatchPts]    = useState<number>(entry.points); // match-only pts (no bonus)
   const [bonusReason, setBonusReason] = useState('');
   const [saving,      setSaving]      = useState(false);
   const [err,         setErr]         = useState<string | null>(null);
@@ -587,12 +587,29 @@ function EditPlayerModal({ entry, onClose, onSaved, onReload }: {
     supabase.from('bonus_awards').select('points, reason').eq('user_id', entry.userId).maybeSingle()
       .then(({ data }) => {
         const existingBonus = data?.points ?? 0;
-        // match-only pts = total - existing bonus
         setMatchPts(entry.points - existingBonus);
         setBonusReason(data?.reason ?? '');
-        // Keep totalPts as entry.points (already correct)
       });
   }, [entry.userId, entry.points]);
+
+  /** Parse admin input: supports "100", "+10", "-5", "10+10", "50-3", etc. */
+  const parseInput = (raw: string): number | null => {
+    const s = raw.trim();
+    if (!s) return null;
+    // Only allow digits, +, -, spaces (safe for eval)
+    if (!/^[0-9\s+\-]+$/.test(s)) return null;
+    try {
+      // If starts with + or - treat as delta on current total
+      if (/^[+-]/.test(s)) return entry.points + Number(s);
+      // Otherwise eval simple arithmetic
+      // eslint-disable-next-line no-new-func
+      const result = new Function(`"use strict"; return (${s})`)() as number;
+      return typeof result === 'number' && isFinite(result) ? Math.round(result) : null;
+    } catch { return null; }
+  };
+
+  const computedTotal = parseInput(ptsInput) ?? entry.points;
+  const bonusDelta    = computedTotal - matchPts;
 
   const togglePower = (p: string) => {
     setPowers(prev => prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p]);
@@ -600,9 +617,7 @@ function EditPlayerModal({ entry, onClose, onSaved, onReload }: {
 
   const handleSave = async () => {
     setSaving(true); setErr(null);
-    const newTotal = totalPts === '' ? 0 : Number(totalPts);
-    // bonus to store = desired total minus the match-only pts
-    const bonusToStore = newTotal - matchPts;
+    const bonusToStore = bonusDelta; // = computedTotal - matchPts
     try {
       const res = await fetch('/api/admin/update-player', {
         method: 'POST',
@@ -618,7 +633,7 @@ function EditPlayerModal({ entry, onClose, onSaved, onReload }: {
       });
       if (!res.ok) { const d = await res.json(); throw new Error(d.error ?? 'Error'); }
       onSaved({ name: name.trim() || entry.name, group_name: group || null, used_powers: powers });
-      onReload(); // refresh full rankings so new total is reflected
+      onReload();
       onClose();
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : 'Error al guardar');
@@ -698,27 +713,34 @@ function EditPlayerModal({ entry, onClose, onSaved, onReload }: {
         {/* Points override */}
         <div style={{ marginBottom: 20 }}>
           <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: c.muted, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 6 }}>Puntos totales del jugador</label>
-          {/* Big editable total */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
+            {/* Text input — supports "100", "+10", "-5", "10+10" */}
             <input
-              type="number"
-              value={totalPts}
-              onChange={e => setTotalPts(e.target.value === '' ? '' : Number(e.target.value))}
+              type="text"
+              inputMode="numeric"
+              value={ptsInput}
+              onChange={e => setPtsInput(e.target.value)}
               placeholder={String(entry.points)}
-              style={{ width: 120, padding: '12px 16px', borderRadius: 10, border: `2px solid ${c.lime}60`, background: 'rgba(201,243,29,0.06)', color: c.lime, fontSize: 22, fontWeight: 800, fontFamily: 'inherit', outline: 'none', textAlign: 'center' }}
+              style={{ width: 150, padding: '12px 16px', borderRadius: 10, border: `2px solid ${parseInput(ptsInput) !== null ? c.lime + '80' : c.rose + '80'}`, background: 'rgba(201,243,29,0.06)', color: c.lime, fontSize: 22, fontWeight: 800, fontFamily: 'monospace', outline: 'none', textAlign: 'center' }}
             />
-            <div style={{ fontSize: 12, color: c.muted, lineHeight: 1.6 }}>
-              <div>pts partidos: <strong style={{ color: c.text }}>{matchPts}</strong></div>
-              <div>pts bonus: <strong style={{ color: (totalPts === '' ? 0 : Number(totalPts)) - matchPts >= 0 ? c.green : c.rose }}>
-                {(totalPts === '' ? 0 : Number(totalPts)) - matchPts >= 0 ? '+' : ''}{(totalPts === '' ? 0 : Number(totalPts)) - matchPts}
-              </strong></div>
+            {/* Live result preview */}
+            <div style={{ fontSize: 13, color: c.muted, lineHeight: 1.8 }}>
+              <div>= <strong style={{ color: c.lime, fontSize: 18 }}>{parseInput(ptsInput) !== null ? computedTotal : '?'} pts</strong></div>
+              <div style={{ fontSize: 11 }}>
+                partidos: <strong style={{ color: c.text }}>{matchPts}</strong>
+                {' · '}bonus: <strong style={{ color: bonusDelta >= 0 ? c.green : c.rose }}>
+                  {bonusDelta >= 0 ? '+' : ''}{bonusDelta}
+                </strong>
+              </div>
             </div>
+          </div>
+          <div style={{ fontSize: 11, color: c.muted, marginBottom: 8 }}>
+            Escribe el total (<code style={{ color: c.lime }}>100</code>), suma (<code style={{ color: c.lime }}>+10</code>), resta (<code style={{ color: c.lime }}>-5</code>) o expresión (<code style={{ color: c.lime }}>10+10</code>).
           </div>
           {/* Reason */}
           <input value={bonusReason} onChange={e => setBonusReason(e.target.value)}
             placeholder="Motivo del ajuste (opcional)"
             style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.06)', color: c.text, fontSize: 13, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }}/>
-          <div style={{ fontSize: 11, color: c.muted, marginTop: 6 }}>Escribe el total final que quieres que tenga el jugador. El ajuste se guarda como bonus.</div>
         </div>
 
         {/* Actions */}
