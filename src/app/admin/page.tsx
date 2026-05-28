@@ -949,7 +949,12 @@ function ViewRankings() {
 
   const reload = () => {
     setLoading(true);
-    getRankings().then(setRankings).catch(console.error).finally(() => setLoading(false));
+    // Use server-side route so admin client bypasses RLS on bonus_awards / all tables
+    fetch('/api/admin/rankings')
+      .then(r => r.json())
+      .then(setRankings)
+      .catch(console.error)
+      .finally(() => setLoading(false));
   };
 
   useEffect(() => { reload(); }, []);
