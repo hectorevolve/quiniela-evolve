@@ -2316,13 +2316,25 @@ function ViewGruposConfig({ onSelectGroup, onBack }: { onSelectGroup: (g: string
       setUploadingLogo(false);
     }
 
-    // Update group name in all profiles too
-    await supabase.from('profiles').update({ group_name: editName.trim() }).eq('group_name', editing.name);
-    await supabase.from('allowed_phones').update({ group_name: editName.trim() }).eq('group_name', editing.name);
-    const patch: Record<string, unknown> = { name: editName.trim(), color: editColor };
-    if (newLogoUrl !== undefined) patch.logo_url = newLogoUrl;
-    const { error } = await supabase.from('groups').update(patch).eq('id', editing.id);
-    if (error) { setErr(error.message); setSaving(false); return; }
+    // Save via server-side route (uses service role, bypasses RLS)
+    const body: Record<string, unknown> = {
+      id: editing.id,
+      name: editName.trim(),
+      color: editColor,
+      old_name: editing.name,
+    };
+    if (newLogoUrl !== undefined) body.logo_url = newLogoUrl;
+    const res = await fetch('/api/admin/update-group', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      setErr((data as { error?: string }).error ?? 'Error guardando');
+      setSaving(false);
+      return;
+    }
     setEditing(null); setEditLogoFile(null); setEditLogoPreview(null);
     load();
     setSaving(false);
@@ -2528,11 +2540,18 @@ function ViewGrupos({ liveUsers, onSelectGroup, onConfigure }: { liveUsers: Live
   const sinGrupo = nonAdmins.filter(u => !u.group_name);
   const totalUsers = nonAdmins.length;
 
-  // Load groups from DB (for colors + logos)
+  // Load groups from /api/groups (service-role, bypasses RLS, includes logo_url)
   const [dbGroups, setDbGroups] = useState<DBGroup[]>([]);
   useEffect(() => {
-    supabase.from('groups').select('id, name, color, logo_url').order('name')
-      .then(({ data }) => { if (data) setDbGroups(data as DBGroup[]); });
+    fetch('/api/groups')
+      .then(r => r.json())
+      .then((rows: { name: string; color: string; logo_url?: string | null }[]) => {
+        if (rows?.length) {
+          // Map to DBGroup shape (id not needed here, use 0)
+          setDbGroups(rows.map(r => ({ id: 0, name: r.name, color: r.color, logo_url: r.logo_url ?? null })));
+        }
+      })
+      .catch(() => {});
   }, []);
 
   const groupList = dbGroups.length > 0 ? dbGroups : ALL_GROUPS.map(name => ({ id: 0, name, color: GROUP_COLORS[name] ?? c.blue, logo_url: null }));
