@@ -158,7 +158,7 @@ export interface RankingEntry {
 export async function getRankings(): Promise<RankingEntry[]> {
   // Fetch all data in parallel (including bonus awards)
   const [profilesRes, predsRes, resultsRes, bonusRes] = await Promise.all([
-    supabase.from('profiles').select('id, name, group_name, used_powers').eq('role', 'user'),
+    supabase.from('profiles').select('id, name, group_name, used_powers').neq('role', 'superadmin'),
     supabase.from('predictions').select('user_id, match_id, home_score, away_score'),
     supabase.from('matches').select('id, result_home, result_away').not('result_home', 'is', null),
     supabase.from('bonus_awards').select('user_id, points'),
