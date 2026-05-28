@@ -2528,12 +2528,21 @@ function ViewGrupos({ liveUsers, onSelectGroup, onConfigure }: { liveUsers: Live
   const sinGrupo = nonAdmins.filter(u => !u.group_name);
   const totalUsers = nonAdmins.length;
 
+  // Load groups from DB (for colors + logos)
+  const [dbGroups, setDbGroups] = useState<DBGroup[]>([]);
+  useEffect(() => {
+    supabase.from('groups').select('id, name, color, logo_url').order('name')
+      .then(({ data }) => { if (data) setDbGroups(data as DBGroup[]); });
+  }, []);
+
+  const groupList = dbGroups.length > 0 ? dbGroups : ALL_GROUPS.map(name => ({ id: 0, name, color: GROUP_COLORS[name] ?? c.blue, logo_url: null }));
+
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20, gap: 12, flexWrap: 'wrap' }}>
         <div>
           <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: c.text }}>Grupos</h2>
-          <p style={{ margin: '4px 0 0', fontSize: 13, color: c.muted }}>{ALL_GROUPS.length} grupos · {totalUsers} usuarios</p>
+          <p style={{ margin: '4px 0 0', fontSize: 13, color: c.muted }}>{groupList.length} grupos · {totalUsers} usuarios</p>
         </div>
         {onConfigure && (
           <button onClick={onConfigure} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 16px', background: 'rgba(255,255,255,0.06)', border: `1px solid ${c.border}`, borderRadius: 10, color: c.muted, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
@@ -2554,17 +2563,14 @@ function ViewGrupos({ liveUsers, onSelectGroup, onConfigure }: { liveUsers: Live
         />
 
         {/* Grupos reales */}
-        {ALL_GROUPS.map(g => {
-          const col = GROUP_COLORS[g] ?? c.blue;
-          return (
-            <GroupCard key={g} label={g} col={col}
-              icon={<GroupIcon group={g} size={40}/>}
-              memberCount={nonAdmins.filter(u => u.group_name === g).length}
-              totalUsers={totalUsers}
-              onClick={() => onSelectGroup(g)}
-            />
-          );
-        })}
+        {groupList.map(g => (
+          <GroupCard key={g.name} label={g.name} col={g.color}
+            icon={<GroupIcon group={g.name} size={40} colorOverride={g.color} logoUrlOverride={g.logo_url}/>}
+            memberCount={nonAdmins.filter(u => u.group_name === g.name).length}
+            totalUsers={totalUsers}
+            onClick={() => onSelectGroup(g.name)}
+          />
+        ))}
 
         {/* Sin grupo */}
         <GroupCard
