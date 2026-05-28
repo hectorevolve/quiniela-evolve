@@ -3,7 +3,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { theme as T } from '@/lib/theme';
 import { MATCHES, KNOCKOUT_MATCHES, MOCK_RESULTS, resolveSlots, computeSlots, isMatchPast, isMatchStarted, isMatchOver45Min, isMatchPastEx, isMatchStartedEx, isMatchOver45MinEx, DEMO_LIVE_MATCH, DEMO_PAST_IDS, PREDICTION_DISTRIBUTIONS, GOLEADORES, SELECCIONES, USER, STADIUM_ALIASES, TEAM_ALIASES, type Match, type PredictionBucket, type SlotMap, type LiveMatch } from '@/lib/data';
 import { getInitials, type AppUser } from '@/lib/supabase';
-import { getRankings, getGroupSettings, type RankingEntry, type GroupSettings } from '@/lib/db';
+import { getRankings, getGroupSettings, savePowerUsed, type RankingEntry, type GroupSettings } from '@/lib/db';
 import { useLiveMatch } from '@/hooks/useLiveMatch';
 import { loadPrediction, savePrediction, loadBonus, saveBonus, getAllCachedPredictions } from '@/lib/predictions';
 import {
@@ -411,6 +411,7 @@ function TabPredicciones({ goto, tweaks, fireToast, usedPowers: usedPowersFromPa
     }
     if (kind === 'late') setLateActiveMatchId(match.id);
     setUsedPowers(prev => new Set([...prev, kind]));
+    savePowerUsed(kind).catch(console.error);
     setModal(null);
     fireToast(`¡Poder "${kind === 'double' ? 'Puntos Dobles' : kind === 'late' ? 'Cambio Tardío' : 'Espía'}" activado!`, T.bgInk, '#fff');
   };
@@ -653,6 +654,7 @@ function TabPredicciones({ goto, tweaks, fireToast, usedPowers: usedPowersFromPa
             phase={spyModal.phase}
             onConfirm={() => {
               setUsedPowers(prev => new Set([...prev, 'spy']));
+              savePowerUsed('spy').catch(console.error);
               if (spyModal) setSpyMatchId(spyModal.match.id);
               setSpyModal(s => s ? { ...s, phase: 'results' } : null);
             }}

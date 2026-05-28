@@ -6,11 +6,23 @@ import { calcPoints } from './points';
 export async function getProfile(userId: string): Promise<AppUser | null> {
   const { data, error } = await supabase
     .from('profiles')
-    .select('id, name, email, phone, role, group_name, premium')
+    .select('id, name, email, phone, role, group_name, premium, used_powers')
     .eq('id', userId)
     .single();
   if (error) { console.error('[db] getProfile:', error.message); return null; }
-  return data as AppUser;
+  return { ...data, used_powers: data.used_powers ?? [] } as AppUser;
+}
+
+/** Save a used power to the current user's profile in DB. */
+export async function savePowerUsed(power: string): Promise<void> {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) return;
+  const userId = session.user.id;
+  const { data } = await supabase.from('profiles').select('used_powers').eq('id', userId).single();
+  const current: string[] = data?.used_powers ?? [];
+  if (!current.includes(power)) {
+    await supabase.from('profiles').update({ used_powers: [...current, power] }).eq('id', userId);
+  }
 }
 
 // ─── Predictions ──────────────────────────────────────────────────────────────
@@ -140,12 +152,13 @@ export interface RankingEntry {
   group_name: string | null;
   points: number;
   pos: number;
+  used_powers: string[];
 }
 
 export async function getRankings(): Promise<RankingEntry[]> {
   // Fetch all data in parallel (including bonus awards)
   const [profilesRes, predsRes, resultsRes, bonusRes] = await Promise.all([
-    supabase.from('profiles').select('id, name, group_name').eq('role', 'user'),
+    supabase.from('profiles').select('id, name, group_name, used_powers').eq('role', 'user'),
     supabase.from('predictions').select('user_id, match_id, home_score, away_score'),
     supabase.from('matches').select('id, result_home, result_away').not('result_home', 'is', null),
     supabase.from('bonus_awards').select('user_id, points'),
@@ -175,6 +188,7 @@ export async function getRankings(): Promise<RankingEntry[]> {
     group_name: p.group_name,
     points: pointsMap[p.id] ?? 0,
     pos: 0,
+    used_powers: p.used_powers ?? [],
   }));
 
   entries.sort((a, b) => b.points - a.points);

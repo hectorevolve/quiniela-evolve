@@ -2,7 +2,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { theme as T } from '@/lib/theme';
 import { MATCHES, H2H_DATA, H2H_PRED, DEMO_LIVE_MATCH, isMatchStarted, isMatchOver45Min, type H2HEntry } from '@/lib/data';
-import { getMatchH2H, type H2HRow } from '@/lib/db';
+import { getMatchH2H, savePowerUsed, type H2HRow } from '@/lib/db';
 import { loadPrediction, savePrediction } from '@/lib/predictions';
 import { SpyModal } from '@/components/screens/SpyModal';
 import { Header, Card, PowerIcon, Modal, Eyebrow } from '@/components/ui';
@@ -78,6 +78,7 @@ export function DetalleScreen({ goto, tweaks, fireToast, matchId, usedPowers: us
   const confirmPower = () => {
     if (!modal) return;
     setUsedPowers(prev => new Set([...prev, modal]));
+    savePowerUsed(modal).catch(console.error);
     if (modal === 'late') setLateActiveMatchId(match.id);
     setModal(null);
     fireToast('¡Poder activado!', T.bgInk, '#fff');
@@ -300,6 +301,7 @@ export function DetalleScreen({ goto, tweaks, fireToast, matchId, usedPowers: us
             phase={spyModal.phase}
             onConfirm={() => {
               setUsedPowers(prev => new Set([...prev, 'spy']));
+              savePowerUsed('spy').catch(console.error);
               setSpyMatchId(match.id);
               setSpyModal({ phase: 'results' });
             }}

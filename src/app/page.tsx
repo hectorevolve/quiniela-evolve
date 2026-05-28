@@ -26,6 +26,7 @@ export default function Home() {
   const [tweaks, setTweaks] = useState<Tweaks>({ premium: true, filled: false, cumplido: true, liveMatch: false, liveMinute: 30, pastMatch: false, rank: 1, knockoutSlots: false });
   const [selectedMatchId, setSelectedMatchId] = useState<string>('a1');
   const [usedPowers, setUsedPowers] = useState<Set<string>>(new Set());
+  // Powers are always available — no premium gate
   const [lateActiveMatchId, setLateActiveMatchId] = useState<string | null>(null);
   const [spyMatchId, setSpyMatchId] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
@@ -58,6 +59,10 @@ export default function Home() {
               syncBonusFromDB(session.user.id).catch(console.error),
             ]);
             getMatchDates().then(setMatchDates).catch(console.error);
+            // Restore which powers the user has already used
+            if (profile.used_powers?.length) {
+              setUsedPowers(new Set(profile.used_powers));
+            }
             setCurrentUser(profile);
             setScreen('torneo');
           }
@@ -96,6 +101,8 @@ export default function Home() {
 
   const handleLogin = useCallback((user: AppUser) => {
     setCurrentUser(user);
+    // Restore used powers from profile
+    setUsedPowers(new Set(user.used_powers ?? []));
     // Load official match dates from Supabase (updated by sync-results cron)
     getMatchDates().then(setMatchDates).catch(console.error);
     goto('torneo');
@@ -104,6 +111,7 @@ export default function Home() {
   const handleLogout = useCallback(async () => {
     await supabase.auth.signOut();
     setCurrentUser(null);
+    setUsedPowers(new Set());
     goto('login');
   }, [goto]);
 

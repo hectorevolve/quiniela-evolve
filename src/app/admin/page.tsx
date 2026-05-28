@@ -558,20 +558,168 @@ function ViewUsuarios({ users, updateUser, deleteUser, groupFilter, setGroupFilt
 }
 
 // ─── Rankings ─────────────────────────────────────────────────────────────────
+
+interface EditPlayerState {
+  userId: string; name: string; group_name: string;
+  used_powers: string[]; bonus_points: number; bonus_reason: string;
+  pred_count: number; match_points: number;
+}
+
+function EditPlayerModal({ entry, onClose, onSaved }: {
+  entry: RankingEntry;
+  onClose: () => void;
+  onSaved: (updated: Partial<RankingEntry>) => void;
+}) {
+  const [name,        setName]        = useState(entry.name);
+  const [group,       setGroup]       = useState(entry.group_name ?? '');
+  const [powers,      setPowers]      = useState<string[]>(entry.used_powers ?? []);
+  const [bonusPts,    setBonusPts]    = useState<number | ''>('');
+  const [bonusReason, setBonusReason] = useState('');
+  const [saving,      setSaving]      = useState(false);
+  const [err,         setErr]         = useState<string | null>(null);
+  const groups = useGroups();
+
+  // Load current bonus points for this user
+  useEffect(() => {
+    supabase.from('bonus_awards').select('points, reason').eq('user_id', entry.userId).maybeSingle()
+      .then(({ data }) => {
+        if (data) { setBonusPts(data.points ?? 0); setBonusReason(data.reason ?? ''); }
+        else        { setBonusPts(0); }
+      });
+  }, [entry.userId]);
+
+  const togglePower = (p: string) => {
+    setPowers(prev => prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p]);
+  };
+
+  const handleSave = async () => {
+    setSaving(true); setErr(null);
+    try {
+      const res = await fetch('/api/admin/update-player', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId:       entry.userId,
+          name:         name.trim() || entry.name,
+          group_name:   group || null,
+          used_powers:  powers,
+          bonus_points: bonusPts === '' ? 0 : bonusPts,
+          bonus_reason: bonusReason.trim() || null,
+        }),
+      });
+      if (!res.ok) { const d = await res.json(); throw new Error(d.error ?? 'Error'); }
+      onSaved({ name: name.trim() || entry.name, group_name: group || null, used_powers: powers });
+      onClose();
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : 'Error al guardar');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const POWER_LABELS: Record<string, { emoji: string; label: string; color: string }> = {
+    double: { emoji: '×2', label: 'Puntos Dobles', color: c.amber },
+    late:   { emoji: '⏱', label: 'Cambio Tardío',  color: c.blue  },
+    spy:    { emoji: '🕵', label: 'Espía',          color: '#A855F7' },
+  };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div style={{ background: '#0D1829', border: `1px solid ${c.border}`, borderRadius: 18, width: '100%', maxWidth: 520, maxHeight: '90vh', overflowY: 'auto', padding: 28 }}>
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+          <div>
+            <div style={{ fontSize: 18, fontWeight: 700, color: c.text }}>✏️ Editar jugador</div>
+            <div style={{ fontSize: 12, color: c.muted, marginTop: 2 }}>#{entry.pos} · {entry.points} pts actuales</div>
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: c.muted, cursor: 'pointer', fontSize: 20, lineHeight: 1 }}>✕</button>
+        </div>
+
+        {/* Name */}
+        <div style={{ marginBottom: 16 }}>
+          <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: c.muted, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 6 }}>Nombre</label>
+          <input value={name} onChange={e => setName(e.target.value)}
+            style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.06)', color: c.text, fontSize: 14, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }}/>
+        </div>
+
+        {/* Group */}
+        <div style={{ marginBottom: 20 }}>
+          <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: c.muted, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 6 }}>Grupo</label>
+          <select value={group} onChange={e => setGroup(e.target.value)}
+            style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: `1px solid ${c.border}`, background: '#0D1829', color: group ? c.text : c.muted, fontSize: 14, fontFamily: 'inherit', outline: 'none' }}>
+            <option value="">— Sin grupo —</option>
+            {groups.map(g => <option key={g} value={g} style={{ background: '#0D1829' }}>{g}</option>)}
+          </select>
+        </div>
+
+        {/* Powers */}
+        <div style={{ marginBottom: 20 }}>
+          <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: c.muted, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 10 }}>Superpoderes</label>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {(['double', 'late', 'spy'] as const).map(p => {
+              const info = POWER_LABELS[p];
+              const used = powers.includes(p);
+              return (
+                <div key={p} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderRadius: 10, border: `1px solid ${used ? c.rose + '60' : c.border}`, background: used ? `${c.rose}10` : c.card }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <div style={{ width: 32, height: 32, borderRadius: 8, background: used ? `${c.rose}22` : `${info.color}22`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 800, color: used ? c.rose : info.color }}>{info.emoji}</div>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: c.text }}>{info.label}</div>
+                      <div style={{ fontSize: 11, color: used ? c.rose : c.green }}>{used ? 'Ya usado' : 'Disponible'}</div>
+                    </div>
+                  </div>
+                  <button onClick={() => togglePower(p)} style={{ padding: '6px 12px', borderRadius: 7, border: `1px solid ${used ? c.green + '60' : c.rose + '60'}`, background: used ? `${c.green}15` : `${c.rose}15`, color: used ? c.green : c.rose, fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
+                    {used ? '↩ Resetear' : '✓ Marcar usado'}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Bonus points */}
+        <div style={{ marginBottom: 20 }}>
+          <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: c.muted, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 6 }}>Puntos Bonus (admin)</label>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <input type="number" value={bonusPts} onChange={e => setBonusPts(e.target.value === '' ? '' : Number(e.target.value))}
+              placeholder="0"
+              style={{ width: 100, padding: '10px 14px', borderRadius: 8, border: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.06)', color: c.lime, fontSize: 16, fontWeight: 700, fontFamily: 'inherit', outline: 'none' }}/>
+            <input value={bonusReason} onChange={e => setBonusReason(e.target.value)}
+              placeholder="Motivo (ej. ganó la rifa extra)"
+              style={{ flex: 1, padding: '10px 14px', borderRadius: 8, border: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.06)', color: c.text, fontSize: 13, fontFamily: 'inherit', outline: 'none' }}/>
+          </div>
+          <div style={{ fontSize: 11, color: c.muted, marginTop: 6 }}>Puntos de partidos: {entry.points - (bonusPts === '' ? 0 : bonusPts)} pts + bonus: {bonusPts === '' ? 0 : bonusPts} pts = {entry.points} pts totales</div>
+        </div>
+
+        {err && <div style={{ marginBottom: 14, padding: '10px 14px', background: `${c.rose}15`, border: `1px solid ${c.rose}40`, borderRadius: 8, fontSize: 13, color: c.rose }}>{err}</div>}
+
+        {/* Actions */}
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button onClick={onClose} style={{ flex: 1, padding: '12px', background: 'transparent', border: `1px solid ${c.border}`, borderRadius: 10, color: c.muted, fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>Cancelar</button>
+          <button onClick={handleSave} disabled={saving} style={{ flex: 2, padding: '12px', background: c.blue, border: 'none', borderRadius: 10, color: '#fff', fontWeight: 700, fontSize: 14, cursor: saving ? 'wait' : 'pointer', opacity: saving ? 0.7 : 1 }}>
+            {saving ? 'Guardando…' : 'Guardar cambios'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ViewRankings() {
   const isMobile = useIsMobile();
   const [tab, setTab] = useState('nacional');
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
   const [rankings, setRankings] = useState<RankingEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [editEntry, setEditEntry] = useState<RankingEntry | null>(null);
 
-  useEffect(() => {
+  const reload = () => {
     setLoading(true);
-    getRankings()
-      .then(setRankings)
-      .catch(console.error)
-      .finally(() => setLoading(false));
-  }, []);
+    getRankings().then(setRankings).catch(console.error).finally(() => setLoading(false));
+  };
+
+  useEffect(() => { reload(); }, []);
 
   const list = useMemo(() => {
     if (tab === 'nacional') return rankings;
@@ -579,6 +727,10 @@ function ViewRankings() {
       .filter(u => u.group_name === tab)
       .map((u, i) => ({ ...u, pos: i + 1 }));
   }, [tab, rankings]);
+
+  const handleSaved = (updated: Partial<RankingEntry>) => {
+    setRankings(prev => prev.map(u => u.userId === editEntry?.userId ? { ...u, ...updated } : u));
+  };
 
   return (
     <div>
@@ -596,19 +748,17 @@ function ViewRankings() {
         <div style={{ padding: '40px', textAlign: 'center', color: c.muted, fontSize: 14 }}>Cargando ranking…</div>
       ) : list.length === 0 ? (
         <div style={{ padding: '40px', textAlign: 'center', color: c.muted, fontSize: 14, background: c.card, borderRadius: 12, border: `1px solid ${c.border}` }}>
-          {tab === 'nacional'
-            ? 'No hay usuarios registrados aún.'
-            : `No hay usuarios en el grupo ${tab} aún.`}
+          {tab === 'nacional' ? 'No hay usuarios registrados aún.' : `No hay usuarios en el grupo ${tab} aún.`}
           <br/><span style={{ fontSize: 12, opacity: 0.7 }}>Los puntos se calcularán cuando el admin ingrese resultados de partidos.</span>
         </div>
       ) : viewMode === 'list' ? (
         <div style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 14, overflow: 'hidden' }}>
           <TableWrap>
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 400 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 500 }}>
               <thead>
                 <tr style={{ borderBottom: `1px solid ${c.border}` }}>
-                  {['#','Usuario','Grupo','Puntos'].map(h => (
-                    <th key={h} style={{ padding: '12px 14px', textAlign: h === 'Puntos' ? 'right' : 'left', fontSize: 11, fontWeight: 600, color: c.muted, letterSpacing: 0.8, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{h}</th>
+                  {['#','Usuario','Grupo','Poderes','Puntos',''].map((h, i) => (
+                    <th key={i} style={{ padding: '12px 14px', textAlign: h === 'Puntos' ? 'right' : 'left', fontSize: 11, fontWeight: 600, color: c.muted, letterSpacing: 0.8, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -625,7 +775,21 @@ function ViewRankings() {
                       </div>
                     </td>
                     <td style={{ padding: '11px 14px' }}>{u.group_name ? <GroupBadge group={u.group_name}/> : <span style={{ color: c.dim, fontSize: 12 }}>—</span>}</td>
+                    <td style={{ padding: '11px 14px' }}>
+                      <div style={{ display: 'flex', gap: 4 }}>
+                        {(['double','late','spy'] as const).map(p => {
+                          const used = (u.used_powers ?? []).includes(p);
+                          const labels: Record<string,string> = { double:'×2', late:'⏱', spy:'🕵' };
+                          return (
+                            <span key={p} title={p} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 24, height: 24, borderRadius: 6, background: used ? `${c.rose}22` : `${c.green}22`, color: used ? c.rose : c.green, fontSize: 11, fontWeight: 700, border: `1px solid ${used ? c.rose+'44' : c.green+'44'}` }}>{labels[p]}</span>
+                          );
+                        })}
+                      </div>
+                    </td>
                     <td style={{ padding: '11px 14px', fontSize: 14, fontWeight: 700, color: c.lime, textAlign: 'right' }}>{u.points}</td>
+                    <td style={{ padding: '11px 14px', textAlign: 'right' }}>
+                      <button onClick={() => setEditEntry(u)} style={{ padding: '5px 12px', borderRadius: 7, background: `${c.blue}20`, border: `1px solid ${c.blue}50`, color: c.blue, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>✏️ Editar</button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -645,9 +809,18 @@ function ViewRankings() {
                 <div style={{ fontSize: 11, color: c.muted }}>{u.group_name ?? '—'}</div>
               </div>
               <div style={{ fontSize: 14, fontWeight: 800, color: c.lime, flexShrink: 0 }}>{u.points} pts</div>
+              <button onClick={() => setEditEntry(u)} style={{ background: 'none', border: 'none', color: c.blue, cursor: 'pointer', fontSize: 16, flexShrink: 0 }}>✏️</button>
             </div>
           ))}
         </div>
+      )}
+
+      {editEntry && (
+        <EditPlayerModal
+          entry={editEntry}
+          onClose={() => setEditEntry(null)}
+          onSaved={handleSaved}
+        />
       )}
     </div>
   );

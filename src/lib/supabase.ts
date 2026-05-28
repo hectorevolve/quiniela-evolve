@@ -13,6 +13,7 @@ export interface AppUser {
   role: 'user' | 'admin';
   group_name: string | null;
   premium: boolean;
+  used_powers: string[];   // e.g. ['double', 'late']
 }
 
 /**
