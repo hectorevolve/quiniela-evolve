@@ -156,44 +156,11 @@ export interface RankingEntry {
 }
 
 export async function getRankings(): Promise<RankingEntry[]> {
-  // Fetch all data in parallel (including bonus awards)
-  const [profilesRes, predsRes, resultsRes, bonusRes] = await Promise.all([
-    supabase.from('profiles').select('id, name, group_name, used_powers').neq('role', 'superadmin'),
-    supabase.from('predictions').select('user_id, match_id, home_score, away_score'),
-    supabase.from('matches').select('id, result_home, result_away').not('result_home', 'is', null),
-    supabase.from('bonus_awards').select('user_id, points'),
-  ]);
-
-  const resultMap: Record<string, [number, number]> = {};
-  for (const m of resultsRes.data ?? []) resultMap[m.id] = [m.result_home, m.result_away];
-
-  // Sum match points per user
-  const pointsMap: Record<string, number> = {};
-  for (const p of predsRes.data ?? []) {
-    const result = resultMap[p.match_id];
-    if (!result) continue;
-    const pts = calcPoints([p.home_score, p.away_score], result);
-    pointsMap[p.user_id] = (pointsMap[p.user_id] ?? 0) + pts;
-  }
-
-  // Add bonus award points
-  for (const b of bonusRes.data ?? []) {
-    pointsMap[b.user_id] = (pointsMap[b.user_id] ?? 0) + b.points;
-  }
-
-  // All users get a ranking entry (0 pts if no results yet)
-  const entries: RankingEntry[] = (profilesRes.data ?? []).map(p => ({
-    userId: p.id,
-    name: p.name,
-    group_name: p.group_name,
-    points: pointsMap[p.id] ?? 0,
-    pos: 0,
-    used_powers: p.used_powers ?? [],
-  }));
-
-  entries.sort((a, b) => b.points - a.points);
-  entries.forEach((e, i) => (e.pos = i + 1));
-  return entries;
+  // Use server-side route with service-role client so RLS on bonus_awards
+  // (and all tables) is bypassed — ensures correct points for all users.
+  const res = await fetch('/api/rankings', { cache: 'no-store' });
+  if (!res.ok) return [];
+  return res.json() as Promise<RankingEntry[]>;
 }
 
 // ─── Bonus picks ─────────────────────────────────────────────────────────────

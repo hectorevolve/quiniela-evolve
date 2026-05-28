@@ -950,7 +950,7 @@ function ViewRankings() {
   const reload = () => {
     setLoading(true);
     // Use server-side route so admin client bypasses RLS on bonus_awards / all tables
-    fetch('/api/admin/rankings')
+    fetch('/api/rankings')
       .then(r => r.json())
       .then(setRankings)
       .catch(console.error)
