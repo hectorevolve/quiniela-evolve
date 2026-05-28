@@ -1934,6 +1934,40 @@ const defaultBonus = (): Record<BonusKey, BonusConfig> => ({
   scorer: { type: 'otro', value: '', result: '' },
 });
 
+// ─── Shared: PowerPills ───────────────────────────────────────────────────────
+function PowerPills({ usedPowers }: { usedPowers: string[] }) {
+  const labels: Record<string, string> = { double: '×2', late: '⏱', spy: '🕵' };
+  return (
+    <div style={{ display: 'flex', gap: 4 }}>
+      {(['double', 'late', 'spy'] as const).map(p => {
+        const used = usedPowers.includes(p);
+        return (
+          <span key={p} title={p} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 24, height: 24, borderRadius: 6, background: used ? `${c.rose}22` : `${c.green}22`, color: used ? c.rose : c.green, fontSize: 11, fontWeight: 700, border: `1px solid ${used ? c.rose + '44' : c.green + '44'}` }}>{labels[p]}</span>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── Shared: UserDeleteModal ──────────────────────────────────────────────────
+function UserDeleteModal({ user, onConfirm, onCancel, deleting, err }: { user: { name: string }; onConfirm: () => void; onCancel: () => void; deleting: boolean; err: string | null }) {
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: 20 }}>
+      <div style={{ background: '#0D1829', border: `1px solid ${c.rose}44`, borderRadius: 18, padding: 28, width: '100%', maxWidth: 400, textAlign: 'center' }}>
+        <div style={{ fontSize: 40, marginBottom: 12 }}>🗑</div>
+        <div style={{ fontSize: 18, fontWeight: 700, color: c.text, marginBottom: 8 }}>¿Eliminar jugador?</div>
+        <div style={{ fontSize: 14, color: c.muted, marginBottom: 6 }}><strong style={{ color: c.text }}>{user.name}</strong></div>
+        <div style={{ fontSize: 12, color: c.rose, marginBottom: 20 }}>⚠ Esto borrará su cuenta, predicciones y puntos permanentemente.</div>
+        {err && <div style={{ marginBottom: 14, padding: '10px 14px', background: `${c.rose}20`, border: `1px solid ${c.rose}`, borderRadius: 8, fontSize: 13, color: c.rose, textAlign: 'left' }}>⚠️ {err}</div>}
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button onClick={onCancel} style={{ flex: 1, padding: '12px', background: 'transparent', border: `1px solid ${c.border}`, borderRadius: 10, color: c.muted, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Cancelar</button>
+          <button onClick={onConfirm} disabled={deleting} style={{ flex: 1, padding: '12px', background: c.rose, border: 'none', borderRadius: 10, color: '#fff', fontSize: 13, fontWeight: 700, cursor: deleting ? 'not-allowed' : 'pointer' }}>{deleting ? 'Eliminando…' : 'Sí, eliminar'}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ViewGrupoDetalle({ group, liveUsers, onBack, onUserUpdated, onUserRemoved }: {
   group: string;
   liveUsers: LiveUser[];
@@ -2037,6 +2071,23 @@ function ViewGrupoDetalle({ group, liveUsers, onBack, onUserUpdated, onUserRemov
   // Member actions
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [removingId, setRemovingId] = useState<string | null>(null);
+  const [editEntry, setEditEntry]   = useState<RankingEntry | null>(null);
+  const [predsEntry, setPredsEntry] = useState<RankingEntry | null>(null);
+  const [deleteEntry, setDeleteEntry] = useState<LiveUser | null>(null);
+  const [deletingUser, setDeletingUser] = useState(false);
+  const [deleteErr, setDeleteErr]   = useState<string | null>(null);
+
+  const handleDeleteUser = async () => {
+    if (!deleteEntry) return;
+    setDeletingUser(true); setDeleteErr(null);
+    try {
+      const res = await fetch('/api/admin/delete-user', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: deleteEntry.id }) });
+      if (!res.ok) { const d = await res.json(); setDeleteErr(d.error ?? 'Error'); setDeletingUser(false); return; }
+      onUserRemoved(deleteEntry.id);
+      setDeleteEntry(null);
+    } catch { setDeleteErr('Error de red'); }
+    setDeletingUser(false);
+  };
 
   const togglePremium = async (u: LiveUser) => {
     setTogglingId(u.id);
@@ -2128,38 +2179,31 @@ function ViewGrupoDetalle({ group, liveUsers, onBack, onUserUpdated, onUserRemov
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {members.map(u => (
-                <div key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', background: c.card, border: `1px solid ${c.border}`, borderRadius: 12 }}>
-                  <Avatar initials={u.name.slice(0, 2).toUpperCase()} size={36}/>
-                  <div style={{ flex: 1, minWidth: 0 }}>
+                <div key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: c.card, border: `1px solid ${c.border}`, borderRadius: 12, flexWrap: 'wrap' }}>
+                  <Avatar initials={u.name.slice(0, 2).toUpperCase()} size={32}/>
+                  <div style={{ flex: 1, minWidth: 120 }}>
                     <div style={{ fontSize: 13, fontWeight: 700, color: c.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{u.name}</div>
                     <div style={{ fontSize: 11, color: c.muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {isNacional && u.group_name ? <span style={{ color: GROUP_COLORS[u.group_name] ?? c.blue, fontWeight: 600 }}>{u.group_name} · </span> : null}
                       {u.email}
                     </div>
                   </div>
+                  <PowerPills usedPowers={u.used_powers ?? []}/>
                   {/* Premium toggle */}
-                  <button
-                    onClick={() => togglePremium(u)}
-                    disabled={togglingId === u.id}
-                    title={u.premium ? 'Quitar Premium' : 'Dar Premium'}
-                    style={{
-                      padding: '4px 10px', borderRadius: 20, border: 'none', cursor: 'pointer', fontSize: 10, fontWeight: 700,
-                      background: u.premium ? `${c.lime}33` : 'rgba(255,255,255,0.08)',
-                      color: u.premium ? c.lime : c.dim,
-                      transition: 'all 150ms', flexShrink: 0,
-                    }}>
+                  <button onClick={() => togglePremium(u)} disabled={togglingId === u.id} title={u.premium ? 'Quitar Premium' : 'Dar Premium'}
+                    style={{ padding: '4px 10px', borderRadius: 20, border: 'none', cursor: 'pointer', fontSize: 10, fontWeight: 700, background: u.premium ? `${c.lime}33` : 'rgba(255,255,255,0.08)', color: u.premium ? c.lime : c.dim, flexShrink: 0 }}>
                     {togglingId === u.id ? '…' : u.premium ? '⭐ Premium' : 'Free'}
                   </button>
-                  {/* Remove from group (only for real groups) */}
+                  {/* Action buttons */}
+                  <button onClick={() => setPredsEntry(liveUserToEntry(u))} style={{ padding: '5px 10px', borderRadius: 7, background: 'rgba(201,243,29,0.1)', border: `1px solid ${c.lime}40`, color: c.lime, fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>📋 Predicciones</button>
+                  <button onClick={() => setEditEntry(liveUserToEntry(u))} style={{ padding: '5px 10px', borderRadius: 7, background: `${c.blue}20`, border: `1px solid ${c.blue}50`, color: c.blue, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>✏️ Editar</button>
                   {!isSpecial && (
-                    <button
-                      onClick={() => removeFromGroup(u)}
-                      disabled={removingId === u.id}
-                      title="Quitar del grupo"
-                      style={{ padding: '6px 8px', borderRadius: 8, border: `1px solid ${c.border}`, background: 'transparent', color: c.dim, cursor: 'pointer', fontSize: 13, lineHeight: 1, flexShrink: 0 }}>
-                      {removingId === u.id ? '…' : '✕'}
+                    <button onClick={() => removeFromGroup(u)} disabled={removingId === u.id} title="Quitar del grupo"
+                      style={{ padding: '5px 8px', borderRadius: 7, border: `1px solid ${c.border}`, background: 'transparent', color: c.dim, cursor: 'pointer', fontSize: 12, flexShrink: 0 }}>
+                      {removingId === u.id ? '…' : '✕ Grupo'}
                     </button>
                   )}
+                  <button onClick={() => { setDeleteEntry(u); setDeleteErr(null); }} style={{ padding: '5px 8px', borderRadius: 7, background: `${c.rose}15`, border: `1px solid ${c.rose}40`, color: c.rose, fontSize: 13, cursor: 'pointer' }} title="Eliminar usuario">🗑</button>
                 </div>
               ))}
             </div>
@@ -2247,6 +2291,17 @@ function ViewGrupoDetalle({ group, liveUsers, onBack, onUserUpdated, onUserRemov
             {bonusSaveStatus === 'saving' ? 'Guardando…' : bonusSaveStatus === 'saved' ? '✓ Configuración guardada' : bonusSaveStatus === 'error' ? '✗ Error' : 'Guardar configuración bonus'}
           </button>
         </div>
+      )}
+
+      {/* Edit / Preds / Delete modals */}
+      {editEntry && (
+        <EditPlayerModal entry={editEntry} onClose={() => setEditEntry(null)}
+          onSaved={updated => { if (updated.name || updated.group_name !== undefined) onUserUpdated({ ...members.find(m => m.id === editEntry.userId)!, ...(updated.name ? { name: updated.name } : {}), ...(updated.group_name !== undefined ? { group_name: updated.group_name } : {}) }); }}
+          onReload={() => {}}/>
+      )}
+      {predsEntry && <UserPredictionsModal entry={predsEntry} onClose={() => setPredsEntry(null)}/>}
+      {deleteEntry && (
+        <UserDeleteModal user={deleteEntry} onConfirm={handleDeleteUser} onCancel={() => setDeleteEntry(null)} deleting={deletingUser} err={deleteErr}/>
       )}
 
     </div>
@@ -2957,7 +3012,7 @@ function ImportModal({ onClose, onDone }: {
   );
 }
 
-function ViewUsuariosAdmin({ liveUsers, onUserCreated }: { liveUsers: { id: string; name: string; email: string | null; phone?: string | null; role: string; group_name: string | null; premium: boolean }[]; onUserCreated: (u: { id: string; name: string; email: string | null; phone?: string | null; role: string; group_name: string | null; premium: boolean }) => void }) {
+function ViewUsuariosAdmin({ liveUsers, onUserCreated, onUserDeleted }: { liveUsers: LiveUser[]; onUserCreated: (u: LiveUser) => void; onUserDeleted?: (id: string) => void }) {
   const [showModal, setShowModal]   = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [name, setName]             = useState('');
@@ -2970,6 +3025,23 @@ function ViewUsuariosAdmin({ liveUsers, onUserCreated }: { liveUsers: { id: stri
   const [success, setSuccess]       = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [deleting, setDeleting]     = useState(false);
+  const [editEntry,  setEditEntry]  = useState<RankingEntry | null>(null);
+  const [predsEntry, setPredsEntry] = useState<RankingEntry | null>(null);
+  const [deleteEntry, setDeleteEntry] = useState<LiveUser | null>(null);
+  const [deletingUser, setDeletingUser] = useState(false);
+  const [deleteErr, setDeleteErr]   = useState<string | null>(null);
+
+  const handleDeleteUser = async () => {
+    if (!deleteEntry) return;
+    setDeletingUser(true); setDeleteErr(null);
+    try {
+      const res = await fetch('/api/admin/delete-user', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: deleteEntry.id }) });
+      if (!res.ok) { const d = await res.json(); setDeleteErr(d.error ?? 'Error'); setDeletingUser(false); return; }
+      onUserDeleted?.(deleteEntry.id);
+      setDeleteEntry(null);
+    } catch { setDeleteErr('Error de red'); }
+    setDeletingUser(false);
+  };
 
   const resetForm = () => { setName(''); setPhone(''); setGroup('Evolve'); setRole('user'); setPremium(false); setError(null); setSuccess(null); };
 
@@ -2989,7 +3061,7 @@ function ViewUsuariosAdmin({ liveUsers, onUserCreated }: { liveUsers: { id: stri
       const json = await res.json();
       if (!res.ok) { setError(json.error ?? 'Error al crear usuario.'); return; }
       setSuccess(`✓ Usuario "${name.trim()}" creado. Celular: ${normalizedPhone}`);
-      onUserCreated({ id: json.userId, name: name.trim(), email: null, phone: normalizedPhone, role, group_name: group, premium });
+      onUserCreated({ id: json.userId, name: name.trim(), email: null, phone: normalizedPhone, role, group_name: group, premium, used_powers: [] });
       resetForm();
     } catch { setError('Error de red. Verifica tu conexión.'); }
     finally { setLoading(false); }
@@ -3028,9 +3100,9 @@ function ViewUsuariosAdmin({ liveUsers, onUserCreated }: { liveUsers: { id: stri
           </div>
         )}
         {liveUsers.map(u => (
-          <div key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', background: c.card, border: `1px solid ${c.border}`, borderRadius: 12 }}>
-            <Avatar initials={(u.name.split(' ').map((w: string) => w[0]).slice(0,2).join('')).toUpperCase()} size={36}/>
-            <div style={{ flex: 1, minWidth: 0 }}>
+          <div key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: c.card, border: `1px solid ${c.border}`, borderRadius: 12, flexWrap: 'wrap' }}>
+            <Avatar initials={(u.name.split(' ').map((w: string) => w[0]).slice(0,2).join('')).toUpperCase()} size={32}/>
+            <div style={{ flex: 1, minWidth: 120 }}>
               <div style={{ fontSize: 13, fontWeight: 600, color: c.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{u.name}</div>
               <div style={{ fontSize: 11, color: c.muted, marginTop: 2, fontFamily: 'monospace' }}>
                 {u.phone || u.email || <span style={{ fontStyle: 'italic', opacity: 0.5 }}>sin contacto</span>}
@@ -3039,8 +3111,12 @@ function ViewUsuariosAdmin({ liveUsers, onUserCreated }: { liveUsers: { id: stri
             <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
               {u.role === 'admin' && <span style={{ padding: '2px 8px', borderRadius: 6, fontSize: 10, fontWeight: 700, background: `${c.rose}22`, color: c.rose, border: `1px solid ${c.rose}44` }}>ADMIN</span>}
               {u.premium && <span style={{ padding: '2px 8px', borderRadius: 6, fontSize: 10, fontWeight: 700, background: `${c.amber}22`, color: c.amber, border: `1px solid ${c.amber}44` }}>PRO</span>}
-              {u.group_name && <span style={{ padding: '2px 8px', borderRadius: 6, fontSize: 10, fontWeight: 700, background: `${c.blue}22`, color: c.blue, border: `1px solid ${c.blue}44` }}>{u.group_name}</span>}
+              {u.group_name && <GroupBadge group={u.group_name}/>}
             </div>
+            <PowerPills usedPowers={u.used_powers ?? []}/>
+            <button onClick={() => setPredsEntry(liveUserToEntry(u))} style={{ padding: '5px 10px', borderRadius: 7, background: 'rgba(201,243,29,0.1)', border: `1px solid ${c.lime}40`, color: c.lime, fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>📋 Predicciones</button>
+            <button onClick={() => setEditEntry(liveUserToEntry(u))} style={{ padding: '5px 10px', borderRadius: 7, background: `${c.blue}20`, border: `1px solid ${c.blue}50`, color: c.blue, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>✏️ Editar</button>
+            <button onClick={() => { setDeleteEntry(u); setDeleteErr(null); }} style={{ padding: '5px 8px', borderRadius: 7, background: `${c.rose}15`, border: `1px solid ${c.rose}40`, color: c.rose, fontSize: 13, cursor: 'pointer' }} title="Eliminar usuario">🗑</button>
           </div>
         ))}
       </div>
@@ -3050,7 +3126,7 @@ function ViewUsuariosAdmin({ liveUsers, onUserCreated }: { liveUsers: { id: stri
         <ImportModal
           onClose={() => setShowImport(false)}
           onDone={(created) => {
-            created.forEach(r => onUserCreated({ id: '', name: r.nombre, email: null, phone: r.telefono, role: 'user', group_name: r.grupo, premium: false }));
+            created.forEach(r => onUserCreated({ id: '', name: r.nombre, email: null, phone: r.telefono, role: 'user', group_name: r.grupo, premium: false, used_powers: [] }));
             setShowImport(false);
           }}
         />
@@ -3121,6 +3197,15 @@ function ViewUsuariosAdmin({ liveUsers, onUserCreated }: { liveUsers: { id: stri
             </div>
           </div>
         </div>
+      )}
+
+      {/* Edit / Preds / Delete modals */}
+      {editEntry && (
+        <EditPlayerModal entry={editEntry} onClose={() => setEditEntry(null)} onSaved={() => {}} onReload={() => {}}/>
+      )}
+      {predsEntry && <UserPredictionsModal entry={predsEntry} onClose={() => setPredsEntry(null)}/>}
+      {deleteEntry && (
+        <UserDeleteModal user={deleteEntry} onConfirm={handleDeleteUser} onCancel={() => setDeleteEntry(null)} deleting={deletingUser} err={deleteErr}/>
       )}
     </div>
   );
@@ -3853,7 +3938,8 @@ function ImportModalCelulares({ onClose, onDone }: { onClose: () => void; onDone
 }
 
 // ─── Root ─────────────────────────────────────────────────────────────────────
-type LiveUser = { id: string; name: string; email: string | null; phone?: string | null; role: string; group_name: string | null; premium: boolean };
+type LiveUser = { id: string; name: string; email: string | null; phone?: string | null; role: string; group_name: string | null; premium: boolean; used_powers: string[] };
+const liveUserToEntry = (u: LiveUser): RankingEntry => ({ userId: u.id, name: u.name, group_name: u.group_name, points: 0, pos: 0, used_powers: u.used_powers ?? [] });
 
 export default function AdminPage() {
   const isMobile = useIsMobile();
@@ -3878,8 +3964,8 @@ export default function AdminPage() {
   // Load real users from Supabase on mount
   useEffect(() => {
     if (authState !== 'allowed') return;
-    supabase.from('profiles').select('id, name, email, phone, role, group_name, premium').order('created_at')
-      .then(({ data }) => { if (data) setLiveUsers(data as LiveUser[]); });
+    supabase.from('profiles').select('id, name, email, phone, role, group_name, premium, used_powers').order('created_at')
+      .then(({ data }) => { if (data) setLiveUsers(data.map((u: LiveUser & { used_powers: string[] | null }) => ({ ...u, used_powers: u.used_powers ?? [] })) as LiveUser[]); });
   }, [authState]);
 
   // ── Guard screens ──
@@ -3993,7 +4079,7 @@ export default function AdminPage() {
         {view === 'encuesta'      && <ViewEncuesta/>}
         {view === 'celulares'     && <ViewCelulares/>}
         {view === 'grupos-config' && <ViewGruposConfig onBack={() => navigate('grupos')} onSelectGroup={g => { setSelectedGroup(g); navigate('grupo-detalle'); }}/>}
-        {view === 'usuarios'      && <ViewUsuariosAdmin liveUsers={liveUsers} onUserCreated={u => setLiveUsers(prev => [...prev, u])}/>}
+        {view === 'usuarios'      && <ViewUsuariosAdmin liveUsers={liveUsers} onUserCreated={u => setLiveUsers(prev => [...prev, u])} onUserDeleted={id => setLiveUsers(prev => prev.filter(u => u.id !== id))}/>}
         {view === 'rankings'      && <ViewRankings/>}
         {view === 'predicciones'  && <ViewPredicciones users={users}/>}
         {view === 'partidos'      && <ViewPartidos/>}
