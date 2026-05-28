@@ -224,7 +224,7 @@ export function TorneoScreen({ goto, tweaks, fireToast, usedPowers, setUsedPower
       {/* Content */}
       <div style={{ flex: 1, overflowY: 'auto' }}>
         {tab === 'predicciones' && <TabPredicciones goto={goto} tweaks={tweaks} fireToast={fireToast} usedPowers={usedPowers} setUsedPowers={setUsedPowers} lateActiveMatchId={lateActiveMatchId} setLateActiveMatchId={setLateActiveMatchId} spyMatchId={spyMatchId} setSpyMatchId={setSpyMatchId} matchDates={matchDates}/>}
-        {tab === 'ranking'      && <TabRanking rankings={liveRankings} loading={rankingsLoading} userId={currentUser?.id ?? ''} userName={displayName} userGroup={displayGroup}/>}
+        {tab === 'ranking'      && <TabRanking rankings={liveRankings} loading={rankingsLoading} userId={currentUser?.id ?? ''} userName={displayName} userGroup={displayGroup} groupAccent={GROUP_COLORS[displayGroup] ?? T.lime}/>}
         {tab === 'bonus'        && (
           <TabBonus
             fireToast={fireToast}
@@ -235,7 +235,7 @@ export function TorneoScreen({ goto, tweaks, fireToast, usedPowers, setUsedPower
             userGroup={displayGroup}
           />
         )}
-        {tab === 'detalles'     && <TabDetalles goto={goto} openSub={openSub} userGroup={displayGroup} rankings={liveRankings}/>}
+        {tab === 'detalles'     && <TabDetalles goto={goto} openSub={openSub} userGroup={displayGroup} rankings={liveRankings} groupAccent={GROUP_COLORS[displayGroup] ?? T.lime}/>}
       </div>
 
     </div>
@@ -965,9 +965,9 @@ function GroupLogo({ group, size }: { group: string; size: number }) {
   );
 }
 
-function TabRanking({ rankings, loading, userId, userName, userGroup }: {
+function TabRanking({ rankings, loading, userId, userName, userGroup, groupAccent = T.lime }: {
   rankings: RankingEntry[]; loading: boolean;
-  userId: string; userName: string; userGroup: string;
+  userId: string; userName: string; userGroup: string; groupAccent?: string;
 }) {
   const [subTab, setSubTab] = useState<'grupo' | 'nacional'>('grupo');
   const [podiumVisible, setPodiumVisible] = useState(false);
@@ -1034,18 +1034,18 @@ function TabRanking({ rankings, loading, userId, userName, userGroup }: {
       <div style={{
         display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14,
         padding: '8px 12px', borderRadius: 10,
-        background: subTab === 'grupo' ? T.limeSoft : T.blueSoft,
-        border: `1px solid ${subTab === 'grupo' ? T.lime + '60' : T.blue + '60'}`,
+        background: subTab === 'grupo' ? `${groupAccent}18` : T.blueSoft,
+        border: `1px solid ${subTab === 'grupo' ? groupAccent + '60' : T.blue + '60'}`,
       }}>
         <span style={{ fontSize: 14 }}>{subTab === 'grupo' ? '🏆' : '🌎'}</span>
-        <span style={{ fontSize: 11.5, fontWeight: 600, color: subTab === 'grupo' ? T.limeDeep : T.blueDeep }}>
+        <span style={{ fontSize: 11.5, fontWeight: 600, color: subTab === 'grupo' ? groupAccent : T.blueDeep }}>
           {subTab === 'grupo'
             ? `Premios de ${userGroup} — compites con tu grupo`
             : 'Premios nacionales — compites con todos'}
         </span>
       </div>
 
-      <RankingPodium top3={top3} visible={podiumVisible} userRank={userRank} userName={userName} userPoints={userPoints} userId={userId} showGroup={subTab === 'nacional'}/>
+      <RankingPodium top3={top3} visible={podiumVisible} userRank={userRank} userName={userName} userPoints={userPoints} userId={userId} showGroup={subTab === 'nacional'} groupAccent={groupAccent}/>
 
       <div style={{ fontSize: 11, color: T.muted, marginBottom: 12, paddingLeft: 2 }}>
         {total.toLocaleString('es-MX')} {subTab === 'grupo' ? `en ${userGroup}` : 'jugadores en total'}
@@ -1062,22 +1062,22 @@ function TabRanking({ rankings, loading, userId, userName, userGroup }: {
           return (
             <div key={`${subTab}-${player.pos}`} style={{
               display: 'flex', alignItems: 'center', gap: 12,
-              background: isMe ? T.limeSoft : '#fff',
+              background: isMe ? `${groupAccent}18` : '#fff',
               borderRadius: 12, padding: '10px 14px',
-              border: `1.5px solid ${isMe ? T.lime : T.border}`,
-              boxShadow: isMe ? `0 0 0 2px ${T.lime}30` : T.shadowSm,
+              border: `1.5px solid ${isMe ? groupAccent : T.border}`,
+              boxShadow: isMe ? `0 0 0 2px ${groupAccent}30` : T.shadowSm,
             }}>
               <div style={{
                 width: 32, height: 32, borderRadius: '50%',
-                background: isMe ? T.lime : T.blueSoft,
+                background: isMe ? groupAccent : T.blueSoft,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontWeight: 700, fontSize: 12,
-                color: isMe ? T.limeDeep : T.blueDeep, flexShrink: 0,
+                color: isMe ? T.ink : T.blueDeep, flexShrink: 0,
               }}>#{player.pos}</div>
               <Avatar initials={rowName.slice(0, 2).toUpperCase()} size={32} style={{ flexShrink: 0 }}/>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 13, fontWeight: isMe ? 700 : 600, color: T.ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {rowName}{isMe && <span style={{ fontSize: 10, color: T.limeDeep, marginLeft: 6, fontWeight: 700 }}>TÚ</span>}
+                  {rowName}{isMe && <span style={{ fontSize: 10, color: groupAccent, marginLeft: 6, fontWeight: 700 }}>TÚ</span>}
                 </div>
                 {rowGroup && <div style={{ fontSize: 10.5, color: T.muted, marginTop: 2 }}>{rowGroup}</div>}
               </div>
@@ -1090,7 +1090,7 @@ function TabRanking({ rankings, loading, userId, userName, userGroup }: {
   );
 }
 
-function RankingPodium({ top3, visible, userRank, userName, userPoints, userId, showGroup }: { top3: RankingEntry[]; visible: boolean; userRank: number; userName: string; userPoints: number; userId: string; showGroup?: boolean }) {
+function RankingPodium({ top3, visible, userRank, userName, userPoints, userId, showGroup, groupAccent = T.lime }: { top3: RankingEntry[]; visible: boolean; userRank: number; userName: string; userPoints: number; userId: string; showGroup?: boolean; groupAccent?: string }) {
   // Podium order: 2nd (left) · 1st (center) · 3rd (right)
   const order   = [top3[1], top3[0], top3[2]];
   const heights = [96, 132, 72];
@@ -1109,11 +1109,11 @@ function RankingPodium({ top3, visible, userRank, userName, userPoints, userId, 
         <div>
           <div style={{ fontSize: 9.5, fontWeight: 700, color: T.muted, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 6 }}>Tu posición</div>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
-            <span className="font-display" style={{ fontSize: 44, fontWeight: 900, color: T.lime, lineHeight: 1, fontStyle: 'italic' }}>#{userRank}</span>
+            <span className="font-display" style={{ fontSize: 44, fontWeight: 900, color: groupAccent, lineHeight: 1, fontStyle: 'italic' }}>#{userRank}</span>
             <span style={{ fontSize: 15, fontWeight: 600, color: 'rgba(255,255,255,0.65)' }}>{userPoints} pts</span>
           </div>
         </div>
-        <Pill color={`${T.lime}22`} textColor={T.lime} style={{ fontSize: 13, fontWeight: 700, padding: '8px 14px' }}>🏆 ¡#{userRank}!</Pill>
+        <Pill color={`${groupAccent}22`} textColor={groupAccent} style={{ fontSize: 13, fontWeight: 700, padding: '8px 14px' }}>🏆 ¡#{userRank}!</Pill>
       </div>
 
       {/* Podium stage */}
@@ -1162,7 +1162,7 @@ function RankingPodium({ top3, visible, userRank, userName, userPoints, userId, 
                   overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                 }}>
                   {player.userId === userId ? userName.split(' ')[0] : player.name.split(' ')[0]}
-                  {player.userId === userId ? <span style={{ color: T.lime }}> (tú)</span> : null}
+                  {player.userId === userId ? <span style={{ color: groupAccent }}> (tú)</span> : null}
                 </div>
                 {showGroup && player.group_name && (
                   <div style={{ fontSize: 8.5, color: T.muted, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -1309,7 +1309,7 @@ function GroupAvatar({ group, size = 80 }: { group: string; size?: number }) {
 }
 
 // ──────── Tab: Detalles ────────
-function TabDetalles({ goto, openSub, userGroup, rankings }: { goto: (s: string) => void; openSub: (name: SubScreenName) => void; userGroup: string; rankings: RankingEntry[] }) {
+function TabDetalles({ goto, openSub, userGroup, rankings, groupAccent = T.lime }: { goto: (s: string) => void; openSub: (name: SubScreenName) => void; userGroup: string; rankings: RankingEntry[]; groupAccent?: string }) {
   const [settings, setSettings] = useState<GroupSettings | null>(null);
   useEffect(() => {
     if (userGroup) getGroupSettings(userGroup).then(setSettings).catch(console.error);
@@ -1330,11 +1330,11 @@ function TabDetalles({ goto, openSub, userGroup, rankings }: { goto: (s: string)
       <div style={{ borderRadius: 18, padding: '24px 20px', background: T.bgInk, border: `1px solid ${T.borderInk}`, textAlign: 'center' }}>
         <GroupAvatar group={userGroup} size={80}/>
         <div style={{ fontSize: 18, fontWeight: 700, color: '#fff', marginBottom: 8 }}>{grp.label}</div>
-        <Pill color={`${T.lime}25`} textColor={T.lime}>Miembros: {memberCount}</Pill>
+        <Pill color={`${groupAccent}25`} textColor={groupAccent}>Miembros: {memberCount}</Pill>
       </div>
 
       {/* Description */}
-      <Card accent={T.lime}>
+      <Card accent={groupAccent}>
         <div style={{ paddingLeft: 10 }}>
           <div className="font-display" style={{ fontSize: 14, fontWeight: 700, color: T.ink, marginBottom: 6 }}>Descripción del grupo</div>
           <div style={{ fontSize: 13, color: T.slate, lineHeight: 1.6 }}>{grp.description}</div>
