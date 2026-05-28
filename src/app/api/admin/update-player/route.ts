@@ -40,12 +40,24 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // ── Upsert bonus points ─────────────────────────────────────────────────────
+  // ── Upsert bonus points (manual: check exists → update or insert) ──────────
   if (body.bonus_points !== undefined) {
-    const { error } = await admin.from('bonus_awards').upsert(
-      { user_id: userId, points: body.bonus_points, reason: body.bonus_reason ?? null },
-      { onConflict: 'user_id' },
-    );
+    const { data: existing } = await admin
+      .from('bonus_awards')
+      .select('user_id')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    const payload = {
+      user_id: userId,
+      points:  body.bonus_points,
+      reason:  body.bonus_reason ?? null,
+    };
+
+    const { error } = existing
+      ? await admin.from('bonus_awards').update({ points: payload.points, reason: payload.reason }).eq('user_id', userId)
+      : await admin.from('bonus_awards').insert(payload);
+
     if (error) {
       console.error('[update-player] bonus_awards upsert:', error.message);
       return NextResponse.json({ error: error.message }, { status: 500 });
