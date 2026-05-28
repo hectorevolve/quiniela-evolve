@@ -27,7 +27,7 @@ const NAV: { id: View; label: string }[] = [
 // Hardcoded fallback (used while DB loads, and for color/logo lookups)
 const ALL_GROUPS = [
   'Evolve', 'BEPENSA Spirits', 'ADM', 'Disney',
-  'Ruz', 'Zuru', 'AJEMEX', 'Delongi', 'Juguetimax', 'Hanes',
+  'Ruz', 'Zuru', 'AJEMEX', 'Delongi', 'Hanes',
 ];
 
 /** Loads group list from Supabase `groups` table; falls back to ALL_GROUPS. */
