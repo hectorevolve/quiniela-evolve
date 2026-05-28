@@ -900,7 +900,7 @@ const GROUP_COLORS: Record<string, string> = {
   'Disney':          '#0063E5',
   'Ruz':             '#8B5CF6',
   'Zuru':            '#22C55E',
-  'AGEMEX':          '#EF4444',
+  'AJEMEX':          '#EF4444',
   'Delongi':         '#F97316',
 };
 
@@ -913,7 +913,7 @@ const GROUP_LOGOS: Record<string, string> = {
   'Disney':          '/logos/disney.png',
   'Ruz':             '/logos/ruz.png',
   'Zuru':            '/logos/zuru.png',
-  'AGEMEX':          '/logos/agemex.png',
+  'AJEMEX':          '/logos/agemex.png',
   'Delongi':         '/logos/delongi.png',
 };
 
@@ -1281,7 +1281,7 @@ const GROUP_INFO: Record<string, GroupInfo> = {
   'Disney':          { label: 'Disney',          description: 'Quiniela Disney para el Mundial 2026 — que gane la magia' },
   'Ruz':             { label: 'Grupo Ruz',       description: 'Quiniela del equipo Ruz para el Torneo 2026' },
   'Zuru':            { label: 'Zuru',            description: 'Quiniela Zuru — predicciones al máximo nivel' },
-  'AGEMEX':          { label: 'AGEMEX',          description: 'Quiniela oficial AGEMEX para el Mundial 2026' },
+  'AJEMEX':          { label: 'AJEMEX',          description: 'Quiniela oficial AGEMEX para el Mundial 2026' },
   'Delongi':         { label: "De'Longhi",       description: "Quiniela De'Longhi — el mejor café, las mejores predicciones" },
 };
 function getGroupInfo(group: string): GroupInfo {
