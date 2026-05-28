@@ -32,11 +32,7 @@ export default function Home() {
   // ISO UTC kickoff times from Supabase (synced from football-data.org API)
   const [matchDates, setMatchDates] = useState<Record<string, string>>({});
 
-  useEffect(() => {
-    setUsedPowers(new Set(tweaks.premium ? [] : ['double', 'late', 'spy']));
-    setLateActiveMatchId(null);
-    setSpyMatchId(null);
-  }, [tweaks.premium]);
+  // Powers are available to all users — no premium gate
 
   // ── Auth init: check existing session, then show splash for at least 1.4s ──
   useEffect(() => {

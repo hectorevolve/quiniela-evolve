@@ -44,7 +44,7 @@ export function DetalleScreen({ goto, tweaks, fireToast, matchId, usedPowers: us
   const [focusedScore, setFocusedScore] = useState<'home' | 'away' | null>(null);
   const [modal, setModal] = useState<null | 'double' | 'late'>(null);
   const [spyModal, setSpyModal] = useState<null | { phase: 'confirm' | 'results' }>(null);
-  const [localUsedPowers, setLocalUsedPowers] = useState<Set<string>>(new Set(tweaks.premium ? [] : ['spy']));
+  const [localUsedPowers, setLocalUsedPowers] = useState<Set<string>>(new Set());
 
   const usedPowers = usedPowersFromParent ?? localUsedPowers;
   const setUsedPowers = setUsedPowersFromParent ?? setLocalUsedPowers;

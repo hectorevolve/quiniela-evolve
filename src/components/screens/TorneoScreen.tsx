@@ -256,7 +256,7 @@ function TabPredicciones({ goto, tweaks, fireToast, usedPowers: usedPowersFromPa
   const [onlyUnpredicted, setOnlyUnpredicted] = useState(false);
   const [modal, setModal] = useState<null | { kind: 'double' | 'late'; match: Match }>(null);
   const [spyModal, setSpyModal] = useState<null | { match: Match; phase: 'confirm' | 'results' }>(null);
-  const [localUsedPowers, setLocalUsedPowers] = useState<Set<string>>(new Set(tweaks.premium ? [] : ['double', 'late', 'spy']));
+  const [localUsedPowers, setLocalUsedPowers] = useState<Set<string>>(new Set());
   const [localLateMatchId, setLocalLateMatchId] = useState<string | null>(null);
   const [localSpyMatchId, setLocalSpyMatchId] = useState<string | null>(null);
 
