@@ -1,17 +1,22 @@
 /**
  * GET /api/sync-results
  *
- * Syncs the full WC 2026 schedule + results from football-data.org into Supabase:
- *  - ALL matches  → updates `match_date` with the official UTC kickoff time
- *  - FINISHED     → also writes `result_home` / `result_away`
+ * Syncs the full WC 2026 schedule + results from football-data.org into Supabase.
+ * Runs automatically via Vercel Cron every 15 min (vercel.json).
  *
- * Called automatically by Vercel Cron every 15 min (vercel.json).
- * Can also be triggered manually from the admin panel.
+ * What it does each run:
+ *  1. Seeds any missing knockout matches (TBD teams) into the `matches` table.
+ *  2. Computes which knockout slots are resolved from current DB group results,
+ *     then updates the team names in DB automatically (no admin action needed).
+ *  3. Fetches ALL WC match data from football-data.org:
+ *     - Updates `match_date` with official UTC kickoff for every match.
+ *     - For FINISHED matches → writes result_home / result_away.
+ *     - Works for both group stage AND knockout (once teams are resolved in DB).
  */
 
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { MATCHES, KNOCKOUT_MATCHES } from '@/lib/data';
+import { MATCHES, KNOCKOUT_MATCHES, computeSlots } from '@/lib/data';
 
 // ─── Team name / TLA → our 3-letter code ──────────────────────────────────────
 const NAME_TO_CODE: Record<string, string> = {
@@ -87,14 +92,92 @@ function getAdminClient() {
   );
 }
 
-const ALL_MATCHES = [...MATCHES, ...(KNOCKOUT_MATCHES ?? [])];
-
 // ─── Route handler ────────────────────────────────────────────────────────────
 export async function GET() {
   const fdKey = process.env.FOOTBALL_DATA_KEY;
   if (!fdKey) {
     return NextResponse.json({ error: 'FOOTBALL_DATA_KEY not set' }, { status: 500 });
   }
+
+  const supabase = getAdminClient();
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // STEP 1 — Ensure all knockout matches exist in Supabase (idempotent seed)
+  // ═══════════════════════════════════════════════════════════════════════════
+  let knockoutSeeded = 0;
+  {
+    const { data: existing } = await supabase
+      .from('matches')
+      .select('id')
+      .in('id', KNOCKOUT_MATCHES.map(m => m.id));
+
+    const existingIds = new Set((existing ?? []).map((r: { id: string }) => r.id));
+    const missing = KNOCKOUT_MATCHES.filter(m => !existingIds.has(m.id));
+
+    if (missing.length > 0) {
+      const rows = missing.map((m, i) => ({
+        id:         m.id,
+        group_name: m.group,
+        home_code:  m.home.code,   // 'TBD' initially
+        home_name:  m.home.name,
+        away_code:  m.away.code,   // 'TBD' initially
+        away_name:  m.away.name,
+        match_date: m.date,        // Spanish placeholder, overwritten by API later
+        stadium:    m.stadium ?? '',
+        sort_order: 1000 + i,
+      }));
+      const { error } = await supabase.from('matches').insert(rows);
+      if (!error) knockoutSeeded = missing.length;
+      else console.error('[sync-results] knockout seed error:', error.message);
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // STEP 2 — Compute which knockout slots are resolved → update teams in DB
+  // ═══════════════════════════════════════════════════════════════════════════
+  let slotsResolved = 0;
+  let resolvedKnockouts = KNOCKOUT_MATCHES; // will be replaced below
+  {
+    // Fetch all results already in DB (group stage + any finished knockouts)
+    const { data: resultRows } = await supabase
+      .from('matches')
+      .select('id, result_home, result_away')
+      .not('result_home', 'is', null);
+
+    const dbResults: Record<string, [number, number]> = {};
+    for (const r of resultRows ?? []) dbResults[r.id] = [r.result_home, r.result_away];
+
+    // Derive full bracket from results
+    const slots = computeSlots(MATCHES, KNOCKOUT_MATCHES, dbResults);
+
+    // Build resolved knockout array (for use in Step 3 matching)
+    resolvedKnockouts = KNOCKOUT_MATCHES.map(m => ({
+      ...m,
+      home: (m.slotHome && slots[m.slotHome]) ? { code: slots[m.slotHome]!.code, name: slots[m.slotHome]!.name } : m.home,
+      away: (m.slotAway && slots[m.slotAway]) ? { code: slots[m.slotAway]!.code, name: slots[m.slotAway]!.name } : m.away,
+    }));
+
+    // Update DB rows where slots are now resolved
+    for (const m of resolvedKnockouts) {
+      if (m.home.code === 'TBD' && m.away.code === 'TBD') continue; // nothing resolved yet
+
+      const patch: Record<string, string> = {};
+      if (m.home.code !== 'TBD') { patch.home_code = m.home.code; patch.home_name = m.home.name; }
+      if (m.away.code !== 'TBD') { patch.away_code = m.away.code; patch.away_name = m.away.name; }
+
+      if (Object.keys(patch).length > 0) {
+        const { error } = await supabase.from('matches').update(patch).eq('id', m.id);
+        if (!error) slotsResolved++;
+        else console.error('[sync-results] slot update error:', m.id, error.message);
+      }
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // STEP 3 — Fetch from football-data.org and sync dates + results
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Use resolved knockout teams for matching (so API can find them once teams are known)
+  const ALL_MATCHES_LOCAL = [...MATCHES, ...resolvedKnockouts];
 
   type ApiMatch = {
     utcDate?: string;
@@ -107,7 +190,6 @@ export async function GET() {
   let apiMatches: ApiMatch[] = [];
 
   try {
-    // Fetch ALL WC matches (scheduled + live + finished)
     const res = await fetch(
       'https://api.football-data.org/v4/competitions/WC/matches',
       { headers: { 'X-Auth-Token': fdKey }, cache: 'no-store' },
@@ -115,8 +197,8 @@ export async function GET() {
 
     if (!res.ok) {
       return NextResponse.json(
-        { error: `football-data.org ${res.status}`, scheduled: 0, results: 0 },
-        { status: 200 }, // 200 so Vercel cron doesn't alarm
+        { error: `football-data.org ${res.status}`, knockoutSeeded, slotsResolved, scheduled: 0, results: 0 },
+        { status: 200 },
       );
     }
 
@@ -124,12 +206,11 @@ export async function GET() {
     apiMatches = data.matches ?? [];
   } catch (err) {
     return NextResponse.json(
-      { error: String(err), scheduled: 0, results: 0 },
+      { error: String(err), knockoutSeeded, slotsResolved, scheduled: 0, results: 0 },
       { status: 200 },
     );
   }
 
-  const supabase = getAdminClient();
   let scheduledUpdated = 0;
   let resultsUpdated = 0;
   const skipped: string[] = [];
@@ -145,7 +226,7 @@ export async function GET() {
       continue;
     }
 
-    const local = ALL_MATCHES.find(
+    const local = ALL_MATCHES_LOCAL.find(
       x =>
         (x.home.code === homeCode && x.away.code === awayCode) ||
         (x.home.code === awayCode  && x.away.code === homeCode),
@@ -154,11 +235,9 @@ export async function GET() {
 
     const flipped = local.home.code === awayCode;
 
-    // Always update the official UTC kickoff time
     const patch: Record<string, unknown> = {};
-    if (m.utcDate) patch.match_date = m.utcDate; // ISO 8601 e.g. "2026-06-11T17:00:00Z"
+    if (m.utcDate) patch.match_date = m.utcDate;
 
-    // Update full-time result only when match is officially FINISHED
     if (m.status === 'FINISHED') {
       const h = m.score?.fullTime?.home ?? null;
       const a = m.score?.fullTime?.away ?? null;
@@ -180,6 +259,8 @@ export async function GET() {
   }
 
   return NextResponse.json({
+    knockoutSeeded,
+    slotsResolved,
     scheduledUpdated,
     resultsUpdated,
     total: apiMatches.length,
