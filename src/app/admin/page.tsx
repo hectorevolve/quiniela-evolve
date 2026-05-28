@@ -755,6 +755,185 @@ function EditPlayerModal({ entry, onClose, onSaved, onReload }: {
   );
 }
 
+// ─── User Predictions Modal ───────────────────────────────────────────────────
+
+type PredMap = Record<string, { home: number | ''; away: number | '' }>;
+
+function UserPredictionsModal({ entry, onClose }: { entry: RankingEntry; onClose: () => void }) {
+  const [matches,   setMatches]   = useState<DBMatch[]>([]);
+  const [preds,     setPreds]     = useState<PredMap>({});
+  const [dirty,     setDirty]     = useState<Set<string>>(new Set());
+  const [results,   setResults]   = useState<Record<string, [number,number]>>({});
+  const [loading,   setLoading]   = useState(true);
+  const [saving,    setSaving]    = useState(false);
+  const [savedSet,  setSavedSet]  = useState<Set<string>>(new Set());
+  const [err,       setErr]       = useState<string | null>(null);
+
+  useEffect(() => {
+    Promise.all([
+      getMatches(),
+      supabase.from('predictions').select('match_id,home_score,away_score').eq('user_id', entry.userId),
+      supabase.from('matches').select('id,result_home,result_away').not('result_home', 'is', null),
+    ]).then(([ms, predsRes, resRes]) => {
+      setMatches(ms);
+      const pm: PredMap = {};
+      for (const p of predsRes.data ?? []) pm[p.match_id] = { home: p.home_score, away: p.away_score };
+      setPreds(pm);
+      const rm: Record<string, [number,number]> = {};
+      for (const r of resRes.data ?? []) rm[r.id] = [r.result_home, r.result_away];
+      setResults(rm);
+    }).catch(console.error).finally(() => setLoading(false));
+  }, [entry.userId]);
+
+  const update = (matchId: string, side: 'home' | 'away', val: string) => {
+    const n = val === '' ? '' : Math.max(0, parseInt(val, 10) || 0);
+    setPreds(prev => ({ ...prev, [matchId]: { ...prev[matchId] ?? { home: '', away: '' }, [side]: n } }));
+    setDirty(prev => new Set(prev).add(matchId));
+  };
+
+  const saveAll = async () => {
+    const toSave = [...dirty].filter(id => {
+      const p = preds[id];
+      return p && p.home !== '' && p.away !== '';
+    });
+    if (toSave.length === 0) return;
+    setSaving(true); setErr(null);
+    const results2: string[] = [];
+    for (const matchId of toSave) {
+      const p = preds[matchId];
+      const res = await fetch('/api/admin/update-prediction', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: entry.userId, matchId, homeScore: p.home, awayScore: p.away }),
+      });
+      if (!res.ok) { const d = await res.json(); setErr(d.error ?? 'Error'); setSaving(false); return; }
+      results2.push(matchId);
+    }
+    setSavedSet(prev => { const s = new Set(prev); results2.forEach(id => s.add(id)); return s; });
+    setDirty(new Set());
+    setSaving(false);
+  };
+
+  // Group matches by group_name
+  const grouped = useMemo(() => {
+    const g: Record<string, DBMatch[]> = {};
+    for (const m of matches) {
+      if (!g[m.group_name]) g[m.group_name] = [];
+      g[m.group_name].push(m);
+    }
+    return g;
+  }, [matches]);
+
+  const countFilled = Object.values(preds).filter(p => p.home !== '' && p.away !== '').length;
+
+  const scoreInputStyle = (matchId: string, side: 'home' | 'away'): React.CSSProperties => ({
+    width: 40, height: 36, textAlign: 'center', fontSize: 15, fontWeight: 700,
+    border: `1.5px solid ${dirty.has(matchId) ? c.amber + '90' : c.border}`,
+    borderRadius: 7, background: 'rgba(255,255,255,0.06)', color: c.text,
+    fontFamily: 'inherit', outline: 'none',
+    boxShadow: savedSet.has(matchId) ? `0 0 0 2px ${c.green}40` : 'none',
+  });
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div style={{ background: '#0D1829', border: `1px solid ${c.border}`, borderRadius: 18, width: '100%', maxWidth: 680, maxHeight: '92vh', display: 'flex', flexDirection: 'column' }}>
+
+        {/* Header */}
+        <div style={{ padding: '20px 24px 16px', borderBottom: `1px solid ${c.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+          <div>
+            <div style={{ fontSize: 17, fontWeight: 700, color: c.text }}>📋 Predicciones — {entry.name}</div>
+            <div style={{ fontSize: 12, color: c.muted, marginTop: 2 }}>{countFilled} de {matches.length} partidos predichos · {dirty.size > 0 ? <span style={{ color: c.amber }}>{dirty.size} sin guardar</span> : <span style={{ color: c.green }}>todo guardado</span>}</div>
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: c.muted, cursor: 'pointer', fontSize: 20 }}>✕</button>
+        </div>
+
+        {err && (
+          <div style={{ margin: '12px 24px 0', padding: '10px 14px', background: `${c.rose}20`, border: `1px solid ${c.rose}`, borderRadius: 8, fontSize: 13, color: c.rose }}>
+            ⚠️ {err}
+          </div>
+        )}
+
+        {/* Scrollable body */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '0 24px 16px' }}>
+          {loading ? (
+            <div style={{ padding: 40, textAlign: 'center', color: c.muted }}>Cargando…</div>
+          ) : (
+            Object.entries(grouped).map(([groupName, gmatches]) => (
+              <div key={groupName}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: c.muted, letterSpacing: 1.5, textTransform: 'uppercase', padding: '16px 0 8px' }}>{groupName}</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  {gmatches.map(m => {
+                    const pred = preds[m.id];
+                    const result = results[m.id];
+                    const isSaved = savedSet.has(m.id);
+                    const isDirty = dirty.has(m.id);
+                    return (
+                      <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 9, background: isSaved ? `${c.green}08` : isDirty ? `${c.amber}08` : 'transparent', border: `1px solid ${isSaved ? c.green+'30' : isDirty ? c.amber+'40' : 'transparent'}`, transition: 'all 150ms' }}>
+                        {/* Home team */}
+                        <div style={{ flex: 1, textAlign: 'right', fontSize: 12, fontWeight: 600, color: c.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {m.home_name}
+                        </div>
+                        {/* Score inputs */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
+                          <input type="number" min={0} max={99}
+                            value={pred?.home ?? ''}
+                            onChange={e => update(m.id, 'home', e.target.value)}
+                            style={scoreInputStyle(m.id, 'home')}
+                          />
+                          <span style={{ color: c.muted, fontWeight: 700 }}>:</span>
+                          <input type="number" min={0} max={99}
+                            value={pred?.away ?? ''}
+                            onChange={e => update(m.id, 'away', e.target.value)}
+                            style={scoreInputStyle(m.id, 'away')}
+                          />
+                        </div>
+                        {/* Away team */}
+                        <div style={{ flex: 1, fontSize: 12, fontWeight: 600, color: c.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {m.away_name}
+                        </div>
+                        {/* Result + pts */}
+                        <div style={{ width: 70, textAlign: 'right', flexShrink: 0 }}>
+                          {result ? (
+                            <span style={{ fontSize: 11, color: c.muted }}>
+                              {result[0]}:{result[1]}
+                              {pred?.home !== '' && pred?.away !== '' && (() => {
+                                const ph = Number(pred.home), pa = Number(pred.away);
+                                if (ph === result[0] && pa === result[1]) return <span style={{ color: c.green, fontWeight: 700, marginLeft: 4 }}>+3</span>;
+                                if (Math.sign(ph - pa) === Math.sign(result[0] - result[1])) return <span style={{ color: c.amber, fontWeight: 700, marginLeft: 4 }}>+1</span>;
+                                return <span style={{ color: c.rose, marginLeft: 4 }}>0</span>;
+                              })()}
+                            </span>
+                          ) : (
+                            <span style={{ fontSize: 10, color: c.dim }}>—</span>
+                          )}
+                        </div>
+                        {/* Saved indicator */}
+                        <div style={{ width: 16, flexShrink: 0 }}>
+                          {isSaved && !isDirty && <span style={{ color: c.green, fontSize: 12 }}>✓</span>}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* Footer */}
+        <div style={{ padding: '14px 24px', borderTop: `1px solid ${c.border}`, display: 'flex', gap: 10, flexShrink: 0 }}>
+          <button onClick={onClose} style={{ flex: 1, padding: '11px', background: 'transparent', border: `1px solid ${c.border}`, borderRadius: 10, color: c.muted, fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>Cerrar</button>
+          <button onClick={saveAll} disabled={saving || dirty.size === 0}
+            style={{ flex: 2, padding: '11px', background: dirty.size > 0 ? c.blue : 'rgba(255,255,255,0.05)', border: 'none', borderRadius: 10, color: dirty.size > 0 ? '#fff' : c.dim, fontWeight: 700, fontSize: 14, cursor: dirty.size > 0 ? 'pointer' : 'default', opacity: saving ? 0.7 : 1, transition: 'all 200ms' }}>
+            {saving ? 'Guardando…' : dirty.size > 0 ? `Guardar ${dirty.size} cambio${dirty.size > 1 ? 's' : ''}` : 'Sin cambios'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ViewRankings() {
   const isMobile = useIsMobile();
   const [tab, setTab] = useState('nacional');
@@ -762,6 +941,7 @@ function ViewRankings() {
   const [rankings, setRankings] = useState<RankingEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [editEntry, setEditEntry] = useState<RankingEntry | null>(null);
+  const [predsEntry, setPredsEntry] = useState<RankingEntry | null>(null);
 
   const reload = () => {
     setLoading(true);
@@ -837,7 +1017,10 @@ function ViewRankings() {
                     </td>
                     <td style={{ padding: '11px 14px', fontSize: 14, fontWeight: 700, color: c.lime, textAlign: 'right' }}>{u.points}</td>
                     <td style={{ padding: '11px 14px', textAlign: 'right' }}>
-                      <button onClick={() => setEditEntry(u)} style={{ padding: '5px 12px', borderRadius: 7, background: `${c.blue}20`, border: `1px solid ${c.blue}50`, color: c.blue, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>✏️ Editar</button>
+                      <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                        <button onClick={() => setPredsEntry(u)} style={{ padding: '5px 12px', borderRadius: 7, background: 'rgba(201,243,29,0.1)', border: `1px solid ${c.lime}40`, color: c.lime, fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>📋 Predicciones</button>
+                        <button onClick={() => setEditEntry(u)} style={{ padding: '5px 12px', borderRadius: 7, background: `${c.blue}20`, border: `1px solid ${c.blue}50`, color: c.blue, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>✏️ Editar</button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -858,7 +1041,8 @@ function ViewRankings() {
                 <div style={{ fontSize: 11, color: c.muted }}>{u.group_name ?? '—'}</div>
               </div>
               <div style={{ fontSize: 14, fontWeight: 800, color: c.lime, flexShrink: 0 }}>{u.points} pts</div>
-              <button onClick={() => setEditEntry(u)} style={{ background: 'none', border: 'none', color: c.blue, cursor: 'pointer', fontSize: 16, flexShrink: 0 }}>✏️</button>
+              <button onClick={() => setPredsEntry(u)} style={{ background: 'none', border: 'none', color: c.lime, cursor: 'pointer', fontSize: 16, flexShrink: 0 }} title="Predicciones">📋</button>
+              <button onClick={() => setEditEntry(u)} style={{ background: 'none', border: 'none', color: c.blue, cursor: 'pointer', fontSize: 16, flexShrink: 0 }} title="Editar">✏️</button>
             </div>
           ))}
         </div>
@@ -870,6 +1054,13 @@ function ViewRankings() {
           onClose={() => setEditEntry(null)}
           onSaved={handleSaved}
           onReload={reload}
+        />
+      )}
+
+      {predsEntry && (
+        <UserPredictionsModal
+          entry={predsEntry}
+          onClose={() => setPredsEntry(null)}
         />
       )}
     </div>
