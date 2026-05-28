@@ -141,14 +141,18 @@ export async function GET() {
     // Fetch all results already in DB (group stage + any finished knockouts)
     const { data: resultRows } = await supabase
       .from('matches')
-      .select('id, result_home, result_away')
+      .select('id, result_home, result_away, result_winner')
       .not('result_home', 'is', null);
 
     const dbResults: Record<string, [number, number]> = {};
-    for (const r of resultRows ?? []) dbResults[r.id] = [r.result_home, r.result_away];
+    const dbWinners: Record<string, 'home' | 'away'> = {};
+    for (const r of resultRows ?? []) {
+      dbResults[r.id] = [r.result_home, r.result_away];
+      if (r.result_winner) dbWinners[r.id] = r.result_winner as 'home' | 'away';
+    }
 
-    // Derive full bracket from results
-    const slots = computeSlots(MATCHES, KNOCKOUT_MATCHES, dbResults);
+    // Derive full bracket from results (penalty winners resolve ET/pens draws)
+    const slots = computeSlots(MATCHES, KNOCKOUT_MATCHES, dbResults, dbWinners);
 
     // Build resolved knockout array (for use in Step 3 matching)
     resolvedKnockouts = KNOCKOUT_MATCHES.map(m => ({
@@ -184,7 +188,13 @@ export async function GET() {
     status?: string;
     homeTeam?: { name?: string; tla?: string };
     awayTeam?: { name?: string; tla?: string };
-    score?: { fullTime?: { home?: number | null; away?: number | null } };
+    score?: {
+      /** Actual winner, including ET/penalties: 'HOME_TEAM' | 'AWAY_TEAM' | 'DRAW' */
+      winner?: string;
+      /** How it was decided: 'REGULAR' | 'EXTRA_TIME' | 'PENALTY_SHOOTOUT' */
+      duration?: string;
+      fullTime?: { home?: number | null; away?: number | null };
+    };
   };
 
   let apiMatches: ApiMatch[] = [];
@@ -245,6 +255,17 @@ export async function GET() {
         patch.result_home = flipped ? a : h;
         patch.result_away = flipped ? h : a;
         resultsUpdated++;
+
+        // If decided by ET or penalties, record who actually advanced.
+        // This lets computeSlots resolve the bracket even when the 90-min
+        // score is a draw (e.g. 1-1 aet, home team wins 5-4 on pens).
+        const dur       = m.score?.duration;
+        const apiWinner = m.score?.winner;
+        if (dur && dur !== 'REGULAR' && apiWinner && apiWinner !== 'DRAW') {
+          const isApiHome = apiWinner === 'HOME_TEAM';
+          // XOR with flipped: if exactly one of them is true → our 'away' wins
+          patch.result_winner = (isApiHome === flipped) ? 'away' : 'home';
+        }
       }
     }
 

@@ -264,7 +264,10 @@ function computeGroupStandings(
 export function computeSlots(
   groupMatches: Match[],
   knockoutMatches: Match[],
-  results: Record<string, [number, number]>
+  results: Record<string, [number, number]>,
+  /** Explicit winner for matches decided by extra-time / penalties.
+   *  'home' | 'away' relative to our DB home/away (not necessarily the API's). */
+  penaltyWinners?: Record<string, 'home' | 'away'>,
 ): SlotMap {
   const slots: SlotMap = {};
 
@@ -295,9 +298,22 @@ export function computeSlots(
     const awayTeam = match.slotAway ? slots[match.slotAway] : null;
     if (!homeTeam || !awayTeam) continue;
     const [hg, ag] = r;
-    if (hg === ag) continue;
-    const winner = hg > ag ? homeTeam : awayTeam;
-    const loser  = hg > ag ? awayTeam : homeTeam;
+
+    let winner: { code: string; name: string };
+    let loser:  { code: string; name: string };
+
+    if (hg > ag) {
+      winner = homeTeam; loser = awayTeam;
+    } else if (ag > hg) {
+      winner = awayTeam; loser = homeTeam;
+    } else {
+      // Draw after 90 min — need explicit penalty/ET winner
+      const w = penaltyWinners?.[match.id];
+      if (!w) continue; // still unresolved, skip
+      winner = w === 'home' ? homeTeam : awayTeam;
+      loser  = w === 'home' ? awayTeam : homeTeam;
+    }
+
     slots[`W_${match.id}`] = { code: winner.code, name: winner.name };
     if (match.id.startsWith('sf_')) slots[`L_${match.id}`] = { code: loser.code, name: loser.name };
   }
