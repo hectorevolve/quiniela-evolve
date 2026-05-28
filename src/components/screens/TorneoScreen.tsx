@@ -1045,7 +1045,7 @@ function TabRanking({ rankings, loading, userId, userName, userGroup }: {
         </span>
       </div>
 
-      <RankingPodium top3={top3} visible={podiumVisible} userRank={userRank} userName={userName} userPoints={userPoints} userId={userId}/>
+      <RankingPodium top3={top3} visible={podiumVisible} userRank={userRank} userName={userName} userPoints={userPoints} userId={userId} showGroup={subTab === 'nacional'}/>
 
       <div style={{ fontSize: 11, color: T.muted, marginBottom: 12, paddingLeft: 2 }}>
         {total.toLocaleString('es-MX')} {subTab === 'grupo' ? `en ${userGroup}` : 'jugadores en total'}
@@ -1090,7 +1090,7 @@ function TabRanking({ rankings, loading, userId, userName, userGroup }: {
   );
 }
 
-function RankingPodium({ top3, visible, userRank, userName, userPoints, userId }: { top3: RankingEntry[]; visible: boolean; userRank: number; userName: string; userPoints: number; userId: string }) {
+function RankingPodium({ top3, visible, userRank, userName, userPoints, userId, showGroup }: { top3: RankingEntry[]; visible: boolean; userRank: number; userName: string; userPoints: number; userId: string; showGroup?: boolean }) {
   // Podium order: 2nd (left) · 1st (center) · 3rd (right)
   const order   = [top3[1], top3[0], top3[2]];
   const heights = [96, 132, 72];
@@ -1155,15 +1155,20 @@ function RankingPodium({ top3, visible, userRank, userName, userPoints, userId }
                 style={{ marginBottom: 6 }}
               />
 
-              {/* Name */}
-              <div style={{
-                fontSize: isCenter ? 11.5 : 10, fontWeight: 700, color: '#fff',
-                marginBottom: 8, textAlign: 'center',
-                maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                padding: '0 4px',
-              }}>
-                {player.userId === userId ? userName.split(' ')[0] : player.name.split(' ')[0]}
-                {player.userId === userId ? <span style={{ color: T.lime }}> (tú)</span> : null}
+              {/* Name + group */}
+              <div style={{ marginBottom: 8, textAlign: 'center', maxWidth: '100%', padding: '0 4px' }}>
+                <div style={{
+                  fontSize: isCenter ? 11.5 : 10, fontWeight: 700, color: '#fff',
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                }}>
+                  {player.userId === userId ? userName.split(' ')[0] : player.name.split(' ')[0]}
+                  {player.userId === userId ? <span style={{ color: T.lime }}> (tú)</span> : null}
+                </div>
+                {showGroup && player.group_name && (
+                  <div style={{ fontSize: 8.5, color: T.muted, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {player.group_name}
+                  </div>
+                )}
               </div>
 
               {/* Platform */}
