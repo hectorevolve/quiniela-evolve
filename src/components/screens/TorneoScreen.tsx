@@ -27,7 +27,7 @@ type Tab = 'predicciones' | 'ranking' | 'bonus' | 'detalles';
 
 interface Props {
   goto: (s: string, matchId?: string) => void;
-  tweaks: { premium: boolean; filled: boolean; liveMatch: boolean; liveMinute?: number; pastMatch: boolean; knockoutSlots: boolean; rank?: number };
+  tweaks: { premium: boolean; filled: boolean; liveMatch: boolean; liveMinute?: number; liveHomeScore?: number; liveAwayScore?: number; pastMatch: boolean; knockoutSlots: boolean; rank?: number };
   fireToast: (msg: string, color?: string, textColor?: string) => void;
   usedPowers?: Set<string>;
   setUsedPowers?: React.Dispatch<React.SetStateAction<Set<string>>>;
@@ -285,7 +285,12 @@ function TabPredicciones({ goto, tweaks, fireToast, usedPowers: usedPowersFromPa
   const spyMatchId = spyMatchIdFromParent !== undefined ? spyMatchIdFromParent : localSpyMatchId;
   const setSpyMatchId = setSpyMatchIdFromParent ?? setLocalSpyMatchId;
 
-  const liveMatch = useLiveMatch(tweaks.liveMatch ? { ...DEMO_LIVE_MATCH, minute: tweaks.liveMinute ?? DEMO_LIVE_MATCH.minute } : undefined);
+  const liveMatch = useLiveMatch(tweaks.liveMatch ? {
+    ...DEMO_LIVE_MATCH,
+    minute: tweaks.liveMinute ?? DEMO_LIVE_MATCH.minute,
+    homeScore: tweaks.liveHomeScore ?? DEMO_LIVE_MATCH.homeScore,
+    awayScore: tweaks.liveAwayScore ?? DEMO_LIVE_MATCH.awayScore,
+  } : undefined);
 
   const [displayedLive, setDisplayedLive] = useState<LiveMatch | null>(liveMatch);
   const [bannerAnim, setBannerAnim] = useState<'idle' | 'exit' | 'enter'>('idle');
@@ -301,6 +306,25 @@ function TabPredicciones({ goto, tweaks, fireToast, usedPowers: usedPowersFromPa
     const t2 = setTimeout(() => setBannerAnim('idle'), 700);
     return () => { clearTimeout(t1); clearTimeout(t2); };
   }, [liveMatch]);
+
+  // Goal modal
+  type GoalInfo = { side: 'home' | 'away'; minute: number; homeScore: number; awayScore: number };
+  const [goalModal, setGoalModal] = useState<GoalInfo | null>(null);
+  const prevScoreRef = useRef<[number, number] | null>(null);
+
+  useEffect(() => {
+    if (!displayedLive) { prevScoreRef.current = null; return; }
+    const curr: [number, number] = [displayedLive.homeScore, displayedLive.awayScore];
+    const prev = prevScoreRef.current;
+    prevScoreRef.current = curr;
+    if (!prev) return;
+    const side = curr[0] > prev[0] ? 'home' : curr[1] > prev[1] ? 'away' : null;
+    if (!side) return;
+    const minute = displayedLive.minute ?? 0;
+    setGoalModal({ side, minute, homeScore: curr[0], awayScore: curr[1] });
+    const t = setTimeout(() => setGoalModal(null), 5000);
+    return () => clearTimeout(t);
+  }, [displayedLive]);
 
   // Client-side match timer — used when the API doesn't return the minute
   const liveMatchForTimer = MATCHES.find(m => m.id === displayedLive?.matchId);
@@ -680,6 +704,87 @@ function TabPredicciones({ goto, tweaks, fireToast, usedPowers: usedPowersFromPa
           />
         )}
       </Modal>
+
+      {/* ── GoalModal overlay ── */}
+      {goalModal && (() => {
+        const gm = goalModal;
+        const liveMatchData = MATCHES.find(m => m.id === displayedLive?.matchId) ?? MATCHES[0];
+        const scoringName = gm.side === 'home' ? liveMatchData.home.name : liveMatchData.away.name;
+        return (
+          <div
+            onClick={() => setGoalModal(null)}
+            style={{
+              position: 'fixed', inset: 0, zIndex: 9999,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              background: 'rgba(0,6,20,0.82)',
+              backdropFilter: 'blur(3px)',
+              WebkitBackdropFilter: 'blur(3px)',
+            }}
+          >
+            <div
+              onClick={e => e.stopPropagation()}
+              style={{
+                background: 'linear-gradient(160deg, #0D1F3C 0%, #091428 60%, #060E1E 100%)',
+                borderRadius: 24,
+                padding: '32px 28px 28px',
+                width: 300,
+                textAlign: 'center',
+                boxShadow: '0 0 0 1px rgba(255,255,255,0.08), 0 32px 80px rgba(0,0,0,0.7)',
+                animation: 'evo-goal-modal-enter 500ms cubic-bezier(0.22,1,0.36,1) both',
+              }}
+            >
+              {/* Ball: outer handles drop-in, inner spins then stops */}
+              <div style={{ lineHeight: 1, marginBottom: 12, animation: 'evo-goal-ball-drop 500ms cubic-bezier(0.22,1,0.36,1) 80ms both' }}>
+                <span style={{ display: 'inline-block', fontSize: 56, animation: 'evo-goal-ball-spin 2.5s cubic-bezier(0.15,0,0.3,1) both' }}>⚽</span>
+              </div>
+
+              {/* ¡GOL! */}
+              <div style={{
+                fontSize: 58, fontWeight: 900, lineHeight: 0.95,
+                fontStyle: 'italic', letterSpacing: -1,
+                background: 'linear-gradient(135deg, #FDE047 0%, #FBBF24 50%, #F59E0B 100%)',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+                backgroundClip: 'text',
+                animation: 'evo-goal-text 600ms cubic-bezier(0.22,1,0.36,1) 120ms both',
+                marginBottom: 12,
+              }}>¡GOL!</div>
+
+              {/* Scorer + minute */}
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#4ADE80', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 18 }}>
+                {scoringName} · MIN. {gm.minute}
+              </div>
+
+              {/* Flags + score */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 14, marginBottom: 12 }}>
+                <Flag code={liveMatchData.home.code} size={44}/>
+                <span style={{
+                  fontSize: 42, fontWeight: 900, color: '#FFFFFF',
+                  fontFamily: 'var(--font-jetbrains), monospace',
+                  letterSpacing: -1, lineHeight: 1,
+                }}>{gm.homeScore}–{gm.awayScore}</span>
+                <Flag code={liveMatchData.away.code} size={44}/>
+              </div>
+
+              {/* Team names */}
+              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', letterSpacing: 0.3 }}>
+                {liveMatchData.home.name} · {liveMatchData.away.name}
+              </div>
+
+              {/* Progress bar auto-dismiss 5s */}
+              <div style={{ marginTop: 20, height: 2, borderRadius: 2, background: 'rgba(255,255,255,0.08)', overflow: 'hidden' }}>
+                <div style={{
+                  height: '100%', borderRadius: 2,
+                  background: 'rgba(74,222,128,0.6)',
+                  transformOrigin: 'left',
+                  animation: 'evo-goal-bar 5s linear both',
+                }}/>
+              </div>
+              <div style={{ marginTop: 8, fontSize: 10, color: 'rgba(255,255,255,0.2)', letterSpacing: 0.5 }}>Toca para cerrar</div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

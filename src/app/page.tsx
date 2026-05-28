@@ -1,5 +1,5 @@
 'use client';
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { Phone, Toast, Preloader, MiniLoader } from '@/components/ui';
 import { LoginScreen } from '@/components/screens/LoginScreen';
 import { OnboardingScreen } from '@/components/screens/OnboardingScreen';
@@ -14,7 +14,7 @@ import { syncPredictionsFromDB, syncBonusFromDB } from '@/lib/predictions';
 
 type Screen = 'login' | 'onboarding' | 'torneo' | 'detalle' | 'perfil' | 'premios' | 'admin';
 interface ToastState { id: number; message: string; color?: string; textColor?: string }
-interface Tweaks { premium: boolean; filled: boolean; cumplido: boolean; liveMatch: boolean; liveMinute: number; pastMatch: boolean; rank: number; knockoutSlots: boolean }
+interface Tweaks { premium: boolean; filled: boolean; cumplido: boolean; liveMatch: boolean; liveMinute: number; liveHomeScore: number; liveAwayScore: number; pastMatch: boolean; rank: number; knockoutSlots: boolean }
 
 const DEV_TWEAKS = process.env.NEXT_PUBLIC_DEV_TWEAKS === '1';
 
@@ -23,7 +23,7 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [transitioning, setTransitioning] = useState(false);
   const [toast, setToast] = useState<ToastState | null>(null);
-  const [tweaks, setTweaks] = useState<Tweaks>({ premium: true, filled: false, cumplido: true, liveMatch: false, liveMinute: 30, pastMatch: false, rank: 1, knockoutSlots: false });
+  const [tweaks, setTweaks] = useState<Tweaks>({ premium: true, filled: false, cumplido: true, liveMatch: false, liveMinute: 30, liveHomeScore: 0, liveAwayScore: 0, pastMatch: false, rank: 1, knockoutSlots: false });
   const [selectedMatchId, setSelectedMatchId] = useState<string>('a1');
   const [usedPowers, setUsedPowers] = useState<Set<string>>(new Set());
   // Powers are always available — no premium gate
@@ -182,6 +182,7 @@ function TweaksPanel({ tweaks, setTweaks, screen, goto, onReplay }: {
   screen: string; goto: (s: string) => void; onReplay: () => void;
 }) {
   const screens: Screen[] = ['login', 'onboarding', 'torneo', 'detalle', 'perfil', 'premios'];
+  const simTimers = useRef<number[]>([]);
   return (
     <div style={{
       background: 'rgba(15,23,42,0.85)', backdropFilter: 'blur(12px)',
@@ -199,7 +200,10 @@ function TweaksPanel({ tweaks, setTweaks, screen, goto, onReplay }: {
       <PanelSection label="Predicciones"/>
       <Toggle label="Predicciones llenas" value={tweaks.filled} onChange={v => setTweaks(t => ({ ...t, filled: v }))}/>
       <Toggle label="Partidos terminados" value={tweaks.pastMatch} onChange={v => setTweaks(t => ({ ...t, pastMatch: v }))}/>
-      <Toggle label="Partido en vivo" value={tweaks.liveMatch} onChange={v => setTweaks(t => ({ ...t, liveMatch: v }))}/>
+      <Toggle label="Partido en vivo" value={tweaks.liveMatch} onChange={v => {
+        simTimers.current.forEach(clearTimeout); simTimers.current = [];
+        setTweaks(t => ({ ...t, liveMatch: v, liveHomeScore: 0, liveAwayScore: 0, liveMinute: 23 }));
+      }}/>
       {tweaks.liveMatch && (
         <div style={{ marginBottom: 10 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
@@ -211,13 +215,40 @@ function TweaksPanel({ tweaks, setTweaks, screen, goto, onReplay }: {
             onChange={e => setTweaks(t => ({ ...t, liveMinute: Number(e.target.value) }))}
             style={{ width: '100%', accentColor: '#1AAFFF', cursor: 'pointer' }}
           />
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 2 }}>
-            <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)' }}>1&apos;</span>
-            <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)' }}>45&apos;</span>
-            <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)' }}>90&apos;</span>
-          </div>
         </div>
       )}
+
+      <PanelSection label="Simulación de partido en vivo"/>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
+        <button onClick={() => {
+          simTimers.current.forEach(clearTimeout); simTimers.current = [];
+          setTweaks(t => ({ ...t, liveMatch: true, liveHomeScore: 0, liveAwayScore: 0, liveMinute: 10 }));
+          simTimers.current.push(window.setTimeout(() => setTweaks(t => ({ ...t, liveMinute: 23, liveHomeScore: t.liveHomeScore + 1 })), 2000));
+          simTimers.current.push(window.setTimeout(() => setTweaks(t => ({ ...t, liveMinute: 61, liveAwayScore: t.liveAwayScore + 1 })), 8000));
+          simTimers.current.push(window.setTimeout(() => setTweaks(t => ({ ...t, liveMatch: false, liveHomeScore: 0, liveAwayScore: 0 })), 15000));
+        }} style={{ padding: '7px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer', background: 'rgba(26,175,255,0.12)', border: '1px solid rgba(26,175,255,0.3)', borderRadius: 8, color: '#1AAFFF', textAlign: 'left' }}>
+          ▶ Simular MEX vs RSA (completo)
+        </button>
+        <button onClick={() => {
+          simTimers.current.forEach(clearTimeout); simTimers.current = [];
+          setTweaks(t => ({ ...t, liveMatch: true, liveMinute: 23, liveHomeScore: t.liveHomeScore + 1 }));
+        }} style={{ padding: '7px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer', background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.25)', borderRadius: 8, color: '#4ADE80', textAlign: 'left' }}>
+          ⚽ Solo GOL — MEX anota
+        </button>
+        <button onClick={() => {
+          simTimers.current.forEach(clearTimeout); simTimers.current = [];
+          setTweaks(t => ({ ...t, liveMatch: true, liveMinute: 61, liveAwayScore: t.liveAwayScore + 1 }));
+        }} style={{ padding: '7px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer', background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.25)', borderRadius: 8, color: '#4ADE80', textAlign: 'left' }}>
+          ⚽ Solo GOL — RSA anota
+        </button>
+        <button onClick={() => {
+          simTimers.current.forEach(clearTimeout); simTimers.current = [];
+          setTweaks(t => ({ ...t, liveMatch: false, liveHomeScore: 0, liveAwayScore: 0 }));
+        }} style={{ padding: '7px 10px', fontSize: 11, fontWeight: 600, cursor: 'pointer', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, color: 'rgba(255,255,255,0.45)', textAlign: 'left' }}>
+          ■ Detener simulación
+        </button>
+      </div>
+
       <Toggle label="Simular eliminatorias" value={tweaks.knockoutSlots} onChange={v => setTweaks(t => ({ ...t, knockoutSlots: v }))}/>
 
       <PanelSection label="Posición en ranking"/>
