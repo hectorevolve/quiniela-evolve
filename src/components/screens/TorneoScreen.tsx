@@ -941,7 +941,6 @@ const GROUP_LOGOS: Record<string, string> = {
   'Zuru':            '/logos/zuru.png',
   'AJEMEX':          '/logos/ajemex.png',
   'Delongi':         '/logos/delongi.png',
-  'Hanes':           '/logos/hanes.png',
 };
 
 function groupInitials(name: string): string {
@@ -954,6 +953,8 @@ function GroupLogo({ group, size, colorOverride, logoUrlOverride }: { group: str
   const accent = colorOverride ?? GROUP_COLORS[group] ?? T.blue;
   const logo   = logoUrlOverride ?? GROUP_LOGOS[group];
   const [failed, setFailed] = useState(false);
+  // Reset failed when a new URL arrives (e.g. from DB after initial render)
+  useEffect(() => { setFailed(false); }, [logo]);
 
   if (group === 'Evolve' && !logoUrlOverride) {
     return (
@@ -1320,6 +1321,8 @@ function GroupAvatar({ group, size = 80, colorOverride, logoUrlOverride }: { gro
   const [failed, setFailed] = useState(false);
   const col = colorOverride ?? GROUP_COLORS[group] ?? '#A3E635';
   const logo = logoUrlOverride ?? GROUP_LOGOS[group];
+  // Reset failed when a new URL arrives (e.g. from DB after initial render)
+  useEffect(() => { setFailed(false); }, [logo]);
   if (group === 'Evolve' && !logoUrlOverride) return (
     <div style={{ width: size, height: size, borderRadius: '50%', background: T.bgInkRaised, border: `2px solid ${col}`, margin: '0 auto 12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <EvolveMark size={size * 0.55} color={col}/>
