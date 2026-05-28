@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getAdminClient } from '@/lib/server-session';
 
-export type GroupConfig = { name: string; color: string };
+export type GroupConfig = { name: string; color: string; logo_url?: string | null };
 
 /** Public endpoint — returns the list of groups from the `groups` table.
  *  Falls back to an empty array (caller should use a hardcoded default). */
@@ -10,7 +10,7 @@ export async function GET() {
     const admin = getAdminClient();
     const { data, error } = await admin
       .from('groups')
-      .select('name, color')
+      .select('name, color, logo_url')
       .order('name');
 
     if (error) throw error;

@@ -156,15 +156,21 @@ export function TorneoScreen({ goto, tweaks, fireToast, usedPowers, setUsedPower
       .finally(() => setRankingsLoading(false));
   }, []);
 
-  // Dynamic group colors from DB (overrides hardcoded GROUP_COLORS)
+  // Dynamic group colors & logos from DB (overrides hardcoded maps)
   const [dbGroupColors, setDbGroupColors] = useState<Record<string, string>>({});
+  const [dbGroupLogos, setDbGroupLogos] = useState<Record<string, string>>({});
   useEffect(() => {
     fetch('/api/groups')
       .then(r => r.json())
-      .then((groups: { name: string; color: string }[]) => {
-        const map: Record<string, string> = {};
-        for (const g of groups) if (g.name && g.color) map[g.name] = g.color;
-        setDbGroupColors(map);
+      .then((groups: { name: string; color: string; logo_url?: string | null }[]) => {
+        const colorMap: Record<string, string> = {};
+        const logoMap: Record<string, string> = {};
+        for (const g of groups) {
+          if (g.name && g.color) colorMap[g.name] = g.color;
+          if (g.name && g.logo_url) logoMap[g.name] = g.logo_url;
+        }
+        setDbGroupColors(colorMap);
+        setDbGroupLogos(logoMap);
       })
       .catch(() => {});
   }, []);
@@ -172,6 +178,8 @@ export function TorneoScreen({ goto, tweaks, fireToast, usedPowers, setUsedPower
   // Merge: DB color takes priority, hardcoded GROUP_COLORS as fallback
   const getGroupColor = (group: string) =>
     dbGroupColors[group] ?? GROUP_COLORS[group] ?? T.lime;
+  const getGroupLogo = (group: string) =>
+    dbGroupLogos[group] ?? undefined;
 
   const openSub = (name: SubScreenName) => setSubScreen(name);
   const closeSub = () => setSubScreen(null);
@@ -216,7 +224,7 @@ export function TorneoScreen({ goto, tweaks, fireToast, usedPowers, setUsedPower
       {/* Group strip */}
       <div style={{ background: '#fff', borderBottom: `1px solid ${T.border}`, padding: '10px 16px' }}>
         <div style={{ display: 'flex', alignItems: 'center', flexDirection: 'column', width: 60 }}>
-          <GroupLogo group={displayGroup} size={50} colorOverride={getGroupColor(displayGroup)}/>
+          <GroupLogo group={displayGroup} size={50} colorOverride={getGroupColor(displayGroup)} logoUrlOverride={getGroupLogo(displayGroup)}/>
           <div style={{ fontSize: 8, fontWeight: 700, color: T.ink, textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 4, textAlign: 'center', lineHeight: 1.2, whiteSpace: 'nowrap' }}>Grupo<br/>{displayGroup}</div>
         </div>
       </div>
@@ -252,7 +260,7 @@ export function TorneoScreen({ goto, tweaks, fireToast, usedPowers, setUsedPower
             userGroup={displayGroup}
           />
         )}
-        {tab === 'detalles'     && <TabDetalles goto={goto} openSub={openSub} userGroup={displayGroup} rankings={liveRankings} groupAccent={getGroupColor(displayGroup)}/>}
+        {tab === 'detalles'     && <TabDetalles goto={goto} openSub={openSub} userGroup={displayGroup} rankings={liveRankings} groupAccent={getGroupColor(displayGroup)} groupLogoUrl={getGroupLogo(displayGroup)}/>}
       </div>
 
     </div>
@@ -942,12 +950,12 @@ function groupInitials(name: string): string {
   return (words[0][0] + words[1][0]).toUpperCase();
 }
 
-function GroupLogo({ group, size, colorOverride }: { group: string; size: number; colorOverride?: string }) {
+function GroupLogo({ group, size, colorOverride, logoUrlOverride }: { group: string; size: number; colorOverride?: string; logoUrlOverride?: string | null }) {
   const accent = colorOverride ?? GROUP_COLORS[group] ?? T.blue;
-  const logo   = GROUP_LOGOS[group];
+  const logo   = logoUrlOverride ?? GROUP_LOGOS[group];
   const [failed, setFailed] = useState(false);
 
-  if (group === 'Evolve') {
+  if (group === 'Evolve' && !logoUrlOverride) {
     return (
       <div style={{
         width: size, height: size, borderRadius: '50%', flexShrink: 0,
@@ -1308,11 +1316,11 @@ function getGroupInfo(group: string): GroupInfo {
   return GROUP_INFO[group] ?? { label: group || 'Mi Grupo', description: `Quiniela del grupo ${group || 'Evolve'} para el Torneo 2026` };
 }
 
-function GroupAvatar({ group, size = 80, colorOverride }: { group: string; size?: number; colorOverride?: string }) {
+function GroupAvatar({ group, size = 80, colorOverride, logoUrlOverride }: { group: string; size?: number; colorOverride?: string; logoUrlOverride?: string | null }) {
   const [failed, setFailed] = useState(false);
   const col = colorOverride ?? GROUP_COLORS[group] ?? '#A3E635';
-  const logo = GROUP_LOGOS[group];
-  if (group === 'Evolve') return (
+  const logo = logoUrlOverride ?? GROUP_LOGOS[group];
+  if (group === 'Evolve' && !logoUrlOverride) return (
     <div style={{ width: size, height: size, borderRadius: '50%', background: T.bgInkRaised, border: `2px solid ${col}`, margin: '0 auto 12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <EvolveMark size={size * 0.55} color={col}/>
     </div>
@@ -1329,7 +1337,7 @@ function GroupAvatar({ group, size = 80, colorOverride }: { group: string; size?
 }
 
 // ──────── Tab: Detalles ────────
-function TabDetalles({ goto, openSub, userGroup, rankings, groupAccent = T.lime }: { goto: (s: string) => void; openSub: (name: SubScreenName) => void; userGroup: string; rankings: RankingEntry[]; groupAccent?: string }) {
+function TabDetalles({ goto, openSub, userGroup, rankings, groupAccent = T.lime, groupLogoUrl }: { goto: (s: string) => void; openSub: (name: SubScreenName) => void; userGroup: string; rankings: RankingEntry[]; groupAccent?: string; groupLogoUrl?: string | null }) {
   const [settings, setSettings] = useState<GroupSettings | null>(null);
   useEffect(() => {
     if (userGroup) getGroupSettings(userGroup).then(setSettings).catch(console.error);
@@ -1348,7 +1356,7 @@ function TabDetalles({ goto, openSub, userGroup, rankings, groupAccent = T.lime 
     <div style={{ padding: '14px 14px 80px', display: 'flex', flexDirection: 'column', gap: 12 }}>
       {/* Group hero */}
       <div style={{ borderRadius: 18, padding: '24px 20px', background: T.bgInk, border: `1px solid ${T.borderInk}`, textAlign: 'center' }}>
-        <GroupAvatar group={userGroup} size={80} colorOverride={groupAccent}/>
+        <GroupAvatar group={userGroup} size={80} colorOverride={groupAccent} logoUrlOverride={groupLogoUrl}/>
         <div style={{ fontSize: 18, fontWeight: 700, color: '#fff', marginBottom: 8 }}>{grp.label}</div>
         <Pill color={`${groupAccent}25`} textColor={groupAccent}>Miembros: {memberCount}</Pill>
       </div>

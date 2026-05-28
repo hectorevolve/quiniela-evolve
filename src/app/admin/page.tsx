@@ -156,12 +156,12 @@ function GroupBadge({ group, colorOverride }: { group: string; colorOverride?: s
   );
 }
 
-function GroupIcon({ group, size = 32, colorOverride }: { group: string; size?: number; colorOverride?: string }) {
+function GroupIcon({ group, size = 32, colorOverride, logoUrlOverride }: { group: string; size?: number; colorOverride?: string; logoUrlOverride?: string | null }) {
   const [failed, setFailed] = useState(false);
   const col = colorOverride ?? GROUP_COLORS[group] ?? c.blue;
-  const logo = GROUP_LOGOS[group];
+  const logo = logoUrlOverride ?? GROUP_LOGOS[group];
   const initials = group.trim().split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase();
-  if (group === 'Evolve') return (
+  if (group === 'Evolve' && !logoUrlOverride) return (
     <div style={{ width: size, height: size, borderRadius: '50%', background: 'rgba(0,0,0,0.6)', border: `2px solid ${col}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
       <EvolveMark size={size * 0.55} color={col}/>
     </div>
@@ -2254,7 +2254,7 @@ function ViewGrupoDetalle({ group, liveUsers, onBack, onUserUpdated, onUserRemov
 }
 
 // ─── Gestión de Grupos ───────────────────────────────────────────────────────
-type DBGroup = { id: number; name: string; color: string };
+type DBGroup = { id: number; name: string; color: string; logo_url?: string | null };
 
 const COLOR_PRESETS = [
   '#A3E635','#1AAFFF','#F59E0B','#0063E5','#8B5CF6',
@@ -2272,12 +2272,15 @@ function ViewGruposConfig({ onSelectGroup, onBack }: { onSelectGroup: (g: string
   const [editing, setEditing]   = useState<DBGroup | null>(null);
   const [editName, setEditName] = useState('');
   const [editColor, setEditColor] = useState('');
+  const [editLogoFile, setEditLogoFile] = useState<File | null>(null);
+  const [editLogoPreview, setEditLogoPreview] = useState<string | null>(null);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
   const [saving, setSaving]     = useState(false);
   const [err, setErr]           = useState<string | null>(null);
 
   const load = () => {
     setLoading(true);
-    supabase.from('groups').select('id, name, color').order('name')
+    supabase.from('groups').select('id, name, color, logo_url').order('name')
       .then(({ data }) => { setDbGroups((data ?? []) as DBGroup[]); setLoading(false); });
   };
   useEffect(() => { load(); }, []);
@@ -2295,12 +2298,32 @@ function ViewGruposConfig({ onSelectGroup, onBack }: { onSelectGroup: (g: string
   const handleSaveEdit = async () => {
     if (!editing || !editName.trim()) return;
     setSaving(true); setErr(null);
+
+    // Upload logo if a new file was selected, or clear if explicitly removed
+    let newLogoUrl: string | null | undefined = undefined; // undefined = no change
+    if (!editLogoPreview && editing.logo_url) {
+      // User removed the existing logo
+      newLogoUrl = null;
+    } else if (editLogoFile) {
+      setUploadingLogo(true);
+      const ext = editLogoFile.name.split('.').pop()?.toLowerCase() ?? 'png';
+      const path = `${editName.trim().toLowerCase().replace(/\s+/g, '-')}.${ext}`;
+      const { error: upErr } = await supabase.storage
+        .from('group-logos')
+        .upload(path, editLogoFile, { upsert: true, contentType: editLogoFile.type });
+      if (upErr) { setErr(`Error subiendo logo: ${upErr.message}`); setSaving(false); setUploadingLogo(false); return; }
+      newLogoUrl = supabase.storage.from('group-logos').getPublicUrl(path).data.publicUrl;
+      setUploadingLogo(false);
+    }
+
     // Update group name in all profiles too
     await supabase.from('profiles').update({ group_name: editName.trim() }).eq('group_name', editing.name);
     await supabase.from('allowed_phones').update({ group_name: editName.trim() }).eq('group_name', editing.name);
-    const { error } = await supabase.from('groups').update({ name: editName.trim(), color: editColor }).eq('id', editing.id);
+    const patch: Record<string, unknown> = { name: editName.trim(), color: editColor };
+    if (newLogoUrl !== undefined) patch.logo_url = newLogoUrl;
+    const { error } = await supabase.from('groups').update(patch).eq('id', editing.id);
     if (error) { setErr(error.message); setSaving(false); return; }
-    setEditing(null);
+    setEditing(null); setEditLogoFile(null); setEditLogoPreview(null);
     load();
     setSaving(false);
   };
@@ -2315,7 +2338,7 @@ function ViewGruposConfig({ onSelectGroup, onBack }: { onSelectGroup: (g: string
     setSaving(false);
   };
 
-  const openEdit = (g: DBGroup) => { setEditing(g); setEditName(g.name); setEditColor(g.color); setErr(null); };
+  const openEdit = (g: DBGroup) => { setEditing(g); setEditName(g.name); setEditColor(g.color); setEditLogoFile(null); setEditLogoPreview(g.logo_url ?? null); setErr(null); };
 
   const inputS: React.CSSProperties = {
     padding: '9px 12px', borderRadius: 8, border: `1px solid ${c.border}`,
@@ -2351,7 +2374,7 @@ function ViewGruposConfig({ onSelectGroup, onBack }: { onSelectGroup: (g: string
         <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12, marginBottom: 24 }}>
           {dbGroups.map(g => (
             <div key={g.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', background: c.card, border: `1px solid ${g.color}44`, borderRadius: 14 }}>
-              <GroupIcon group={g.name} size={40} colorOverride={g.color}/>
+              <GroupIcon group={g.name} size={40} colorOverride={g.color} logoUrlOverride={g.logo_url}/>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 14, fontWeight: 700, color: c.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.name}</div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3 }}>
@@ -2433,11 +2456,39 @@ function ViewGruposConfig({ onSelectGroup, onBack }: { onSelectGroup: (g: string
                 <div style={{ width: 24, height: 24, borderRadius: '50%', background: editColor }}/>
               </div>
             </div>
+            {/* Logo upload */}
+            <div style={{ marginBottom: 22 }}>
+              <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: c.muted, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>Logo del grupo</label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                {/* Preview */}
+                <div style={{ width: 56, height: 56, borderRadius: '50%', background: editLogoPreview ? '#fff' : 'rgba(255,255,255,0.06)', border: `2px solid ${editLogoPreview ? editColor + '66' : c.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
+                  {editLogoPreview
+                    ? <img src={editLogoPreview} alt="logo" style={{ width: '80%', height: '80%', objectFit: 'contain' }}/>
+                    : <span style={{ fontSize: 20, color: c.dim }}>🖼</span>}
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label style={{ display: 'inline-block', padding: '8px 16px', borderRadius: 8, border: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.06)', color: c.text, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                    {uploadingLogo ? 'Subiendo…' : editLogoFile ? editLogoFile.name : 'Elegir imagen'}
+                    <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => {
+                      const f = e.target.files?.[0];
+                      if (!f) return;
+                      setEditLogoFile(f);
+                      setEditLogoPreview(URL.createObjectURL(f));
+                    }}/>
+                  </label>
+                  {editLogoPreview && (
+                    <button onClick={() => { setEditLogoFile(null); setEditLogoPreview(null); }} style={{ marginLeft: 8, background: 'none', border: 'none', color: c.rose, fontSize: 12, cursor: 'pointer' }}>✕ Quitar</button>
+                  )}
+                  <div style={{ fontSize: 11, color: c.dim, marginTop: 4 }}>PNG, JPG o SVG recomendado</div>
+                </div>
+              </div>
+            </div>
+
             {err && <div style={{ marginBottom: 14, padding: '9px 12px', background: 'rgba(244,63,94,0.1)', border: '1px solid rgba(244,63,94,0.3)', borderRadius: 8, fontSize: 13, color: c.rose }}>{err}</div>}
             <div style={{ display: 'flex', gap: 10 }}>
-              <button onClick={() => setEditing(null)} style={{ flex: 1, padding: '11px', background: 'transparent', border: `1px solid ${c.border}`, borderRadius: 10, color: c.muted, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Cancelar</button>
-              <button onClick={handleSaveEdit} disabled={saving} style={{ flex: 1, padding: '11px', background: c.blue, color: '#fff', border: 'none', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: saving ? 'default' : 'pointer', opacity: saving ? 0.7 : 1 }}>
-                {saving ? 'Guardando…' : 'Guardar cambios'}
+              <button onClick={() => { setEditing(null); setEditLogoFile(null); setEditLogoPreview(null); }} style={{ flex: 1, padding: '11px', background: 'transparent', border: `1px solid ${c.border}`, borderRadius: 10, color: c.muted, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Cancelar</button>
+              <button onClick={handleSaveEdit} disabled={saving || uploadingLogo} style={{ flex: 1, padding: '11px', background: c.blue, color: '#fff', border: 'none', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: (saving || uploadingLogo) ? 'default' : 'pointer', opacity: (saving || uploadingLogo) ? 0.7 : 1 }}>
+                {uploadingLogo ? 'Subiendo logo…' : saving ? 'Guardando…' : 'Guardar cambios'}
               </button>
             </div>
           </div>
