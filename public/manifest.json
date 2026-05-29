@@ -1,7 +1,7 @@
 {
-  "name": "Quiniela Evolve",
-  "short_name": "Quiniela",
-  "description": "Predice resultados, compite con tu mayorista y gana premios.",
+  "name": "Evolve Torneo 2026",
+  "short_name": "Evolve",
+  "description": "Actividad deportiva del Programa de Lealtad Evolve. Predice marcadores del Mundial 2026 y compite con tu grupo.",
   "start_url": "/",
   "display": "standalone",
   "orientation": "portrait",

@@ -60,7 +60,7 @@ export function PremiosScreen({ goto, rank, currentUser }: Props) {
           <div style={{ fontSize: 48, marginBottom: 8 }}>🏆</div>
           <div className="font-display" style={{ fontSize: 22, fontWeight: 800, color: '#fff', marginBottom: 6 }}>Top 3 gana</div>
           <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.55)', lineHeight: 1.6, marginBottom: 16 }}>
-            Los tres participantes con más puntos al finalizar el Torneo 2026 se llevan un premio en efectivo.
+            Los tres participantes con más puntos al finalizar el Torneo 2026 reciben un reconocimiento exclusivo del Programa de Lealtad Evolve.
           </div>
           <Pill color={`${T.lime}22`} textColor={T.lime} style={{ fontSize: 13, fontWeight: 700 }}>
             ⚡ Tu posición actual: #{rank}
@@ -118,7 +118,7 @@ export function PremiosScreen({ goto, rank, currentUser }: Props) {
                     <span style={{ fontSize: 24 }}>{b.icon}</span>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontSize: 13, fontWeight: 700, color: T.ink }}>{b.label}</div>
-                      <div style={{ fontSize: 11.5, color: T.slate, marginTop: 2 }}>Acierta esta predicción para ganar</div>
+                      <div style={{ fontSize: 11.5, color: T.slate, marginTop: 2 }}>Acierta esta predicción y acumula más puntos</div>
                     </div>
                     <div style={{
                       fontSize: 13, fontWeight: 800,
@@ -162,8 +162,9 @@ export function PremiosScreen({ goto, rank, currentUser }: Props) {
           </Card>
         )}
 
-        <div style={{ fontSize: 11.5, color: T.muted, textAlign: 'center', marginTop: 16, lineHeight: 1.6, fontStyle: 'italic' }}>
-          Los premios se entregan al finalizar el Torneo 2026 · Sujeto a términos y condiciones.
+        <div style={{ fontSize: 11, color: T.muted, textAlign: 'center', marginTop: 16, lineHeight: 1.7, fontStyle: 'italic' }}>
+          Los reconocimientos se entregan al finalizar el Torneo 2026 · Sujeto a términos y condiciones.<br/>
+          Esta es una actividad promocional del Programa de Lealtad Evolve. No constituye un juego de azar ni apuesta de ningún tipo. La participación es gratuita y exclusiva para miembros del programa.
         </div>
       </div>
     </div>

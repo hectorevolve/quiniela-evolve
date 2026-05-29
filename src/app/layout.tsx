@@ -21,13 +21,13 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'Quiniela Evolve · Predice. Compite. Gana.',
-  description: 'La quiniela de fútbol del programa de lealtad Evolve. Predice resultados, compite con tu mayorista y gana premios.',
+  title: 'Evolve · Torneo 2026',
+  description: 'Actividad deportiva del Programa de Lealtad Evolve. Predice los marcadores del Mundial 2026, compite con tu grupo y sube en el ranking.',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
-    title: 'Quiniela Evolve',
+    title: 'Evolve Torneo',
   },
   icons: {
     apple: [
