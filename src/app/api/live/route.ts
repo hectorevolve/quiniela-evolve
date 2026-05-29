@@ -11,6 +11,10 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import type { LiveMatch } from '@/lib/data';
 
+// Cache at CDN edge for 30s — cron updates every 60s anyway,
+// so max staleness is 90s. Saves Supabase reads under heavy load.
+export const revalidate = 30;
+
 function getAdminClient() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,

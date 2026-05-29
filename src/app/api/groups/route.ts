@@ -3,6 +3,10 @@ import { getAdminClient } from '@/lib/server-session';
 
 export type GroupConfig = { name: string; color: string; logo_url?: string | null };
 
+// Groups change rarely (only when admin edits name/color/logo).
+// Cache at the CDN edge for 5 minutes.
+export const revalidate = 300;
+
 /** Public endpoint — returns the list of groups from the `groups` table.
  *  Falls back to an empty array (caller should use a hardcoded default). */
 export async function GET() {

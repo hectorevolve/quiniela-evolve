@@ -4,12 +4,14 @@
  */
 import { createClient } from '@supabase/supabase-js';
 
+// Module-level singleton — created once, reused on warm instances
+const _adminClient = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  { auth: { autoRefreshToken: false, persistSession: false } },
+);
 export function getAdminClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } },
-  );
+  return _adminClient;
 }
 
 /** Normalize any phone string to exactly 10 MX digits. Returns null if unrecognizable. */

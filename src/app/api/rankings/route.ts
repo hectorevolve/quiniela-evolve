@@ -1,42 +1,72 @@
 /**
  * GET /api/rankings
  *
- * Public endpoint — returns full rankings computed server-side using the
- * service-role client so RLS on bonus_awards (and other tables) is bypassed.
- * Both the admin panel and the user-facing TorneoScreen call this route.
+ * Returns full rankings computed server-side.
+ * Cached at the Vercel CDN edge for 60 seconds (revalidate = 60).
+ * → 3,000 concurrent users trigger 1 DB query per minute, not 3,000.
+ *
+ * Optimizations:
+ *  1. Fetch only predictions for matches that already have results
+ *     (avoids loading 300k+ rows when most matches are still pending)
+ *  2. CDN edge cache — all users share the same cached response
+ *  3. Module-level Supabase singleton (warm instance reuse)
  */
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { getAdminClient } from '@/lib/server-session';
 import { calcPoints } from '@/lib/points';
 
-function getAdminClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } },
-  );
-}
+// Cache this route at the Vercel CDN edge for 60 seconds.
+// Rankings only change when match results arrive (every 15 min via cron),
+// so 60s staleness is completely acceptable.
+export const revalidate = 60;
 
 export async function GET() {
   const admin = getAdminClient();
 
-  const [profilesRes, predsRes, resultsRes, bonusRes] = await Promise.all([
-    admin.from('profiles').select('id, name, group_name, used_powers').neq('role', 'superadmin'),
-    admin.from('predictions').select('user_id, match_id, home_score, away_score'),
-    admin.from('matches').select('id, result_home, result_away').not('result_home', 'is', null),
-    admin.from('bonus_awards').select('user_id, points'),
+  // ── 1. Fetch profiles + match results + bonus in parallel ─────────────────
+  const [profilesRes, resultsRes, bonusRes] = await Promise.all([
+    admin
+      .from('profiles')
+      .select('id, name, group_name, used_powers')
+      .neq('role', 'superadmin'),
+    admin
+      .from('matches')
+      .select('id, result_home, result_away')
+      .not('result_home', 'is', null),
+    admin
+      .from('bonus_awards')
+      .select('user_id, points'),
   ]);
 
   if (profilesRes.error) {
     return NextResponse.json({ error: profilesRes.error.message }, { status: 500 });
   }
 
+  // Build result map and collect only the match IDs that have results
   const resultMap: Record<string, [number, number]> = {};
-  for (const m of resultsRes.data ?? []) resultMap[m.id] = [m.result_home, m.result_away];
+  for (const m of resultsRes.data ?? []) {
+    resultMap[m.id] = [m.result_home, m.result_away];
+  }
 
+  const matchIdsWithResults = Object.keys(resultMap);
+
+  // ── 2. Fetch only predictions for matches that have results ───────────────
+  // This is the key optimization: instead of fetching ALL predictions
+  // (potentially 300k+ rows), we only fetch the subset that can earn points.
+  let predsData: { user_id: string; match_id: string; home_score: number; away_score: number }[] = [];
+  if (matchIdsWithResults.length > 0) {
+    const { data } = await admin
+      .from('predictions')
+      .select('user_id, match_id, home_score, away_score')
+      .in('match_id', matchIdsWithResults);
+    predsData = data ?? [];
+  }
+
+  // ── 3. Compute points ─────────────────────────────────────────────────────
   const pointsMap: Record<string, number> = {};
-  const exactMap: Record<string, number> = {};   // tiebreaker: exact score count
-  for (const p of predsRes.data ?? []) {
+  const exactMap: Record<string, number> = {};
+
+  for (const p of predsData) {
     const result = resultMap[p.match_id];
     if (!result) continue;
     const pts = calcPoints([p.home_score, p.away_score], result);
@@ -48,19 +78,22 @@ export async function GET() {
     pointsMap[b.user_id] = (pointsMap[b.user_id] ?? 0) + b.points;
   }
 
-  const entries = (profilesRes.data ?? []).map((p: { id: string; name: string; group_name: string | null; used_powers: string[] | null }) => ({
-    userId: p.id,
-    name: p.name,
-    group_name: p.group_name,
-    points: pointsMap[p.id] ?? 0,
-    exactScores: exactMap[p.id] ?? 0,
-    pos: 0,
-    used_powers: p.used_powers ?? [],
+  // ── 4. Build + sort entries ───────────────────────────────────────────────
+  const entries = (profilesRes.data ?? []).map((p: {
+    id: string; name: string; group_name: string | null; used_powers: string[] | null
+  }) => ({
+    userId:      p.id,
+    name:        p.name,
+    group_name:  p.group_name,
+    points:      pointsMap[p.id] ?? 0,
+    exactScores: exactMap[p.id]  ?? 0,
+    pos:         0,
+    used_powers: p.used_powers   ?? [],
   }));
 
-  // Primary: most points. Tiebreaker: most exact scores (3-pt predictions). Final: name A→Z.
+  // Primary: most points · Tiebreaker: most exact scores · Final: name A→Z
   entries.sort((a, b) =>
-    b.points - a.points ||
+    b.points      - a.points      ||
     b.exactScores - a.exactScores ||
     a.name.localeCompare(b.name),
   );
