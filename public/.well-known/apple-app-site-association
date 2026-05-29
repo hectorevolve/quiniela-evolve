@@ -1,0 +1,12 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [{
+      "appID": "REPLACE_WITH_TEAM_ID.mx.evolve.torneo",
+      "paths": ["*"]
+    }]
+  },
+  "webcredentials": {
+    "apps": ["REPLACE_WITH_TEAM_ID.mx.evolve.torneo"]
+  }
+}
