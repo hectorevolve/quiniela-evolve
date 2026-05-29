@@ -3,7 +3,8 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { theme as T } from '@/lib/theme';
 import { MATCHES, KNOCKOUT_MATCHES, MOCK_RESULTS, resolveSlots, computeSlots, isMatchPast, isMatchStarted, isMatchOver45Min, isMatchPastEx, isMatchStartedEx, isMatchOver45MinEx, DEMO_LIVE_MATCH, DEMO_PAST_IDS, PREDICTION_DISTRIBUTIONS, GOLEADORES, SELECCIONES, USER, STADIUM_ALIASES, TEAM_ALIASES, type Match, type PredictionBucket, type SlotMap, type LiveMatch } from '@/lib/data';
 import { getInitials, type AppUser } from '@/lib/supabase';
-import { getRankings, getGroupSettings, savePowerUsed, type RankingEntry, type GroupSettings } from '@/lib/db';
+import { getRankings, getGroupSettings, savePowerUsed, getMatchResults, type RankingEntry, type GroupSettings } from '@/lib/db';
+import { calcPoints } from '@/lib/points';
 import { useLiveMatch } from '@/hooks/useLiveMatch';
 import { loadPrediction, savePrediction, loadBonus, saveBonus, getAllCachedPredictions } from '@/lib/predictions';
 import {
@@ -269,9 +270,16 @@ export function TorneoScreen({ goto, tweaks, fireToast, usedPowers, setUsedPower
 
 // ──────── Tab: Predicciones ────────
 function TabPredicciones({ goto, tweaks, fireToast, usedPowers: usedPowersFromParent, setUsedPowers: setUsedPowersFromParent, lateActiveMatchId: lateActiveMatchIdFromParent, setLateActiveMatchId: setLateActiveMatchIdFromParent, spyMatchId: spyMatchIdFromParent, setSpyMatchId: setSpyMatchIdFromParent, matchDates }: Props) {
+  const [view, setView] = useState<'proximos' | 'jugados'>('proximos');
   const [filter, setFilter] = useState('Todos');
   const [search, setSearch] = useState('');
   const [onlyUnpredicted, setOnlyUnpredicted] = useState(false);
+  const [matchResults, setMatchResults] = useState<Record<string, [number, number]>>({});
+
+  // Fetch match results once on mount (for history view)
+  useEffect(() => {
+    getMatchResults().then(setMatchResults).catch(() => {});
+  }, []);
   const [modal, setModal] = useState<null | { kind: 'double' | 'late'; match: Match }>(null);
   const [spyModal, setSpyModal] = useState<null | { match: Match; phase: 'confirm' | 'results' }>(null);
   const [localUsedPowers, setLocalUsedPowers] = useState<Set<string>>(new Set());
@@ -438,6 +446,38 @@ function TabPredicciones({ goto, tweaks, fireToast, usedPowers: usedPowersFromPa
     return Array.from(map.values()).sort((a, b) => a.sortVal - b.sortVal);
   }, [filtered]);
 
+  // ── History (Jugados) ─────────────────────────────────────────────────────────
+  const pastMatches = useMemo(() => {
+    return MATCHES
+      .filter(m => isMatchPastEx(matchDates?.[m.id], m.date) || (tweaks.pastMatch && DEMO_PAST_IDS.has(m.id)))
+      .slice()
+      .reverse(); // most recent first
+  }, [matchDates, tweaks.pastMatch]);
+
+  type HistoryEntry = {
+    match: Match;
+    result: [number, number] | null;
+    pred: { home: number; away: number } | null;
+    points: number | null;
+  };
+
+  const historyEntries = useMemo((): HistoryEntry[] => {
+    const preds = getAllCachedPredictions();
+    return pastMatches.map(m => {
+      const result = matchResults[m.id] ?? null;
+      const cached = preds[m.id] ?? null;
+      const pred = cached ? { home: cached.home, away: cached.away } : null;
+      const points = result && pred ? calcPoints([pred.home, pred.away], result) : null;
+      return { match: m, result, pred, points };
+    });
+  }, [pastMatches, matchResults]);
+
+  // Total points earned from past matches
+  const totalPoints = useMemo(
+    () => historyEntries.reduce((s, e) => s + (e.points ?? 0), 0),
+    [historyEntries],
+  );
+
   const confirmPower = () => {
     if (!modal) return;
     const { kind, match } = modal;
@@ -596,6 +636,143 @@ function TabPredicciones({ goto, tweaks, fireToast, usedPowers: usedPowersFromPa
         );
       })()}
 
+      {/* ── Próximos / Jugados toggle ── */}
+      <div style={{ padding: '4px 14px 12px', display: 'flex', gap: 0 }}>
+        <button
+          onClick={() => setView('proximos')}
+          style={{
+            flex: 1, padding: '8px 0', cursor: 'pointer',
+            borderRadius: '10px 0 0 10px',
+            background: view === 'proximos' ? T.blue : '#fff',
+            color: view === 'proximos' ? '#fff' : T.muted,
+            fontSize: 12.5, fontWeight: 700, letterSpacing: 0.3,
+            boxShadow: view === 'proximos' ? `0 2px 8px ${T.blue}44` : 'none',
+            border: `1.5px solid ${view === 'proximos' ? T.blue : T.border}`,
+            transition: 'all 180ms ease',
+          }}
+        >Próximos</button>
+        <button
+          onClick={() => setView('jugados')}
+          style={{
+            flex: 1, padding: '8px 0', border: 'none', cursor: 'pointer',
+            borderRadius: '0 10px 10px 0',
+            background: view === 'jugados' ? T.blue : '#fff',
+            color: view === 'jugados' ? '#fff' : T.muted,
+            fontSize: 12.5, fontWeight: 700, letterSpacing: 0.3,
+            boxShadow: view === 'jugados' ? `0 2px 8px ${T.blue}44` : 'none',
+            borderTop: `1.5px solid ${view === 'jugados' ? T.blue : T.border}`,
+            borderRight: `1.5px solid ${view === 'jugados' ? T.blue : T.border}`,
+            borderBottom: `1.5px solid ${view === 'jugados' ? T.blue : T.border}`,
+            borderLeft: 'none',
+            transition: 'all 180ms ease',
+          }}
+        >Jugados {pastMatches.length > 0 ? `(${pastMatches.length})` : ''}</button>
+      </div>
+
+      {/* ── Jugados view ── */}
+      {view === 'jugados' && (
+        <div style={{ padding: '0 14px 80px' }}>
+          {/* Summary strip */}
+          {historyEntries.length > 0 && (
+            <div style={{
+              display: 'flex', gap: 10, marginBottom: 16,
+              padding: '12px 14px', borderRadius: 14,
+              background: T.bgInk, border: `1px solid ${T.borderInk}`,
+            }}>
+              {[
+                { label: 'Partidos', val: historyEntries.length, color: 'rgba(255,255,255,0.7)' },
+                { label: 'Exactos', val: historyEntries.filter(e => e.points === 3).length, color: '#4ADE80' },
+                { label: 'Resultado', val: historyEntries.filter(e => e.points === 1).length, color: '#60A5FA' },
+                { label: 'Puntos', val: totalPoints, color: '#FDE047' },
+              ].map(stat => (
+                <div key={stat.label} style={{ flex: 1, textAlign: 'center' }}>
+                  <div style={{ fontSize: 18, fontWeight: 900, color: stat.color, fontFamily: 'var(--font-jetbrains),monospace', lineHeight: 1 }}>{stat.val}</div>
+                  <div style={{ fontSize: 9, fontWeight: 600, color: 'rgba(255,255,255,0.4)', letterSpacing: 0.5, textTransform: 'uppercase', marginTop: 3 }}>{stat.label}</div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {historyEntries.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '56px 24px', color: T.muted }}>
+              <div style={{ fontSize: 40, marginBottom: 12 }}>📋</div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: T.ink, marginBottom: 4 }}>Aún no hay partidos jugados</div>
+              <div style={{ fontSize: 13 }}>Aquí verás tu historial cuando inicien los partidos</div>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {historyEntries.map(({ match: m, result, pred, points }) => {
+                const hasPred = pred !== null;
+                const pointsColor = points === 3 ? '#4ADE80' : points === 1 ? '#60A5FA' : hasPred ? T.rose : T.muted;
+                const pointsBg   = points === 3 ? 'rgba(74,222,128,0.12)' : points === 1 ? 'rgba(96,165,250,0.12)' : hasPred ? 'rgba(244,63,94,0.10)' : 'rgba(0,0,0,0.04)';
+                const pointsLabel = points === 3 ? '+3 pts' : points === 1 ? '+1 pt' : hasPred ? '+0 pts' : 'Sin pred.';
+                return (
+                  <div key={m.id} style={{
+                    background: '#fff', borderRadius: 14,
+                    border: `1.5px solid ${T.border}`,
+                    padding: '12px 14px',
+                    display: 'flex', flexDirection: 'column', gap: 10,
+                  }}>
+                    {/* Teams + result row */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      {/* Home */}
+                      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                        <Flag code={m.home.code} size={32} />
+                        <span style={{ fontSize: 12, fontWeight: 800, color: T.ink, letterSpacing: 0.5 }}>{m.home.code}</span>
+                      </div>
+
+                      {/* Score */}
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
+                        {result ? (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span style={{ fontSize: 26, fontWeight: 900, color: T.ink, fontFamily: 'var(--font-jetbrains),monospace', lineHeight: 1 }}>{result[0]}</span>
+                            <span style={{ fontSize: 14, fontWeight: 600, color: T.muted }}>-</span>
+                            <span style={{ fontSize: 26, fontWeight: 900, color: T.ink, fontFamily: 'var(--font-jetbrains),monospace', lineHeight: 1 }}>{result[1]}</span>
+                          </div>
+                        ) : (
+                          <span style={{ fontSize: 13, fontWeight: 600, color: T.muted }}>FT</span>
+                        )}
+                        <span style={{ fontSize: 8.5, fontWeight: 600, color: T.muted, letterSpacing: 0.5, textTransform: 'uppercase' }}>{m.group}</span>
+                      </div>
+
+                      {/* Away */}
+                      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                        <Flag code={m.away.code} size={32} />
+                        <span style={{ fontSize: 12, fontWeight: 800, color: T.ink, letterSpacing: 0.5 }}>{m.away.code}</span>
+                      </div>
+                    </div>
+
+                    {/* Prediction row */}
+                    <div style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      padding: '8px 10px', borderRadius: 10,
+                      background: hasPred ? 'rgba(0,0,0,0.025)' : 'rgba(0,0,0,0.02)',
+                      border: `1px solid ${T.border}`,
+                    }}>
+                      <span style={{ fontSize: 11.5, fontWeight: 600, color: T.muted }}>Tu predicción</span>
+                      {hasPred ? (
+                        <span style={{ fontSize: 13, fontWeight: 800, color: T.ink, fontFamily: 'var(--font-jetbrains),monospace' }}>
+                          {pred.home} – {pred.away}
+                        </span>
+                      ) : (
+                        <span style={{ fontSize: 11.5, fontWeight: 600, color: T.muted, fontStyle: 'italic' }}>Sin predicción</span>
+                      )}
+                      <span style={{
+                        fontSize: 11, fontWeight: 800, letterSpacing: 0.3,
+                        padding: '3px 9px', borderRadius: 8,
+                        color: pointsColor, background: pointsBg,
+                      }}>{pointsLabel}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Próximos content (search + chips + cards) ── */}
+      {view === 'proximos' && (<>
       {/* Search bar + Sin predicción toggle */}
       <div style={{ padding: '0 14px 10px', display: 'flex', gap: 8, alignItems: 'center' }}>
         <div style={{
@@ -682,6 +859,7 @@ function TabPredicciones({ goto, tweaks, fireToast, usedPowers: usedPowersFromPa
           </div>
         </div>
       ))}
+      </>)}
 
       {/* Power modal (double / late) */}
       <Modal open={!!modal} onClose={() => setModal(null)}>
