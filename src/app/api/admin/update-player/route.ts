@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
 import { getAdminClient } from '@/lib/server-session';
 import { calcPoints } from '@/lib/points';
 
@@ -88,6 +89,9 @@ export async function POST(req: NextRequest) {
       }
     }
   }
+
+  // Bust the user-facing rankings CDN cache immediately
+  revalidatePath('/api/rankings');
 
   return NextResponse.json({ ok: true });
 }

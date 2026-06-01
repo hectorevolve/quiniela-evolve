@@ -15,6 +15,7 @@
  */
 
 import { NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
 import { createClient } from '@supabase/supabase-js';
 import { MATCHES, KNOCKOUT_MATCHES, computeSlots } from '@/lib/data';
 
@@ -278,6 +279,9 @@ export async function GET() {
 
     if (!error && m.utcDate) scheduledUpdated++;
   }
+
+  // Bust the rankings cache so users see updated points immediately
+  if (resultsUpdated > 0) revalidatePath('/api/rankings');
 
   return NextResponse.json({
     knockoutSeeded,

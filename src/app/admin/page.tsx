@@ -1653,13 +1653,15 @@ function ViewPartidos() {
     }
   };
 
-  // Save a result to Supabase
+  // Save a result to Supabase and bust the rankings CDN cache
   const saveResult = async (matchId: string) => {
     const h = parseInt(drafts[matchId]?.home ?? '');
     const a = parseInt(drafts[matchId]?.away ?? '');
     if (isNaN(h) || isNaN(a)) return;
     setSaving(matchId);
     await saveMatchResult(matchId, h, a);
+    // Bust the user-facing rankings cache so the new result is reflected immediately
+    fetch('/api/admin/revalidate-rankings', { method: 'POST' }).catch(() => {});
     setResults(prev => ({ ...prev, [matchId]: [h, a] }));
     setDrafts(prev => ({ ...prev, [matchId]: { home: '', away: '' } }));
     setSaving(null);
@@ -1667,6 +1669,7 @@ function ViewPartidos() {
 
   const clearResult = async (matchId: string) => {
     await saveMatchResult(matchId, null, null);
+    fetch('/api/admin/revalidate-rankings', { method: 'POST' }).catch(() => {});
     setResults(prev => { const n = { ...prev }; delete n[matchId]; return n; });
     setDrafts(prev => ({ ...prev, [matchId]: { home: '', away: '' } }));
   };
