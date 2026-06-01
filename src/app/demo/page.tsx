@@ -29,7 +29,7 @@ const DEMO_USER: AppUser = {
   email: 'demo@evolve.mx',
   phone: null,
   role: 'user',
-  group_name: 'Ruz',
+  group_name: 'Evolve',
   premium: true,
   used_powers: [],
 };
@@ -148,11 +148,6 @@ function TweaksPanel({ tweaks, setTweaks, screen, goto }: {
             {{ torneo: '⚽ Torneo', detalle: '🔍 Detalle partido', perfil: '👤 Mi perfil', premios: '🎖 Premios' }[s]}
           </button>
         ))}
-        <button onClick={() => window.open('/admin', '_blank')} style={{
-          padding: '8px 12px', background: 'rgba(244,63,94,0.1)',
-          border: '1px solid rgba(244,63,94,0.25)', borderRadius: 9,
-          color: '#F43F5E', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', textAlign: 'left',
-        }}>⚙ Admin panel ↗</button>
       </div>
 
       <PanelSection label="Usuario"/>
