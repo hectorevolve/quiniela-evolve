@@ -151,6 +151,9 @@ export interface RankingEntry {
   name: string;
   group_name: string | null;
   points: number;
+  matchPoints: number;   // prediction-only pts (no bonus_awards)
+  bonusPoints: number;   // bonus_awards pts only
+  exactScores?: number;
   pos: number;
   used_powers: string[];
 }

@@ -5,7 +5,7 @@ import { USER, MATCHES, type Match } from '@/lib/data';
 import { Header, Avatar, Card, Chip, Pill, PowerIcon, Modal } from '@/components/ui';
 import { Flag } from '@/components/flags/Flag';
 import { getInitials, type AppUser } from '@/lib/supabase';
-import { getMatchResults } from '@/lib/db';
+import { getMatchResults, getRankings } from '@/lib/db';
 import { loadPrediction } from '@/lib/predictions';
 import { calcPoints } from '@/lib/points';
 
@@ -37,9 +37,18 @@ export function PerfilScreen({ goto, tweaks, fireToast, currentUser, onLogout }:
 
   // Load match results from Supabase — only show matches where admin entered a result
   const [dbResults, setDbResults] = useState<Record<string, [number, number]>>({});
+  // Total points from rankings API (includes bonus_awards)
+  const [rankingPoints, setRankingPoints] = useState<number | null>(null);
   useEffect(() => {
     getMatchResults().then(setDbResults).catch(console.error);
   }, []);
+  useEffect(() => {
+    if (!currentUser?.id) return;
+    getRankings().then(entries => {
+      const entry = entries.find(e => e.userId === currentUser.id);
+      setRankingPoints(entry?.points ?? 0);
+    }).catch(console.error);
+  }, [currentUser?.id]);
 
   const months = [
     { label: 'May', pct: 0, color: T.muted },
@@ -167,15 +176,16 @@ export function PerfilScreen({ goto, tweaks, fireToast, currentUser, onLogout }:
         {/* Stats — computed from completed matches */}
         {(() => {
           const played   = pastMatches.filter(m => m.userPrediction !== undefined);
-          const totalPts = pastMatches.reduce((acc, m) => acc + (m.pointsEarned ?? 0), 0);
           const hits     = pastMatches.filter(m => (m.pointsEarned ?? 0) > 0).length;
           const exact    = pastMatches.filter(m => (m.pointsEarned ?? 0) === 3).length;
           const hitPct   = played.length > 0 ? Math.round(hits / played.length * 100) : 0;
+          // Use ranking API total (includes match pts + bonus_awards) when available
+          const totalPts = rankingPoints ?? pastMatches.reduce((acc, m) => acc + (m.pointsEarned ?? 0), 0);
           const stats = [
             { label: 'Predicciones jugadas', value: String(played.length) },
             { label: 'Aciertos', value: played.length > 0 ? `${hits} (${hitPct}%)` : '—' },
             { label: 'Marcadores exactos', value: String(exact) },
-            { label: 'Puntos totales', value: String(totalPts) },
+            { label: 'Puntos totales', value: rankingPoints === null ? '…' : String(totalPts) },
           ];
           return (
             <Card style={{ marginBottom: 12 }}>

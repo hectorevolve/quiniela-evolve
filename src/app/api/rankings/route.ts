@@ -63,33 +63,40 @@ export async function GET() {
   }
 
   // ── 3. Compute points ─────────────────────────────────────────────────────
-  const pointsMap: Record<string, number> = {};
-  const exactMap: Record<string, number> = {};
+  const matchPtsMap: Record<string, number> = {};  // prediction-only pts
+  const bonusPtsMap: Record<string, number> = {};  // bonus_awards pts
+  const exactMap:    Record<string, number> = {};
 
   for (const p of predsData) {
     const result = resultMap[p.match_id];
     if (!result) continue;
     const pts = calcPoints([p.home_score, p.away_score], result);
-    pointsMap[p.user_id] = (pointsMap[p.user_id] ?? 0) + pts;
+    matchPtsMap[p.user_id] = (matchPtsMap[p.user_id] ?? 0) + pts;
     if (pts === 3) exactMap[p.user_id] = (exactMap[p.user_id] ?? 0) + 1;
   }
 
   for (const b of bonusRes.data ?? []) {
-    pointsMap[b.user_id] = (pointsMap[b.user_id] ?? 0) + b.points;
+    bonusPtsMap[b.user_id] = (bonusPtsMap[b.user_id] ?? 0) + b.points;
   }
 
   // ── 4. Build + sort entries ───────────────────────────────────────────────
   const entries = (profilesRes.data ?? []).map((p: {
     id: string; name: string; group_name: string | null; used_powers: string[] | null
-  }) => ({
-    userId:      p.id,
-    name:        p.name,
-    group_name:  p.group_name,
-    points:      pointsMap[p.id] ?? 0,
-    exactScores: exactMap[p.id]  ?? 0,
-    pos:         0,
-    used_powers: p.used_powers   ?? [],
-  }));
+  }) => {
+    const matchPoints = matchPtsMap[p.id] ?? 0;
+    const bonusPoints = bonusPtsMap[p.id] ?? 0;
+    return {
+      userId:      p.id,
+      name:        p.name,
+      group_name:  p.group_name,
+      points:      matchPoints + bonusPoints,
+      matchPoints,
+      bonusPoints,
+      exactScores: exactMap[p.id] ?? 0,
+      pos:         0,
+      used_powers: p.used_powers ?? [],
+    };
+  });
 
   // Primary: most points · Tiebreaker: most exact scores · Final: name A→Z
   entries.sort((a, b) =>

@@ -596,21 +596,14 @@ function EditPlayerModal({ entry, onClose, onSaved, onReload }: {
   const [powers,      setPowers]      = useState<string[]>(entry.used_powers ?? []);
   // ptsInput: raw text the admin types ("100", "+10", "-5", "10+10", etc.)
   const [ptsInput,    setPtsInput]    = useState<string>(String(entry.points));
-  const [matchPts,    setMatchPts]    = useState<number>(entry.points); // match-only pts (no bonus)
   const [bonusReason, setBonusReason] = useState('');
   const [saving,      setSaving]      = useState(false);
   const [err,         setErr]         = useState<string | null>(null);
   const groups = useGroups();
 
-  // Load existing bonus so we can compute match-only pts
-  useEffect(() => {
-    supabase.from('bonus_awards').select('points, reason').eq('user_id', entry.userId).maybeSingle()
-      .then(({ data }) => {
-        const existingBonus = data?.points ?? 0;
-        setMatchPts(entry.points - existingBonus);
-        setBonusReason(data?.reason ?? '');
-      });
-  }, [entry.userId, entry.points]);
+  // matchPts comes directly from the ranking entry (computed server-side with service role)
+  // so we never need to re-fetch bonus_awards via the anon client (which RLS would block).
+  const matchPts = entry.matchPoints ?? (entry.points - (entry.bonusPoints ?? 0));
 
   /** Parse admin input: supports "100", "+10", "-5", "10+10", "50-3", etc. */
   const parseInput = (raw: string): number | null => {
@@ -637,22 +630,29 @@ function EditPlayerModal({ entry, onClose, onSaved, onReload }: {
 
   const handleSave = async () => {
     setSaving(true); setErr(null);
-    const bonusToStore = bonusDelta; // = computedTotal - matchPts
     try {
       const res = await fetch('/api/admin/update-player', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          userId:       entry.userId,
-          name:         name.trim() || entry.name,
-          group_name:   group || null,
-          used_powers:  powers,
-          bonus_points: bonusToStore,
-          bonus_reason: bonusReason.trim() || null,
+          userId:        entry.userId,
+          name:          name.trim() || entry.name,
+          group_name:    group || null,
+          used_powers:   powers,
+          target_points: computedTotal,   // server computes correct bonus = target - match_pts
+          bonus_reason:  bonusReason.trim() || null,
         }),
       });
       if (!res.ok) { const d = await res.json(); throw new Error(d.error ?? 'Error'); }
-      onSaved({ name: name.trim() || entry.name, group_name: group || null, used_powers: powers });
+      onSaved({
+        name:        name.trim() || entry.name,
+        group_name:  group || null,
+        used_powers: powers,
+        points:      computedTotal,
+        // matchPoints stays the same; bonusPoints = target - matchPts
+        matchPoints: matchPts,
+        bonusPoints: computedTotal - matchPts,
+      });
       onReload();
       onClose();
     } catch (e: unknown) {
@@ -970,8 +970,8 @@ function ViewRankings() {
 
   const reload = () => {
     setLoading(true);
-    // Use server-side route so admin client bypasses RLS on bonus_awards / all tables
-    fetch('/api/rankings')
+    // /api/admin/rankings uses service-role client (bypasses RLS) and has NO CDN cache
+    fetch('/api/admin/rankings', { cache: 'no-store' })
       .then(r => r.json())
       .then(setRankings)
       .catch(console.error)
@@ -3939,7 +3939,7 @@ function ImportModalCelulares({ onClose, onDone }: { onClose: () => void; onDone
 
 // ─── Root ─────────────────────────────────────────────────────────────────────
 type LiveUser = { id: string; name: string; email: string | null; phone?: string | null; role: string; group_name: string | null; premium: boolean; used_powers: string[] };
-const liveUserToEntry = (u: LiveUser): RankingEntry => ({ userId: u.id, name: u.name, group_name: u.group_name, points: 0, pos: 0, used_powers: u.used_powers ?? [] });
+const liveUserToEntry = (u: LiveUser): RankingEntry => ({ userId: u.id, name: u.name, group_name: u.group_name, points: 0, matchPoints: 0, bonusPoints: 0, pos: 0, used_powers: u.used_powers ?? [] });
 
 export default function AdminPage() {
   const isMobile = useIsMobile();
