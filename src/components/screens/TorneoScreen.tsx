@@ -145,16 +145,18 @@ export function TorneoScreen({ goto, tweaks, fireToast, usedPowers, setUsedPower
   const [thirdSelected, setThirdSelected] = useState(() => loadBonus()?.thirdCode ?? '');
   const [goalPlayer,    setGoalPlayer]    = useState(() => loadBonus()?.goalPlayer ?? '');
 
-  // Live rankings from Supabase
+  // Live rankings from Supabase — re-fetch every time the user opens the Ranking tab
   const [liveRankings, setLiveRankings]     = useState<RankingEntry[]>([]);
   const [rankingsLoading, setRankingsLoading] = useState(false);
-  useEffect(() => {
+  const fetchRankings = () => {
     setRankingsLoading(true);
     getRankings()
       .then(data => setLiveRankings(data))
       .catch(console.error)
       .finally(() => setRankingsLoading(false));
-  }, []);
+  };
+  useEffect(() => { fetchRankings(); }, []); // initial load
+  useEffect(() => { if (tab === 'ranking') fetchRankings(); }, [tab]); // refresh on tab open
 
   // Dynamic group colors & logos from DB (overrides hardcoded maps)
   const [dbGroupColors, setDbGroupColors] = useState<Record<string, string>>({});
