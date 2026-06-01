@@ -86,13 +86,13 @@ export default function DemoPage() {
   return (
     <div style={{
       width: '100%', height: '100dvh',
-      background: '#111', display: 'flex', justifyContent: 'center', alignItems: 'stretch',
+      background: '#111', display: 'flex', justifyContent: 'center', alignItems: 'center',
       fontFamily: 'var(--font-inter), system-ui, sans-serif',
-      gap: 24,
+      gap: 20,
     }}>
       {/* App column — identical to production */}
       <div style={{
-        width: '100%', maxWidth: 430, height: '100dvh',
+        width: 390, height: '100dvh',
         background: '#fff', overflow: 'hidden', position: 'relative', flexShrink: 0,
       }}>
         <div style={{
@@ -107,7 +107,7 @@ export default function DemoPage() {
       </div>
 
       {/* Control panel — always visible */}
-      <div style={{ display: 'flex', alignItems: 'center', padding: '24px 0' }}>
+      <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
         <TweaksPanel tweaks={tweaks} setTweaks={setTweaks} screen={screen} goto={goto}/>
       </div>
     </div>
