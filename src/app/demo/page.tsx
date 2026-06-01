@@ -2,7 +2,7 @@
 /**
  * /demo — Exact copy of the main app with:
  *  • No login required — starts directly on TorneoScreen with a demo user
- *  • TweaksPanel always visible (panel de control para presentaciones)
+ *  • Floating TweaksPanel overlay (panel de control para presentaciones)
  *
  * URL: /demo
  */
@@ -47,6 +47,7 @@ export default function DemoPage() {
   const [usedPowers, setUsedPowers]   = useState<Set<string>>(new Set());
   const [lateActiveMatchId, setLateActiveMatchId] = useState<string | null>(null);
   const [spyMatchId, setSpyMatchId]   = useState<string | null>(null);
+  const [panelOpen, setPanelOpen]     = useState(false);
 
   const goto = useCallback((next: string, matchId?: string) => {
     if (matchId) setSelectedMatchId(matchId);
@@ -86,13 +87,12 @@ export default function DemoPage() {
   return (
     <div style={{
       width: '100%', height: '100dvh',
-      background: '#111', display: 'flex', justifyContent: 'center', alignItems: 'center',
+      background: '#111', display: 'flex', justifyContent: 'center', alignItems: 'stretch',
       fontFamily: 'var(--font-inter), system-ui, sans-serif',
-      gap: 20,
     }}>
       {/* App column — identical to production */}
       <div style={{
-        width: 390, height: '100dvh',
+        width: '100%', maxWidth: 430, height: '100dvh',
         background: '#fff', overflow: 'hidden', position: 'relative', flexShrink: 0,
       }}>
         <div style={{
@@ -106,10 +106,31 @@ export default function DemoPage() {
         {transitioning && <MiniLoader/>}
       </div>
 
-      {/* Control panel — always visible */}
-      <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
-        <TweaksPanel tweaks={tweaks} setTweaks={setTweaks} screen={screen} goto={goto}/>
-      </div>
+      {/* Floating panel toggle button */}
+      <button
+        onClick={() => setPanelOpen(o => !o)}
+        style={{
+          position: 'fixed', bottom: 24, right: 24, zIndex: 10000,
+          width: 52, height: 52, borderRadius: '50%',
+          background: panelOpen ? '#1AAFFF' : 'rgba(15,23,42,0.92)',
+          border: '1.5px solid rgba(26,175,255,0.4)',
+          color: '#fff', fontSize: 22, cursor: 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+          transition: 'background 200ms',
+        }}
+      >
+        {panelOpen ? '✕' : '🎮'}
+      </button>
+
+      {/* Control panel overlay */}
+      {panelOpen && (
+        <div style={{
+          position: 'fixed', bottom: 88, right: 24, zIndex: 9999,
+        }}>
+          <TweaksPanel tweaks={tweaks} setTweaks={setTweaks} screen={screen} goto={goto}/>
+        </div>
+      )}
     </div>
   );
 }
