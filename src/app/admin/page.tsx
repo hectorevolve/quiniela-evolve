@@ -39,8 +39,8 @@ const NAV: { id: View; label: string }[] = [
 // ─── Dynamic groups ───────────────────────────────────────────────────────────
 // Hardcoded fallback (used while DB loads, and for color/logo lookups)
 const ALL_GROUPS = [
-  'Evolve', 'BEPENSA Spirits', 'ADM', 'Disney',
-  'Ruz', 'Zuru', 'AJEMEX', 'Delongi', 'Hanes',
+  'Evolve', 'BEPENSA Spirits', 'ADM', 'Spin Master',
+  'Disney', 'Ruz', 'Zuru', 'AJEMEX', 'Delongi', 'Hanes',
 ];
 
 /** Loads group list from Supabase `groups` table; falls back to ALL_GROUPS. */
@@ -216,14 +216,14 @@ function ViewToggle({ mode, onChange }: { mode: 'grid' | 'list'; onChange: (m: '
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 function ViewDashboard({ liveUsers, setView }: { liveUsers: LiveUser[]; setView: (v: View) => void }) {
   const isMobile = useIsMobile();
-  const groups = useMemo(() => Array.from(new Set(liveUsers.map(u => u.group_name ?? 'Sin grupo'))), [liveUsers]);
+  const dbGroups = useGroups();  // grupos desde la BD (siempre actualizado)
   const nonAdmins = liveUsers.filter(u => u.role !== 'superadmin');
   return (
     <div>
       <SectionHeader title="Dashboard" sub="Resumen general del torneo"/>
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 24 }}>
         <StatCard label="Usuarios"    value={nonAdmins.length}  sub="Registrados"   color={c.blue}/>
-        <StatCard label="Grupos"      value={ALL_GROUPS.length} sub="Activos"/>
+        <StatCard label="Grupos"      value={dbGroups.length} sub="Activos"/>
         <StatCard label="Partidos"    value={MATCHES.length}    sub="En el torneo"/>
         <StatCard label="Jugados"     value={MATCHES.filter(m => m.result).length} sub="Con resultado"/>
       </div>
@@ -251,13 +251,13 @@ function ViewDashboard({ liveUsers, setView }: { liveUsers: LiveUser[]; setView:
           ))}
         </div>
 
-        {/* Group cards — always show all groups */}
+        {/* Group cards — dinámico desde la BD */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, alignContent: 'start' }}>
-          {ALL_GROUPS.map(g => {
+          {dbGroups.map(g => {
             const members = liveUsers.filter(u => u.group_name === g && u.role !== 'superadmin');
             const col = GROUP_COLORS[g] ?? c.blue;
             return (
-              <div key={g} style={{ background: c.card, border: `1px solid ${col}33`, borderRadius: 12, padding: '14px 16px' }}>
+              <div key={g} onClick={() => setView('grupos')} style={{ background: c.card, border: `1px solid ${col}33`, borderRadius: 12, padding: '14px 16px', cursor: 'pointer' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
                   <GroupIcon group={g} size={22}/>
                   <span style={{ fontSize: 12, fontWeight: 700, color: c.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{g}</span>
@@ -267,6 +267,17 @@ function ViewDashboard({ liveUsers, setView }: { liveUsers: LiveUser[]; setView:
               </div>
             );
           })}
+          {/* Tarjeta "Sin grupo" — usuarios sin grupo asignado */}
+          {(() => { const sinGrupo = nonAdmins.filter(u => !u.group_name); return sinGrupo.length > 0 ? (
+            <div onClick={() => setView('usuarios')} style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 12, padding: '14px 16px', cursor: 'pointer', opacity: 0.7 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                <div style={{ width:22, height:22, borderRadius:'50%', background:'rgba(255,255,255,0.08)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:12 }}>?</div>
+                <span style={{ fontSize: 12, fontWeight: 700, color: c.muted }}>Sin grupo</span>
+              </div>
+              <div style={{ fontSize: 24, fontWeight: 800, color: c.muted, lineHeight: 1, marginBottom: 4 }}>{sinGrupo.length}</div>
+              <div style={{ fontSize: 11, color: c.dim }}>Ver usuarios →</div>
+            </div>
+          ) : null; })()}
         </div>
       </div>
     </div>
