@@ -4,13 +4,29 @@ import { calcPoints } from './points';
 // ─── Profile ──────────────────────────────────────────────────────────────────
 
 export async function getProfile(userId: string): Promise<AppUser | null> {
+  // Columnas base — siempre existen
+  const BASE = 'id, name, email, phone, role, group_name, premium, used_powers';
+  // Columnas opcionales que se agregan con migraciones — resiliente si no existen aún
+  const EXTENDED = `${BASE}, late_match_id, double_match_id, survey_completed`;
+
   const { data, error } = await supabase
-    .from('profiles')
-    .select('id, name, email, phone, role, group_name, premium, used_powers, late_match_id, double_match_id, survey_completed')
-    .eq('id', userId)
-    .single();
-  if (error) { console.error('[db] getProfile:', error.message); return null; }
-  return { ...data, used_powers: data.used_powers ?? [] } as AppUser;
+    .from('profiles').select(EXTENDED).eq('id', userId).single();
+
+  if (!error) {
+    return { ...data, used_powers: data.used_powers ?? [] } as AppUser;
+  }
+
+  // Alguna columna no existe todavía (migración pendiente) → reintentar con base
+  if (error.message.includes('column') || error.message.includes('does not exist')) {
+    console.warn('[db] getProfile: columna opcional faltante, reintentando con campos base:', error.message);
+    const { data: base, error: baseErr } = await supabase
+      .from('profiles').select(BASE).eq('id', userId).single();
+    if (baseErr) { console.error('[db] getProfile base:', baseErr.message); return null; }
+    return { ...base, used_powers: base.used_powers ?? [] } as AppUser;
+  }
+
+  console.error('[db] getProfile:', error.message);
+  return null;
 }
 
 /**
