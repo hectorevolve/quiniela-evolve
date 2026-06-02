@@ -16,6 +16,7 @@ export async function POST(req: NextRequest) {
     userId: string;
     name?: string;
     group_name?: string | null;
+    city?: string | null;
     used_powers?: string[];
     target_points?: number;   // preferred: server computes bonus = target - match_pts
     bonus_points?: number;    // fallback legacy field
@@ -29,6 +30,7 @@ export async function POST(req: NextRequest) {
   const profilePatch: Record<string, unknown> = {};
   if (body.name        !== undefined) profilePatch.name        = body.name.trim();
   if (body.group_name  !== undefined) profilePatch.group_name  = body.group_name;
+  if (body.city        !== undefined) profilePatch.city        = body.city;
   if (body.used_powers !== undefined) profilePatch.used_powers = body.used_powers;
 
   if (Object.keys(profilePatch).length > 0) {
@@ -45,18 +47,27 @@ export async function POST(req: NextRequest) {
   if (body.target_points !== undefined) {
     // Server-side computation: bonus = target - match_prediction_pts
     // This is the reliable path — no client-side math needed.
-    const [resultsRes, predsRes] = await Promise.all([
-      admin.from('matches').select('id, result_home, result_away').not('result_home', 'is', null),
+    const [resultsRes, predsRes, dblRes] = await Promise.all([
+      admin.from('matches').select('id, result_home, result_away, group_name').not('result_home', 'is', null),
       admin.from('predictions').select('match_id, home_score, away_score').eq('user_id', userId),
+      admin.from('profiles').select('double_match_id').eq('id', userId).maybeSingle(),
     ]);
 
     const resultMap: Record<string, [number, number]> = {};
-    for (const m of resultsRes.data ?? []) resultMap[m.id] = [m.result_home, m.result_away];
+    const phaseMap:  Record<string, string | null> = {};
+    for (const m of resultsRes.data ?? []) {
+      resultMap[m.id] = [m.result_home, m.result_away];
+      phaseMap[m.id]  = m.group_name ?? null;
+    }
+    const doubleMatchId: string | null = dblRes.error ? null : (dblRes.data?.double_match_id ?? null);
 
     let matchPts = 0;
     for (const p of predsRes.data ?? []) {
       const result = resultMap[p.match_id];
-      if (result) matchPts += calcPoints([p.home_score, p.away_score], result);
+      if (!result) continue;
+      let pts = calcPoints([p.home_score, p.away_score], result, phaseMap[p.match_id]);
+      if (pts > 0 && doubleMatchId === p.match_id) pts *= 2;
+      matchPts += pts;
     }
 
     bonusPts = body.target_points - matchPts;

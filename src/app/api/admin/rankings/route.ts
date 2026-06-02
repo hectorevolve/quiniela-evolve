@@ -6,6 +6,7 @@ export interface AdminRankingEntry {
   userId: string;
   name: string;
   group_name: string | null;
+  city: string | null;
   points: number;
   matchPoints: number;
   bonusPoints: number;
@@ -22,9 +23,9 @@ export async function GET() {
   const admin = getAdminClient();
 
   const [profilesRes, predsRes, resultsRes, bonusRes] = await Promise.all([
-    admin.from('profiles').select('id, name, group_name, used_powers').neq('role', 'superadmin'),
+    admin.from('profiles').select('id, name, group_name, city, used_powers').neq('role', 'superadmin'),
     admin.from('predictions').select('user_id, match_id, home_score, away_score'),
-    admin.from('matches').select('id, result_home, result_away').not('result_home', 'is', null),
+    admin.from('matches').select('id, result_home, result_away, group_name').not('result_home', 'is', null),
     admin.from('bonus_awards').select('user_id, points'),
   ]);
 
@@ -33,13 +34,27 @@ export async function GET() {
   }
 
   const resultMap: Record<string, [number, number]> = {};
-  for (const m of resultsRes.data ?? []) resultMap[m.id] = [m.result_home, m.result_away];
+  const phaseMap:  Record<string, string | null> = {};
+  for (const m of resultsRes.data ?? []) {
+    resultMap[m.id] = [m.result_home, m.result_away];
+    phaseMap[m.id]  = m.group_name ?? null;
+  }
+
+  // ×2 Puntos Dobles: userId → partido donde se usó (query resiliente)
+  const doubleMatchMap: Record<string, string | null> = {};
+  const dblRes = await admin.from('profiles').select('id, double_match_id');
+  if (!dblRes.error) {
+    for (const r of (dblRes.data ?? []) as { id: string; double_match_id: string | null }[]) {
+      doubleMatchMap[r.id] = r.double_match_id ?? null;
+    }
+  }
 
   const matchPtsMap: Record<string, number> = {};
   for (const p of predsRes.data ?? []) {
     const result = resultMap[p.match_id];
     if (!result) continue;
-    const pts = calcPoints([p.home_score, p.away_score], result);
+    let pts = calcPoints([p.home_score, p.away_score], result, phaseMap[p.match_id]);
+    if (pts > 0 && doubleMatchMap[p.user_id] === p.match_id) pts *= 2;
     matchPtsMap[p.user_id] = (matchPtsMap[p.user_id] ?? 0) + pts;
   }
 
@@ -48,13 +63,14 @@ export async function GET() {
     bonusPtsMap[b.user_id] = (bonusPtsMap[b.user_id] ?? 0) + b.points;
   }
 
-  const entries: AdminRankingEntry[] = (profilesRes.data ?? []).map((p: { id: string; name: string; group_name: string | null; used_powers: string[] | null }) => {
+  const entries: AdminRankingEntry[] = (profilesRes.data ?? []).map((p: { id: string; name: string; group_name: string | null; city: string | null; used_powers: string[] | null }) => {
     const matchPoints = matchPtsMap[p.id] ?? 0;
     const bonusPoints = bonusPtsMap[p.id] ?? 0;
     return {
       userId:      p.id,
       name:        p.name,
       group_name:  p.group_name,
+      city:        p.city,
       points:      matchPoints + bonusPoints,
       matchPoints,
       bonusPoints,

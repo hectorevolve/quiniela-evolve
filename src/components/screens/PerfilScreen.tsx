@@ -7,7 +7,15 @@ import { Flag } from '@/components/flags/Flag';
 import { getInitials, type AppUser } from '@/lib/supabase';
 import { getMatchResults, getRankings } from '@/lib/db';
 import { loadPrediction } from '@/lib/predictions';
-import { calcPoints } from '@/lib/points';
+import { calcPoints, isExact } from '@/lib/points';
+
+interface DemoStats {
+  months: { label: string; pct: number; color: string }[];
+  played: number;
+  hits: number;
+  exact: number;
+  totalPts: number;
+}
 
 interface Props {
   goto: (s: string) => void;
@@ -15,6 +23,7 @@ interface Props {
   fireToast: (msg: string, color?: string, textColor?: string) => void;
   currentUser?: AppUser | null;
   onLogout?: () => Promise<void> | void;
+  demoStats?: DemoStats;   // presentación: rellena la gráfica y estadísticas sin tocar la DB
 }
 
 const BADGES = [
@@ -26,7 +35,7 @@ const BADGES = [
   { icon: '🏆', label: 'Profeta Final',     unlocked: false, req: 'Acierta el resultado de la final.' },
 ];
 
-export function PerfilScreen({ goto, tweaks, fireToast, currentUser, onLogout }: Props) {
+export function PerfilScreen({ goto, tweaks, fireToast, currentUser, onLogout, demoStats }: Props) {
   const displayName    = currentUser?.name     ?? USER.name;
   const displayGroup   = currentUser?.group_name ?? USER.mayorista;
   const displayInitials = currentUser ? getInitials(currentUser.name) : USER.avatar;
@@ -50,7 +59,7 @@ export function PerfilScreen({ goto, tweaks, fireToast, currentUser, onLogout }:
     }).catch(console.error);
   }, [currentUser?.id]);
 
-  const months = [
+  const months = demoStats?.months ?? [
     { label: 'May', pct: 0, color: T.muted },
     { label: 'Jun', pct: 0, color: T.muted },
     { label: 'Jul', pct: 0, color: T.muted },
@@ -70,8 +79,9 @@ export function PerfilScreen({ goto, tweaks, fireToast, currentUser, onLogout }:
         const result = dbResults[m.id];
         const pred = loadPrediction(m.id);
         const userPrediction: [number, number] | undefined = pred ? [pred.home, pred.away] : undefined;
-        const pointsEarned = (result && userPrediction) ? calcPoints(userPrediction, result) : 0;
-        return { ...m, result, userPrediction, pointsEarned };
+        const pointsEarned = (result && userPrediction) ? calcPoints(userPrediction, result, m.group) : 0;
+        const exactScore = !!(result && userPrediction && isExact(userPrediction, result));
+        return { ...m, result, userPrediction, pointsEarned, exactScore };
       });
   }, [dbResults]);
 
@@ -173,19 +183,19 @@ export function PerfilScreen({ goto, tweaks, fireToast, currentUser, onLogout }:
           </div>
         </Card>
 
-        {/* Stats — computed from completed matches */}
+        {/* Stats — computed from completed matches (or demoStats en presentación) */}
         {(() => {
-          const played   = pastMatches.filter(m => m.userPrediction !== undefined);
-          const hits     = pastMatches.filter(m => (m.pointsEarned ?? 0) > 0).length;
-          const exact    = pastMatches.filter(m => (m.pointsEarned ?? 0) === 3).length;
-          const hitPct   = played.length > 0 ? Math.round(hits / played.length * 100) : 0;
+          const playedCount = demoStats ? demoStats.played : pastMatches.filter(m => m.userPrediction !== undefined).length;
+          const hits     = demoStats ? demoStats.hits : pastMatches.filter(m => (m.pointsEarned ?? 0) > 0).length;
+          const exact    = demoStats ? demoStats.exact : pastMatches.filter(m => m.exactScore).length;
+          const hitPct   = playedCount > 0 ? Math.round(hits / playedCount * 100) : 0;
           // Use ranking API total (includes match pts + bonus_awards) when available
-          const totalPts = rankingPoints ?? pastMatches.reduce((acc, m) => acc + (m.pointsEarned ?? 0), 0);
+          const totalPts = demoStats ? demoStats.totalPts : (rankingPoints ?? pastMatches.reduce((acc, m) => acc + (m.pointsEarned ?? 0), 0));
           const stats = [
-            { label: 'Predicciones jugadas', value: String(played.length) },
-            { label: 'Aciertos', value: played.length > 0 ? `${hits} (${hitPct}%)` : '—' },
+            { label: 'Predicciones jugadas', value: String(playedCount) },
+            { label: 'Aciertos', value: playedCount > 0 ? `${hits} (${hitPct}%)` : '—' },
             { label: 'Marcadores exactos', value: String(exact) },
-            { label: 'Puntos totales', value: rankingPoints === null ? '…' : String(totalPts) },
+            { label: 'Puntos totales', value: (!demoStats && rankingPoints === null) ? '…' : String(totalPts) },
           ];
           return (
             <Card style={{ marginBottom: 12 }}>

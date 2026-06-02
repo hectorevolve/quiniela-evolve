@@ -13,15 +13,30 @@ export async function getProfile(userId: string): Promise<AppUser | null> {
   return { ...data, used_powers: data.used_powers ?? [] } as AppUser;
 }
 
-/** Save a used power to the current user's profile in DB. */
-export async function savePowerUsed(power: string): Promise<void> {
+/**
+ * Save a used power to the current user's profile in DB.
+ * For the 'double' (×2) power, also records WHICH match it was used on
+ * (`double_match_id`) so the ranking can double that match's points.
+ */
+export async function savePowerUsed(power: string, matchId?: string): Promise<void> {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) return;
   const userId = session.user.id;
   const { data } = await supabase.from('profiles').select('used_powers').eq('id', userId).single();
   const current: string[] = data?.used_powers ?? [];
-  if (!current.includes(power)) {
-    await supabase.from('profiles').update({ used_powers: [...current, power] }).eq('id', userId);
+  const nextPowers = current.includes(power) ? current : [...current, power];
+  if (power === 'double' && matchId) {
+    // Intenta guardar también el partido del ×2. Si la columna aún no existe
+    // (migración pendiente), reintenta sin ella para no romper la activación.
+    const { error } = await supabase
+      .from('profiles')
+      .update({ used_powers: nextPowers, double_match_id: matchId })
+      .eq('id', userId);
+    if (error) {
+      await supabase.from('profiles').update({ used_powers: nextPowers }).eq('id', userId);
+    }
+  } else {
+    await supabase.from('profiles').update({ used_powers: nextPowers }).eq('id', userId);
   }
 }
 
@@ -150,6 +165,7 @@ export interface RankingEntry {
   userId: string;
   name: string;
   group_name: string | null;
+  city: string | null;   // ciudad del participante (CDMX, MTY, GDL, etc.)
   points: number;
   matchPoints: number;   // prediction-only pts (no bonus_awards)
   bonusPoints: number;   // bonus_awards pts only
