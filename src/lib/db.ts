@@ -6,7 +6,7 @@ import { calcPoints } from './points';
 export async function getProfile(userId: string): Promise<AppUser | null> {
   const { data, error } = await supabase
     .from('profiles')
-    .select('id, name, email, phone, role, group_name, premium, used_powers, late_match_id, double_match_id')
+    .select('id, name, email, phone, role, group_name, premium, used_powers, late_match_id, double_match_id, survey_completed')
     .eq('id', userId)
     .single();
   if (error) { console.error('[db] getProfile:', error.message); return null; }
