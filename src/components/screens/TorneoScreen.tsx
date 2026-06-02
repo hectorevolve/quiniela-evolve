@@ -16,34 +16,75 @@ import { Flag } from '@/components/flags/Flag';
 import { BallIcon, SoccerBall } from '@/components/ball/SoccerBall';
 import { WorldCupTrophy } from '@/components/trophy/WorldCupTrophy';
 
-const norm = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+const norm = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 
 // City abbreviation mapping (same as API)
-const CITY_ABBREV: Record<string, string> = {
-  'Ciudad de México': 'CDMX', 'CDMX': 'CDMX', 'Ciudad México': 'CDMX', 'México': 'CDMX',
-  'Monterrey': 'MTY', 'Monterry': 'MTY',
-  'Guadalajara': 'GDL', 'Jalisco': 'GDL',
-  'Puebla': 'PUE',
-  'Querétaro': 'QRO',
-  'Cancún': 'CUN',
-  'Mérida': 'MID',
-  'Veracruz': 'VER',
-  'Toluca': 'TOL',
-  'Cuernavaca': 'CUE',
-  'León': 'LEN',
-  'Aguascalientes': 'AGS',
-  'San Luis Potosí': 'SLP',
-  'Durango': 'DGO',
-  'Chihuahua': 'CHH',
-  'Hermosillo': 'HMO',
-  'La Paz': 'LPZ',
-  'Mazatlán': 'MZT',
+// Normaliza una ciudad: MAYÚSCULAS, sin acentos, espacios colapsados.
+const normCity = (s: string): string =>
+  s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/\s+/g, ' ').trim();
+
+// Todo el Valle de México (CDMX + municipios conurbados del Edo. Méx.) → CDMX
+const CDMX_ZONES = new Set<string>([
+  'IZTAPALAPA', 'ECATEPEC', 'NAUCALPAN', 'ATIZAPAN', 'ATIZAPAN DE ZARAGOZA', 'ALVARO OBREGON',
+  'TLALPAN', 'NEZAHUALCOYOTL', 'CD NEZAHUALCOYOTL', 'TLALNEPANTLA', 'CHICOLOAPAN', 'TEXCOCO',
+  'GUSTAVO A MADERO', 'MIGUEL HIDALGO', 'IXTAPALUCA', 'CUAUTITLAN', 'CUAUTITLAN IZCALLI',
+  'BENITO JUAREZ', 'TECAMAC', 'COACALCO', 'TULTITLAN', 'CHALCO', 'VALLE DE CHALCO',
+  'CHIMALHUACAN', 'NICOLAS ROMERO', 'HUIXQUILUCAN', 'COYOACAN', 'IZTACALCO', 'AZCAPOTZALCO',
+  'XOCHIMILCO', 'TLAHUAC', 'CUAJIMALPA', 'VENUSTIANO CARRANZA', 'CUAUHTEMOC', 'MILPA ALTA',
+  'MAGDALENA CONTRERAS', 'LA MAGDALENA CONTRERAS', 'LOS REYES', 'LOS REYES LA PAZ',
+]);
+
+const isCDMX = (n: string): boolean =>
+  n.includes('CDMX') || n.includes('CIUDAD DE MEXICO') || n.includes('DISTRITO FEDERAL') ||
+  n === 'DF' || n === 'MEXICO' || n.includes('VALLE DE MEXICO') || n === 'VDM' ||
+  n.includes('ESTADO DE MEXICO') || n.includes('EDO MEX') || n.includes('EDOMEX') ||
+  CDMX_ZONES.has(n);
+
+// Nombre completo normalizado → abreviatura
+const CITY_MAP: Record<string, string> = {
+  'MONTERREY': 'MTY', 'MTY': 'MTY', 'NUEVO LEON': 'MTY', 'GARCIA': 'MTY', 'SAN PEDRO': 'MTY',
+  'SAN PEDRO GARZA GARCIA': 'MTY', 'APODACA': 'MTY', 'SAN NICOLAS': 'MTY', 'SANTA CATARINA': 'MTY',
+  'GENERAL ESCOBEDO': 'MTY', 'ESCOBEDO': 'MTY',
+  'GUADALAJARA': 'GDL', 'GDL': 'GDL', 'JALISCO': 'GDL', 'ZAPOPAN': 'GDL', 'TLAQUEPAQUE': 'GDL',
+  'SAN PEDRO TLAQUEPAQUE': 'GDL', 'TONALA': 'GDL', 'TLAJOMULCO': 'GDL', 'TLAJOMULCO DE ZUNIGA': 'GDL',
+  'PUEBLA': 'PUE',
+  'QUERETARO': 'QRO', 'QRO': 'QRO',
+  'CANCUN': 'CUN',
+  'PLAYA DEL CARMEN': 'PDC', 'SOLIDARIDAD': 'PDC',
+  'MERIDA': 'MID',
+  'VERACRUZ': 'VER',
+  'TOLUCA': 'TOL', 'METEPEC': 'TOL',
+  'TIJUANA': 'TIJ',
+  'CUERNAVACA': 'CUE',
+  'LEON': 'LEN', 'GUANAJUATO': 'GTO', 'CELAYA': 'CEL', 'IRAPUATO': 'IRA',
+  'AGUASCALIENTES': 'AGS',
+  'SAN LUIS POTOSI': 'SLP',
+  'DURANGO': 'DGO',
+  'CHIHUAHUA': 'CHH', 'CD JUAREZ': 'JRZ', 'CIUDAD JUAREZ': 'JRZ', 'JUAREZ': 'JRZ',
+  'HERMOSILLO': 'HMO',
+  'LA PAZ': 'LPZ',
+  'MAZATLAN': 'MZT', 'CULIACAN': 'CUL',
+  'MORELIA': 'MOR',
+  'OAXACA': 'OAX',
+  'ACAPULCO': 'ACA', 'CHILPANCINGO': 'CHP',
+  'PACHUCA': 'PAC',
+  'SALTILLO': 'SAL', 'TORREON': 'TRC',
+  'TUXTLA GUTIERREZ': 'TGZ', 'TUXTLA': 'TGZ',
+  'XALAPA': 'XAL', 'CORDOBA': 'COR', 'ORIZABA': 'ORI',
+  'VILLAHERMOSA': 'VHA',
+  'CAMPECHE': 'CAM', 'CHETUMAL': 'CHE',
+  'CUAUTLA': 'CTL',
+  'TAMPICO': 'TAM',
+  'ZAMORA': 'ZAM', 'URUAPAN': 'URU',
+  'PUERTO VALLARTA': 'PVR',
+  'ENSENADA': 'ENS', 'MEXICALI': 'MXL',
 };
 
 const getCityAbbrev = (city: string | null): string | null => {
-  if (!city) return null;
-  const trimmed = city.trim();
-  return CITY_ABBREV[trimmed] || trimmed.substring(0, 3).toUpperCase();
+  if (!city || !city.trim()) return null;
+  const n = normCity(city);
+  if (isCDMX(n)) return 'CDMX';
+  return CITY_MAP[n] || n.substring(0, 3).toUpperCase();
 };
 
 // Suppress click events that fire as a side-effect of scroll momentum
