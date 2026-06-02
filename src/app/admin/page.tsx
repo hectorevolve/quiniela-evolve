@@ -2069,9 +2069,19 @@ function ViewGrupoDetalle({ group, liveUsers, onBack, onUserUpdated, onUserRemov
       .map(t => ({ from: Math.max(1, Math.min(t.from, t.to)), to: Math.max(t.from, t.to), reward: (t.reward ?? '').trim() }))
       .filter(t => t.reward)
       .sort((a, b) => a.from - b.from);
+    // Deriva los 3 campos legacy desde los tramos (mantiene compatibilidad y
+    // satisface cualquier NOT NULL al insertar un grupo nuevo).
+    const rewardForPlace = (p: number) => clean.find(t => p >= t.from && p <= t.to)?.reward ?? '';
     setSaveStatus('saving');
     const { error } = await supabase.from('group_settings')
-      .upsert({ group_name: group, prize_tiers: clean, updated_at: new Date().toISOString() }, { onConflict: 'group_name' });
+      .upsert({
+        group_name: group,
+        prize_tiers: clean,
+        prize_1st: rewardForPlace(1),
+        prize_2nd: rewardForPlace(2),
+        prize_3rd: rewardForPlace(3),
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'group_name' });
     setSaveStatus(error ? 'error' : 'saved');
     if (!error) setTiers(clean);
     setTimeout(() => setSaveStatus('idle'), 2500);
