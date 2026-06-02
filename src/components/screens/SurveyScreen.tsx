@@ -32,10 +32,6 @@ const ENCUESTA = {
       questions: [
         { id:'puesto', type:'single_choice', required:true, label:'¿Cuál es tu puesto en Evolve?',
           options:[{value:'promotor',label:'Promotor(a)'},{value:'demostrador',label:'Demostrador(a)'},{value:'supervisor',label:'Supervisor(a) o Coordinador(a)'},{value:'otro',label:'Otro'}] },
-        { id:'marca_cliente', type:'single_choice', required:true, label:'¿Qué marca o cliente atiendes principalmente?',
-          options:[{value:'pepsico',label:'PepsiCo'},{value:'gepp',label:'GEPP'},{value:'hanes',label:'Hanes (HBI)'},{value:'adm',label:'ADM'},{value:'disney',label:'Disney'},{value:'otra',label:'Otra'}] },
-        { id:'region', type:'single_choice', required:true, label:'¿En qué zona o región operas?',
-          options:[{value:'cdmx',label:'CDMX y Área Metropolitana'},{value:'bajio',label:'Bajío'},{value:'occidente',label:'Occidente'},{value:'norte',label:'Norte'},{value:'noreste',label:'Noreste'},{value:'sureste',label:'Sureste'},{value:'peninsula',label:'Península'}] },
         { id:'antiguedad', type:'single_choice', required:true, label:'¿Cuánto tiempo llevas trabajando en Evolve?',
           options:[{value:'menos_3m',label:'Menos de 3 meses'},{value:'3_6m',label:'Entre 3 y 6 meses'},{value:'6m_1a',label:'Entre 6 meses y 1 año'},{value:'1_2a',label:'Entre 1 y 2 años'},{value:'mas_2a',label:'Más de 2 años'}] },
         { id:'cadena', type:'single_choice', required:true, label:'¿En qué cadena pasas la mayor parte de tu tiempo?',
