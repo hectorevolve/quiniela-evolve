@@ -2027,9 +2027,10 @@ function ViewGrupoDetalle({ group, liveUsers, onBack, onUserUpdated, onUserRemov
     setPrizesLoading(true);
     (async () => {
       const BASE = 'prize_1st,prize_2nd,prize_3rd,bonus_champ_type,bonus_champ_value,result_champ,bonus_runner_type,bonus_runner_value,result_runner,bonus_third_type,bonus_third_value,result_third,bonus_scorer_type,bonus_scorer_value,result_scorer';
-      // Intenta con prize_tiers; si la columna no existe aún, reintenta sin ella
-      let res = await supabase.from('group_settings').select(`${BASE},prize_tiers`).eq('group_name', group).single();
-      if (res.error) res = await supabase.from('group_settings').select(BASE).eq('group_name', group).single();
+      // maybeSingle: 0 filas → null sin error (evita 406). Con prize_tiers; si la
+      // columna no existe aún, reintenta sin ella.
+      let res = await supabase.from('group_settings').select(`${BASE},prize_tiers`).eq('group_name', group).maybeSingle();
+      if (res.error) res = await supabase.from('group_settings').select(BASE).eq('group_name', group).maybeSingle();
       const data = res.data as (Record<string, string> & { prize_tiers?: PrizeTier[] | null }) | null;
       if (data) {
         // Carga tramos: usa prize_tiers si existe; si no, los construye desde los 3 campos legacy
