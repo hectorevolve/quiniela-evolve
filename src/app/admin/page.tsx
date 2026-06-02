@@ -3036,7 +3036,7 @@ function ImportModal({ onClose, onDone }: {
   );
 }
 
-function ViewUsuariosAdmin({ liveUsers, onUserCreated, onUserDeleted }: { liveUsers: LiveUser[]; onUserCreated: (u: LiveUser) => void; onUserDeleted?: (id: string) => void }) {
+function ViewUsuariosAdmin({ liveUsers, onUserCreated, onUserDeleted, onUserUpdated }: { liveUsers: LiveUser[]; onUserCreated: (u: LiveUser) => void; onUserDeleted?: (id: string) => void; onUserUpdated?: (id: string, patch: Partial<LiveUser>) => void }) {
   const [showModal, setShowModal]   = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [name, setName]             = useState('');
@@ -3228,7 +3228,19 @@ function ViewUsuariosAdmin({ liveUsers, onUserCreated, onUserDeleted }: { liveUs
 
       {/* Edit / Preds / Delete modals */}
       {editEntry && (
-        <EditPlayerModal entry={editEntry} onClose={() => setEditEntry(null)} onSaved={() => {}} onReload={() => {}}/>
+        <EditPlayerModal
+          entry={editEntry}
+          onClose={() => setEditEntry(null)}
+          onSaved={(updated) => {
+            onUserUpdated?.(editEntry.userId, {
+              name:        updated.name ?? undefined,
+              group_name:  updated.group_name,
+              city:        updated.city,
+              used_powers: updated.used_powers,
+            });
+          }}
+          onReload={() => {}}
+        />
       )}
       {predsEntry && <UserPredictionsModal entry={predsEntry} onClose={() => setPredsEntry(null)}/>}
       {deleteEntry && (
@@ -3974,7 +3986,7 @@ function ImportModalCelulares({ onClose, onDone }: { onClose: () => void; onDone
 
 // ─── Root ─────────────────────────────────────────────────────────────────────
 type LiveUser = { id: string; name: string; email: string | null; phone?: string | null; role: string; group_name: string | null; city: string | null; premium: boolean; used_powers: string[] };
-const liveUserToEntry = (u: LiveUser): RankingEntry => ({ userId: u.id, name: u.name, group_name: u.group_name, city: null, points: 0, matchPoints: 0, bonusPoints: 0, pos: 0, used_powers: u.used_powers ?? [] });
+const liveUserToEntry = (u: LiveUser): RankingEntry => ({ userId: u.id, name: u.name, group_name: u.group_name, city: u.city ?? null, points: 0, matchPoints: 0, bonusPoints: 0, pos: 0, used_powers: u.used_powers ?? [] });
 
 export default function AdminPage() {
   const isMobile = useIsMobile();
@@ -4114,7 +4126,7 @@ export default function AdminPage() {
         {view === 'encuesta'      && <ViewEncuesta/>}
         {view === 'celulares'     && <ViewCelulares/>}
         {view === 'grupos-config' && <ViewGruposConfig onBack={() => navigate('grupos')} onSelectGroup={g => { setSelectedGroup(g); navigate('grupo-detalle'); }}/>}
-        {view === 'usuarios'      && <ViewUsuariosAdmin liveUsers={liveUsers} onUserCreated={u => setLiveUsers(prev => [...prev, u])} onUserDeleted={id => setLiveUsers(prev => prev.filter(u => u.id !== id))}/>}
+        {view === 'usuarios'      && <ViewUsuariosAdmin liveUsers={liveUsers} onUserCreated={u => setLiveUsers(prev => [...prev, u])} onUserDeleted={id => setLiveUsers(prev => prev.filter(u => u.id !== id))} onUserUpdated={(id, patch) => setLiveUsers(prev => prev.map(u => u.id === id ? { ...u, ...patch } : u))}/>}
         {view === 'rankings'      && <ViewRankings/>}
         {view === 'predicciones'  && <ViewPredicciones users={users}/>}
         {view === 'partidos'      && <ViewPartidos/>}
