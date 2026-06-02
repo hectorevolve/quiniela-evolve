@@ -78,7 +78,8 @@ export function DetalleScreen({ goto, tweaks, fireToast, matchId, usedPowers: us
   const confirmPower = () => {
     if (!modal) return;
     setUsedPowers(prev => new Set([...prev, modal]));
-    savePowerUsed(modal).catch(console.error);
+    // Para el ×2 hay que registrar EN QUÉ partido se usó, para duplicar sus puntos en el ranking
+    savePowerUsed(modal, modal === 'double' ? match.id : undefined).catch(console.error);
     if (modal === 'late') setLateActiveMatchId(match.id);
     setModal(null);
     fireToast('¡Poder activado!', T.bgInk, '#fff');
