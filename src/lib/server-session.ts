@@ -2,15 +2,21 @@
  * Server-only helpers — do NOT import in client components.
  * Used by API routes to verify whitelists and create Supabase sessions.
  */
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
-// Module-level singleton — created once, reused on warm instances
-const _adminClient = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  { auth: { autoRefreshToken: false, persistSession: false } },
-);
-export function getAdminClient() {
+// Lazy singleton — se crea en el primer uso (en runtime), NO al cargar el módulo.
+// Así `next build` (que evalúa los módulos al recolectar datos de página) no
+// requiere las variables de entorno, y los preview deploys compilan aunque no
+// tengan configuradas las env vars de Supabase.
+let _adminClient: SupabaseClient | null = null;
+export function getAdminClient(): SupabaseClient {
+  if (!_adminClient) {
+    _adminClient = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co',
+      process.env.SUPABASE_SERVICE_ROLE_KEY || 'placeholder-service-key',
+      { auth: { autoRefreshToken: false, persistSession: false } },
+    );
+  }
   return _adminClient;
 }
 
