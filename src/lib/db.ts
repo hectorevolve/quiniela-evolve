@@ -196,10 +196,19 @@ export async function loadBonusPicks(userId: string) {
 
 // ─── Group settings (prizes) ──────────────────────────────────────────────────
 
+/** Un tramo de premio: del lugar `from` al lugar `to` (inclusive) se gana `reward`.
+ *  Para un solo lugar, from === to (ej. 1er lugar). */
+export interface PrizeTier {
+  from: number;
+  to: number;
+  reward: string;
+}
+
 export interface GroupSettings {
   prize_1st: string;
   prize_2nd: string;
   prize_3rd: string;
+  prize_tiers: PrizeTier[] | null;   // configuración flexible (rangos); si null/[] se usan los 3 campos legacy
   bonus_champ_type: string;  bonus_champ_value: string;
   bonus_runner_type: string; bonus_runner_value: string;
   bonus_third_type: string;  bonus_third_value: string;
@@ -208,13 +217,42 @@ export interface GroupSettings {
 
 export async function getGroupSettings(groupName: string): Promise<GroupSettings | null> {
   if (!groupName) return null;
-  const { data, error } = await supabase
-    .from('group_settings')
-    .select('prize_1st,prize_2nd,prize_3rd,bonus_champ_type,bonus_champ_value,bonus_runner_type,bonus_runner_value,bonus_third_type,bonus_third_value,bonus_scorer_type,bonus_scorer_value')
-    .eq('group_name', groupName)
-    .single();
-  if (error) return null;
-  return data as GroupSettings;
+  const BASE = 'prize_1st,prize_2nd,prize_3rd,bonus_champ_type,bonus_champ_value,bonus_runner_type,bonus_runner_value,bonus_third_type,bonus_third_value,bonus_scorer_type,bonus_scorer_value';
+  // Intenta incluir prize_tiers; si la columna aún no existe (migración pendiente),
+  // reintenta sin ella para no romper la pantalla de Premios.
+  const withTiers = await supabase
+    .from('group_settings').select(`${BASE},prize_tiers`).eq('group_name', groupName).single();
+  if (!withTiers.error) return withTiers.data as GroupSettings;
+
+  const base = await supabase
+    .from('group_settings').select(BASE).eq('group_name', groupName).single();
+  if (base.error) return null;
+  return { ...base.data, prize_tiers: null } as GroupSettings;
+}
+
+/** Normaliza la config de premios a una lista de tramos ordenada.
+ *  Usa prize_tiers si existe; si no, construye tramos desde los 3 campos legacy. */
+export function resolvePrizeTiers(settings: GroupSettings | null): PrizeTier[] {
+  if (!settings) return [];
+  const tiers = settings.prize_tiers;
+  if (Array.isArray(tiers) && tiers.length > 0) {
+    return tiers
+      .filter(t => t && typeof t.from === 'number' && typeof t.to === 'number' && (t.reward ?? '').trim())
+      .map(t => ({ from: Math.min(t.from, t.to), to: Math.max(t.from, t.to), reward: t.reward.trim() }))
+      .sort((a, b) => a.from - b.from);
+  }
+  // Fallback legacy: 1er/2do/3er lugar
+  const legacy: PrizeTier[] = [];
+  if ((settings.prize_1st ?? '').trim()) legacy.push({ from: 1, to: 1, reward: settings.prize_1st.trim() });
+  if ((settings.prize_2nd ?? '').trim()) legacy.push({ from: 2, to: 2, reward: settings.prize_2nd.trim() });
+  if ((settings.prize_3rd ?? '').trim()) legacy.push({ from: 3, to: 3, reward: settings.prize_3rd.trim() });
+  return legacy;
+}
+
+/** Etiqueta amigable para un tramo: "1er Lugar" o "Del 4° al 10° lugar". */
+export function prizeTierLabel(t: PrizeTier): string {
+  const ord = (n: number) => (n === 1 ? '1er' : n === 2 ? '2do' : n === 3 ? '3er' : `${n}°`);
+  return t.from === t.to ? `${ord(t.from)} Lugar` : `Del ${t.from}° al ${t.to}° lugar`;
 }
 
 // ─── H2H ──────────────────────────────────────────────────────────────────────

@@ -87,7 +87,13 @@ export default function DemoPage() {
           currentUser={DEMO_USER} onLogout={() => goto('torneo')} demoStats={DEMO_STATS}/>;
       case 'premios':
         return <PremiosScreen goto={goto} fireToast={fireToast}
-          rank={tweaks.rank} currentUser={DEMO_USER}/>;
+          rank={tweaks.rank} currentUser={DEMO_USER}
+          demoTiers={[
+            { from: 1, to: 1, reward: '$1,000' },
+            { from: 2, to: 2, reward: '$800' },
+            { from: 3, to: 3, reward: '$500' },
+            { from: 4, to: 10, reward: '$100' },
+          ]}/>;
     }
   };
 

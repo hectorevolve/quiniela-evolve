@@ -7,7 +7,7 @@ import { MATCHES, KNOCKOUT_MATCHES, USER_PREDICTIONS, GROUP_MATCH_IDS } from '@/
 import { EvolveMark } from '@/components/brand/EvolveMark';
 import { Avatar } from '@/components/ui';
 import { supabase } from '@/lib/supabase';
-import { getRankings, type RankingEntry, getMatchResults, saveMatchResult, getMatches, updateMatch, createMatch, deleteMatch, type DBMatch } from '@/lib/db';
+import { getRankings, type RankingEntry, getMatchResults, saveMatchResult, getMatches, updateMatch, createMatch, deleteMatch, type DBMatch, type PrizeTier, prizeTierLabel } from '@/lib/db';
 
 type View = 'dashboard' | 'encuesta' | 'celulares' | 'usuarios' | 'rankings' | 'predicciones' | 'partidos' | 'grupos' | 'grupo-detalle' | 'grupos-config';
 type AdminUser = { name: string; pts: number; group: string; city: string; pos: number; country: string };
@@ -1940,7 +1940,6 @@ function ViewPartidos() {
 }
 
 // ─── Grupo Detalle ────────────────────────────────────────────────────────────
-interface GroupPrizes { prize_1st: string; prize_2nd: string; prize_3rd: string }
 interface BonusConfig { type: 'puntos' | 'otro'; value: string; result: string }
 type BonusKey = 'champ' | 'runner' | 'third' | 'scorer';
 
@@ -2012,9 +2011,8 @@ function ViewGrupoDetalle({ group, liveUsers, onBack, onUserUpdated, onUserRemov
       ? nonAdmins.filter(u => !u.group_name)
       : nonAdmins.filter(u => u.group_name === group);
 
-  // Prizes
-  const defaultPrizes: GroupPrizes = { prize_1st: '', prize_2nd: '', prize_3rd: '' };
-  const [prizes, setPrizes] = useState<GroupPrizes>(defaultPrizes);
+  // Prizes (tramos flexibles: posiciones sueltas y/o rangos)
+  const [tiers, setTiers] = useState<PrizeTier[]>([]);
   const [prizesLoading, setPrizesLoading] = useState(true);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
@@ -2028,11 +2026,23 @@ function ViewGrupoDetalle({ group, liveUsers, onBack, onUserUpdated, onUserRemov
     if (isSinGrupo) { setPrizesLoading(false); return; }
     setPrizesLoading(true);
     (async () => {
-      const { data } = await supabase.from('group_settings')
-        .select('prize_1st,prize_2nd,prize_3rd,bonus_champ_type,bonus_champ_value,result_champ,bonus_runner_type,bonus_runner_value,result_runner,bonus_third_type,bonus_third_value,result_third,bonus_scorer_type,bonus_scorer_value,result_scorer')
-        .eq('group_name', group).single();
+      const BASE = 'prize_1st,prize_2nd,prize_3rd,bonus_champ_type,bonus_champ_value,result_champ,bonus_runner_type,bonus_runner_value,result_runner,bonus_third_type,bonus_third_value,result_third,bonus_scorer_type,bonus_scorer_value,result_scorer';
+      // Intenta con prize_tiers; si la columna no existe aún, reintenta sin ella
+      let res = await supabase.from('group_settings').select(`${BASE},prize_tiers`).eq('group_name', group).single();
+      if (res.error) res = await supabase.from('group_settings').select(BASE).eq('group_name', group).single();
+      const data = res.data as (Record<string, string> & { prize_tiers?: PrizeTier[] | null }) | null;
       if (data) {
-        setPrizes({ prize_1st: data.prize_1st, prize_2nd: data.prize_2nd, prize_3rd: data.prize_3rd });
+        // Carga tramos: usa prize_tiers si existe; si no, los construye desde los 3 campos legacy
+        const dbTiers = Array.isArray(data.prize_tiers) ? (data.prize_tiers as PrizeTier[]) : [];
+        if (dbTiers.length > 0) {
+          setTiers(dbTiers.map(t => ({ from: t.from, to: t.to, reward: t.reward })));
+        } else {
+          const legacy: PrizeTier[] = [];
+          if ((data.prize_1st ?? '').trim()) legacy.push({ from: 1, to: 1, reward: data.prize_1st.trim() });
+          if ((data.prize_2nd ?? '').trim()) legacy.push({ from: 2, to: 2, reward: data.prize_2nd.trim() });
+          if ((data.prize_3rd ?? '').trim()) legacy.push({ from: 3, to: 3, reward: data.prize_3rd.trim() });
+          setTiers(legacy);
+        }
         setBonus({
           champ:  { type: data.bonus_champ_type  as 'puntos'|'otro', value: data.bonus_champ_value  ?? '', result: data.result_champ  ?? '' },
           runner: { type: data.bonus_runner_type as 'puntos'|'otro', value: data.bonus_runner_value ?? '', result: data.result_runner ?? '' },
@@ -2044,11 +2054,26 @@ function ViewGrupoDetalle({ group, liveUsers, onBack, onUserUpdated, onUserRemov
     })();
   }, [group]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Edición de tramos
+  const addTier = () => setTiers(prev => {
+    const nextFrom = prev.length ? Math.max(...prev.map(t => t.to)) + 1 : 1;
+    return [...prev, { from: nextFrom, to: nextFrom, reward: '' }];
+  });
+  const updateTier = (i: number, patch: Partial<PrizeTier>) =>
+    setTiers(prev => prev.map((t, idx) => idx === i ? { ...t, ...patch } : t));
+  const removeTier = (i: number) => setTiers(prev => prev.filter((_, idx) => idx !== i));
+
   const savePrizes = async () => {
+    // Normaliza y valida: from>=1, to>=from, premio no vacío; ordena por 'from'
+    const clean = tiers
+      .map(t => ({ from: Math.max(1, Math.min(t.from, t.to)), to: Math.max(t.from, t.to), reward: (t.reward ?? '').trim() }))
+      .filter(t => t.reward)
+      .sort((a, b) => a.from - b.from);
     setSaveStatus('saving');
     const { error } = await supabase.from('group_settings')
-      .upsert({ group_name: group, ...prizes, updated_at: new Date().toISOString() }, { onConflict: 'group_name' });
+      .upsert({ group_name: group, prize_tiers: clean, updated_at: new Date().toISOString() }, { onConflict: 'group_name' });
     setSaveStatus(error ? 'error' : 'saved');
+    if (!error) setTiers(clean);
     setTimeout(() => setSaveStatus('idle'), 2500);
   };
 
@@ -2128,12 +2153,6 @@ function ViewGrupoDetalle({ group, liveUsers, onBack, onUserUpdated, onUserRemov
     setRemovingId(null);
   };
 
-  const prizeFields: { key: keyof GroupPrizes; icon: string; label: string }[] = [
-    { key: 'prize_1st', icon: '🥇', label: '1er Lugar' },
-    { key: 'prize_2nd', icon: '🥈', label: '2do Lugar' },
-    { key: 'prize_3rd', icon: '🥉', label: '3er Lugar' },
-  ];
-
   return (
     <div>
       {/* Header */}
@@ -2157,33 +2176,60 @@ function ViewGrupoDetalle({ group, liveUsers, onBack, onUserUpdated, onUserRemov
 
         {/* ── Premios del grupo ── */}
         {!isSinGrupo && <div>
-          <SectionHeader title="Premios del grupo" sub="Qué gana cada lugar dentro de este grupo"/>
-          <div style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 14, padding: '20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <SectionHeader title="Premios del grupo" sub="Define lugares sueltos y/o rangos (ej. del 4° al 10°)"/>
+          <div style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 14, padding: '20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
             {prizesLoading ? (
               <div style={{ textAlign: 'center', padding: '20px', color: c.muted, fontSize: 13 }}>Cargando…</div>
             ) : (
               <>
-                {prizeFields.map(({ key, icon, label }) => (
-                  <div key={key}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 600, color: c.muted, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.8 }}>
-                      <span style={{ fontSize: 16 }}>{icon}</span>{label}
-                    </label>
-                    <input
-                      value={prizes[key]}
-                      onChange={e => setPrizes(p => ({ ...p, [key]: e.target.value }))}
-                      placeholder={`Ej. $15,000 MXN`}
-                      style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.06)', color: c.text, fontSize: 13, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }}
-                    />
+                {/* Encabezado de columnas */}
+                <div style={{ display: 'grid', gridTemplateColumns: '64px 64px 1fr 32px', gap: 8, fontSize: 10, fontWeight: 700, color: c.muted, textTransform: 'uppercase', letterSpacing: 0.8, paddingLeft: 2 }}>
+                  <span>Del</span><span>Al</span><span>Premio</span><span/>
+                </div>
+
+                {tiers.length === 0 && (
+                  <div style={{ textAlign: 'center', padding: '14px', color: c.muted, fontSize: 12.5, background: 'rgba(255,255,255,0.03)', borderRadius: 8 }}>
+                    Sin tramos. Agrega el primero abajo.
+                  </div>
+                )}
+
+                {tiers.map((t, i) => (
+                  <div key={i} style={{ display: 'grid', gridTemplateColumns: '64px 64px 1fr 32px', gap: 8, alignItems: 'center' }}>
+                    <input type="number" min={1} value={t.from}
+                      onChange={e => updateTier(i, { from: parseInt(e.target.value) || 1 })}
+                      style={{ width: '100%', padding: '9px 8px', borderRadius: 8, border: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.06)', color: c.text, fontSize: 13, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box', textAlign: 'center' }}/>
+                    <input type="number" min={t.from} value={t.to}
+                      onChange={e => updateTier(i, { to: parseInt(e.target.value) || t.from })}
+                      style={{ width: '100%', padding: '9px 8px', borderRadius: 8, border: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.06)', color: c.text, fontSize: 13, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box', textAlign: 'center' }}/>
+                    <input value={t.reward}
+                      onChange={e => updateTier(i, { reward: e.target.value })}
+                      placeholder="Ej. $1,000 MXN o Audífonos"
+                      style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.06)', color: c.text, fontSize: 13, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }}/>
+                    <button onClick={() => removeTier(i)} title="Quitar tramo" style={{ width: 32, height: 32, borderRadius: 8, border: `1px solid ${c.border}`, background: 'transparent', color: c.rose, cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>🗑</button>
                   </div>
                 ))}
+
+                <button onClick={addTier} style={{ width: '100%', padding: '9px', borderRadius: 9, border: `1px dashed ${c.border}`, background: 'transparent', color: c.muted, fontWeight: 600, fontSize: 12.5, cursor: 'pointer' }}>
+                  + Agregar tramo
+                </button>
+
                 <button onClick={savePrizes} disabled={saveStatus === 'saving'} style={{
-                  width: '100%', padding: '11px', borderRadius: 10, border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 13,
+                  width: '100%', padding: '11px', borderRadius: 10, border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 13, marginTop: 4,
                   background: saveStatus === 'saved' ? `${c.lime}33` : saveStatus === 'error' ? `${c.rose}33` : `${col}33`,
                   color: saveStatus === 'saved' ? c.lime : saveStatus === 'error' ? c.rose : col,
                   transition: 'all 200ms',
                 }}>
                   {saveStatus === 'saving' ? 'Guardando…' : saveStatus === 'saved' ? '✓ Guardado' : saveStatus === 'error' ? '✗ Error al guardar' : 'Guardar premios'}
                 </button>
+
+                {/* Vista previa de etiquetas */}
+                {tiers.some(t => (t.reward ?? '').trim()) && (
+                  <div style={{ fontSize: 11, color: c.muted, lineHeight: 1.7, marginTop: 2 }}>
+                    {tiers.filter(t => (t.reward ?? '').trim()).map((t, i) => (
+                      <div key={i}>· <strong style={{ color: c.text }}>{prizeTierLabel({ from: Math.min(t.from, t.to), to: Math.max(t.from, t.to), reward: t.reward })}</strong>: {t.reward}</div>
+                    ))}
+                  </div>
+                )}
               </>
             )}
           </div>
