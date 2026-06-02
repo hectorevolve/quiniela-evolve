@@ -43,12 +43,21 @@ const ALL_GROUPS = [
   'Disney', 'Ruz', 'Zuru', 'AJEMEX', 'Delongi', 'Hanes',
 ];
 
-/** Loads group list from Supabase `groups` table; falls back to ALL_GROUPS. */
-function useGroups() {
-  const [groups, setGroups] = useState<string[]>(ALL_GROUPS);
+type GroupInfo = { name: string; color: string; logo_url: string | null };
+
+/** Loads group list from Supabase `groups` table with colors and logos. */
+function useGroups(): GroupInfo[] {
+  const fallback: GroupInfo[] = ALL_GROUPS.map(name => ({
+    name, color: GROUP_COLORS[name] ?? '#1AAFFF', logo_url: GROUP_LOGOS[name] ?? null,
+  }));
+  const [groups, setGroups] = useState<GroupInfo[]>(fallback);
   useEffect(() => {
-    supabase.from('groups').select('name').order('name')
-      .then(({ data }) => { if (data?.length) setGroups(data.map((g: { name: string }) => g.name)); });
+    supabase.from('groups').select('name, color, logo_url').order('name')
+      .then(({ data }) => {
+        if (data?.length) setGroups(data.map((g: { name: string; color: string; logo_url: string | null }) => ({
+          name: g.name, color: g.color ?? GROUP_COLORS[g.name] ?? '#1AAFFF', logo_url: g.logo_url ?? GROUP_LOGOS[g.name] ?? null,
+        })));
+      });
   }, []);
   return groups;
 }
@@ -78,7 +87,7 @@ function GroupSelect({ value, onChange, style }: { value: string; onChange: (v: 
   const groups = useGroups();
   return (
     <select value={value} onChange={e => onChange(e.target.value)} style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: `1px solid ${c.border}`, background: '#0D1829', color: c.text, fontSize: 13, fontFamily: 'inherit', outline: 'none', ...style }}>
-      {groups.map(g => <option key={g} value={g} style={{ background: '#0D1829' }}>{g}</option>)}
+      {groups.map(g => <option key={g.name} value={g.name} style={{ background: '#0D1829' }}>{g.name}</option>)}
     </select>
   );
 }
@@ -216,7 +225,7 @@ function ViewToggle({ mode, onChange }: { mode: 'grid' | 'list'; onChange: (m: '
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 function ViewDashboard({ liveUsers, setView }: { liveUsers: LiveUser[]; setView: (v: View) => void }) {
   const isMobile = useIsMobile();
-  const dbGroups = useGroups();  // grupos desde la BD (siempre actualizado)
+  const dbGroups = useGroups();  // grupos desde la BD con color + logo
   const nonAdmins = liveUsers.filter(u => u.role !== 'superadmin');
   return (
     <div>
@@ -253,14 +262,14 @@ function ViewDashboard({ liveUsers, setView }: { liveUsers: LiveUser[]; setView:
 
         {/* Group cards — dinámico desde la BD */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, alignContent: 'start' }}>
-          {dbGroups.map(g => {
-            const members = liveUsers.filter(u => u.group_name === g && u.role !== 'superadmin');
-            const col = GROUP_COLORS[g] ?? c.blue;
+          {dbGroups.map(gi => {
+            const members = liveUsers.filter(u => u.group_name === gi.name && u.role !== 'superadmin');
+            const col = gi.color ?? c.blue;
             return (
-              <div key={g} onClick={() => setView('grupos')} style={{ background: c.card, border: `1px solid ${col}33`, borderRadius: 12, padding: '14px 16px', cursor: 'pointer' }}>
+              <div key={gi.name} onClick={() => setView('grupos')} style={{ background: c.card, border: `1px solid ${col}33`, borderRadius: 12, padding: '14px 16px', cursor: 'pointer' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                  <GroupIcon group={g} size={22}/>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: c.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{g}</span>
+                  <GroupIcon group={gi.name} size={22} colorOverride={col} logoUrlOverride={gi.logo_url}/>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: c.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{gi.name}</span>
                 </div>
                 <div style={{ fontSize: 24, fontWeight: 800, color: col, lineHeight: 1, marginBottom: 4 }}>{members.length}</div>
                 <div style={{ fontSize: 11, color: c.muted }}>{members.length === 1 ? '1 usuario' : `${members.length} usuarios`}</div>
@@ -736,7 +745,7 @@ function EditPlayerModal({ entry, onClose, onSaved, onReload }: {
           <select value={group} onChange={e => setGroup(e.target.value)}
             style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: `1px solid ${c.border}`, background: '#0D1829', color: group ? c.text : c.muted, fontSize: 14, fontFamily: 'inherit', outline: 'none' }}>
             <option value="">— Sin grupo —</option>
-            {groups.map(g => <option key={g} value={g} style={{ background: '#0D1829' }}>{g}</option>)}
+            {groups.map(g => <option key={g.name} value={g.name} style={{ background: '#0D1829' }}>{g.name}</option>)}
           </select>
         </div>
 
@@ -1257,7 +1266,7 @@ function CreateUserModal({ onClose, onCreated }: { onClose: () => void; onCreate
           <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: c.muted, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 6 }}>Grupo</label>
           <select value={group} onChange={e => setGroup(e.target.value)}
             style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: `1px solid ${c.border}`, background: '#0D1829', color: c.text, fontSize: 14, fontFamily: 'inherit', outline: 'none' }}>
-            {groups.map(g => <option key={g} value={g} style={{ background: '#0D1829' }}>{g}</option>)}
+            {groups.map(g => <option key={g.name} value={g.name} style={{ background: '#0D1829' }}>{g.name}</option>)}
           </select>
         </div>
 
