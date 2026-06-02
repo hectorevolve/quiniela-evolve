@@ -593,6 +593,7 @@ function EditPlayerModal({ entry, onClose, onSaved, onReload }: {
 }) {
   const [name,        setName]        = useState(entry.name);
   const [group,       setGroup]       = useState(entry.group_name ?? '');
+  const [city,        setCity]        = useState(entry.city ?? '');
   const [powers,      setPowers]      = useState<string[]>(entry.used_powers ?? []);
   // ptsInput: raw text the admin types ("100", "+10", "-5", "10+10", etc.)
   const [ptsInput,    setPtsInput]    = useState<string>(String(entry.points));
@@ -600,6 +601,14 @@ function EditPlayerModal({ entry, onClose, onSaved, onReload }: {
   const [saving,      setSaving]      = useState(false);
   const [err,         setErr]         = useState<string | null>(null);
   const groups = useGroups();
+
+  // City options for dropdown
+  const CITIES = [
+    'Ciudad de México', 'Monterrey', 'Guadalajara', 'Puebla', 'Querétaro',
+    'Cancún', 'Mérida', 'Veracruz', 'Toluca', 'Cuernavaca', 'León',
+    'Aguascalientes', 'San Luis Potosí', 'Durango', 'Chihuahua', 'Hermosillo',
+    'La Paz', 'Mazatlán',
+  ];
 
   // matchPts comes directly from the ranking entry (computed server-side with service role)
   // so we never need to re-fetch bonus_awards via the anon client (which RLS would block).
@@ -638,6 +647,7 @@ function EditPlayerModal({ entry, onClose, onSaved, onReload }: {
           userId:        entry.userId,
           name:          name.trim() || entry.name,
           group_name:    group || null,
+          city:          city.trim() || null,
           used_powers:   powers,
           target_points: computedTotal,   // server computes correct bonus = target - match_pts
           bonus_reason:  bonusReason.trim() || null,
@@ -647,6 +657,7 @@ function EditPlayerModal({ entry, onClose, onSaved, onReload }: {
       onSaved({
         name:        name.trim() || entry.name,
         group_name:  group || null,
+        city:        city.trim() || null,
         used_powers: powers,
         points:      computedTotal,
         // matchPoints stays the same; bonusPoints = target - matchPts
@@ -702,6 +713,16 @@ function EditPlayerModal({ entry, onClose, onSaved, onReload }: {
             style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: `1px solid ${c.border}`, background: '#0D1829', color: group ? c.text : c.muted, fontSize: 14, fontFamily: 'inherit', outline: 'none' }}>
             <option value="">— Sin grupo —</option>
             {groups.map(g => <option key={g} value={g} style={{ background: '#0D1829' }}>{g}</option>)}
+          </select>
+        </div>
+
+        {/* City */}
+        <div style={{ marginBottom: 20 }}>
+          <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: c.muted, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 6 }}>Ciudad</label>
+          <select value={city} onChange={e => setCity(e.target.value)}
+            style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: `1px solid ${c.border}`, background: '#0D1829', color: city ? c.text : c.muted, fontSize: 14, fontFamily: 'inherit', outline: 'none' }}>
+            <option value="">— Sin ciudad —</option>
+            {CITIES.map(c => <option key={c} value={c} style={{ background: '#0D1829' }}>{c}</option>)}
           </select>
         </div>
 
@@ -3064,7 +3085,7 @@ function ViewUsuariosAdmin({ liveUsers, onUserCreated, onUserDeleted }: { liveUs
       const json = await res.json();
       if (!res.ok) { setError(json.error ?? 'Error al crear usuario.'); return; }
       setSuccess(`✓ Usuario "${name.trim()}" creado. Celular: ${normalizedPhone}`);
-      onUserCreated({ id: json.userId, name: name.trim(), email: null, phone: normalizedPhone, role, group_name: group, premium, used_powers: [] });
+      onUserCreated({ id: json.userId, name: name.trim(), email: null, phone: normalizedPhone, role, group_name: group, city: null, premium, used_powers: [] });
       resetForm();
     } catch { setError('Error de red. Verifica tu conexión.'); }
     finally { setLoading(false); }
@@ -3106,7 +3127,10 @@ function ViewUsuariosAdmin({ liveUsers, onUserCreated, onUserDeleted }: { liveUs
           <div key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: c.card, border: `1px solid ${c.border}`, borderRadius: 12, flexWrap: 'wrap' }}>
             <Avatar initials={(u.name.split(' ').map((w: string) => w[0]).slice(0,2).join('')).toUpperCase()} size={32}/>
             <div style={{ flex: 1, minWidth: 120 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: c.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{u.name}</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: c.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {u.name}
+                {u.city && <span style={{ marginLeft: 6, fontWeight: 400, fontSize: 12, color: c.muted }}>· {u.city}</span>}
+              </div>
               <div style={{ fontSize: 11, color: c.muted, marginTop: 2, fontFamily: 'monospace' }}>
                 {u.phone || u.email || <span style={{ fontStyle: 'italic', opacity: 0.5 }}>sin contacto</span>}
               </div>
@@ -3129,7 +3153,7 @@ function ViewUsuariosAdmin({ liveUsers, onUserCreated, onUserDeleted }: { liveUs
         <ImportModal
           onClose={() => setShowImport(false)}
           onDone={(created) => {
-            created.forEach(r => onUserCreated({ id: '', name: r.nombre, email: null, phone: r.telefono, role: 'user', group_name: r.grupo, premium: false, used_powers: [] }));
+            created.forEach(r => onUserCreated({ id: '', name: r.nombre, email: null, phone: r.telefono, role: 'user', group_name: r.grupo, city: r.ciudad || null, premium: false, used_powers: [] }));
             setShowImport(false);
           }}
         />
@@ -3401,7 +3425,7 @@ function ViewEncuesta() {
 }
 
 // ─── Celulares autorizados ────────────────────────────────────────────────────
-type AllowedPhone = { phone: string; name: string | null; group_name: string | null; premium: boolean; phone_type: string | null };
+type AllowedPhone = { phone: string; name: string | null; group_name: string | null; city: string | null; premium: boolean; phone_type: string | null };
 
 function ViewCelulares() {
   const [phones, setPhones]       = useState<AllowedPhone[]>([]);
@@ -3420,7 +3444,7 @@ function ViewCelulares() {
 
   const load = async () => {
     setLoadingList(true);
-    const { data } = await supabase.from('allowed_phones').select('phone, name, group_name, premium, phone_type').order('phone');
+    const { data } = await supabase.from('allowed_phones').select('phone, name, group_name, city, premium, phone_type').order('phone');
     setPhones((data ?? []) as AllowedPhone[]);
     setLoadingList(false);
   };
@@ -3513,7 +3537,8 @@ function ViewCelulares() {
           ? phones.filter(p =>
               p.phone.includes(q) ||
               (p.name ?? '').toLowerCase().includes(q) ||
-              (p.group_name ?? '').toLowerCase().includes(q)
+              (p.group_name ?? '').toLowerCase().includes(q) ||
+              (p.city ?? '').toLowerCase().includes(q)
             )
           : phones;
         return (
@@ -3525,7 +3550,14 @@ function ViewCelulares() {
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 600, color: c.text, fontFamily: 'monospace' }}>{p.phone}</div>
                 <div style={{ fontSize: 11, color: c.muted, marginTop: 2 }}>
-                  {p.name ?? <span style={{ fontStyle: 'italic' }}>Sin nombre</span>}
+                  {p.name ? (
+                    <>
+                      {p.name}
+                      {p.city && <span style={{ marginLeft: 4 }}>· <strong>{p.city}</strong></span>}
+                    </>
+                  ) : (
+                    <span style={{ fontStyle: 'italic' }}>Sin nombre{p.city && ` · ${p.city}`}</span>
+                  )}
                   {p.group_name && <span style={{ marginLeft: 8, padding: '1px 6px', borderRadius: 4, background: `${c.blue}22`, color: c.blue, fontSize: 10, fontWeight: 700 }}>{p.group_name}</span>}
                   {p.phone_type === 'personal' && <span style={{ marginLeft: 4, padding: '1px 6px', borderRadius: 4, background: 'rgba(245,158,11,0.15)', color: '#F59E0B', fontSize: 10, fontWeight: 700 }}>Personal</span>}
                   {p.premium && <span style={{ marginLeft: 4, padding: '1px 6px', borderRadius: 4, background: `${c.amber}22`, color: c.amber, fontSize: 10, fontWeight: 700 }}>PRO</span>}
@@ -3941,8 +3973,8 @@ function ImportModalCelulares({ onClose, onDone }: { onClose: () => void; onDone
 }
 
 // ─── Root ─────────────────────────────────────────────────────────────────────
-type LiveUser = { id: string; name: string; email: string | null; phone?: string | null; role: string; group_name: string | null; premium: boolean; used_powers: string[] };
-const liveUserToEntry = (u: LiveUser): RankingEntry => ({ userId: u.id, name: u.name, group_name: u.group_name, points: 0, matchPoints: 0, bonusPoints: 0, pos: 0, used_powers: u.used_powers ?? [] });
+type LiveUser = { id: string; name: string; email: string | null; phone?: string | null; role: string; group_name: string | null; city: string | null; premium: boolean; used_powers: string[] };
+const liveUserToEntry = (u: LiveUser): RankingEntry => ({ userId: u.id, name: u.name, group_name: u.group_name, city: null, points: 0, matchPoints: 0, bonusPoints: 0, pos: 0, used_powers: u.used_powers ?? [] });
 
 export default function AdminPage() {
   const isMobile = useIsMobile();
@@ -3967,7 +3999,7 @@ export default function AdminPage() {
   // Load real users from Supabase on mount
   useEffect(() => {
     if (authState !== 'allowed') return;
-    supabase.from('profiles').select('id, name, email, phone, role, group_name, premium, used_powers').order('created_at')
+    supabase.from('profiles').select('id, name, email, phone, role, group_name, city, premium, used_powers').order('created_at')
       .then(({ data }) => { if (data) setLiveUsers(data.map((u: LiveUser & { used_powers: string[] | null }) => ({ ...u, used_powers: u.used_powers ?? [] })) as LiveUser[]); });
   }, [authState]);
 

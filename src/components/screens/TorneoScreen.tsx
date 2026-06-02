@@ -18,6 +18,34 @@ import { WorldCupTrophy } from '@/components/trophy/WorldCupTrophy';
 
 const norm = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
+// City abbreviation mapping (same as API)
+const CITY_ABBREV: Record<string, string> = {
+  'Ciudad de México': 'CDMX', 'CDMX': 'CDMX', 'Ciudad México': 'CDMX', 'México': 'CDMX',
+  'Monterrey': 'MTY', 'Monterry': 'MTY',
+  'Guadalajara': 'GDL', 'Jalisco': 'GDL',
+  'Puebla': 'PUE',
+  'Querétaro': 'QRO',
+  'Cancún': 'CUN',
+  'Mérida': 'MID',
+  'Veracruz': 'VER',
+  'Toluca': 'TOL',
+  'Cuernavaca': 'CUE',
+  'León': 'LEN',
+  'Aguascalientes': 'AGS',
+  'San Luis Potosí': 'SLP',
+  'Durango': 'DGO',
+  'Chihuahua': 'CHH',
+  'Hermosillo': 'HMO',
+  'La Paz': 'LPZ',
+  'Mazatlán': 'MZT',
+};
+
+const getCityAbbrev = (city: string | null): string | null => {
+  if (!city) return null;
+  const trimmed = city.trim();
+  return CITY_ABBREV[trimmed] || trimmed.substring(0, 3).toUpperCase();
+};
+
 // Suppress click events that fire as a side-effect of scroll momentum
 let _lastScrollMs = 0;
 const markScrolled = () => { _lastScrollMs = Date.now(); };
@@ -37,6 +65,7 @@ interface Props {
   setSpyMatchId?: (id: string | null) => void;
   currentUser?: AppUser | null;
   matchDates?: Record<string, string>;
+  demoRankings?: RankingEntry[];   // presentación: inyecta ranking ficticio sin tocar la DB
 }
 
 type SubScreenName = 'puntos' | 'campeon' | 'goleador' | 'subcampeon' | 'tercero' | 'poder-double' | 'poder-late' | 'poder-spy';
@@ -131,7 +160,7 @@ function useMatchTimer(dateStr: string, apiStatus: string, apiDuration: string, 
   return state;
 }
 
-export function TorneoScreen({ goto, tweaks, fireToast, usedPowers, setUsedPowers, lateActiveMatchId, setLateActiveMatchId, spyMatchId, setSpyMatchId, currentUser, matchDates }: Props) {
+export function TorneoScreen({ goto, tweaks, fireToast, usedPowers, setUsedPowers, lateActiveMatchId, setLateActiveMatchId, spyMatchId, setSpyMatchId, currentUser, matchDates, demoRankings }: Props) {
   const displayUser = currentUser ?? USER;
   const displayName     = currentUser?.name       ?? USER.name;
   const displayGroup    = currentUser?.group_name  ?? USER.group;
@@ -146,9 +175,10 @@ export function TorneoScreen({ goto, tweaks, fireToast, usedPowers, setUsedPower
   const [goalPlayer,    setGoalPlayer]    = useState(() => loadBonus()?.goalPlayer ?? '');
 
   // Live rankings from Supabase — re-fetch every time the user opens the Ranking tab
-  const [liveRankings, setLiveRankings]     = useState<RankingEntry[]>([]);
+  const [liveRankings, setLiveRankings]     = useState<RankingEntry[]>(demoRankings ?? []);
   const [rankingsLoading, setRankingsLoading] = useState(false);
   const fetchRankings = () => {
+    if (demoRankings) { setLiveRankings(demoRankings); setRankingsLoading(false); return; } // presentación
     setRankingsLoading(true);
     getRankings()
       .then(data => setLiveRankings(data))
@@ -455,7 +485,7 @@ function TabPredicciones({ goto, tweaks, fireToast, usedPowers: usedPowersFromPa
     }
     if (kind === 'late') setLateActiveMatchId(match.id);
     setUsedPowers(prev => new Set([...prev, kind]));
-    savePowerUsed(kind).catch(console.error);
+    savePowerUsed(kind, match.id).catch(console.error);
     setModal(null);
     fireToast(`¡Poder "${kind === 'double' ? 'Puntos Dobles' : kind === 'late' ? 'Cambio Tardío' : 'Espía'}" activado!`, T.bgInk, '#fff');
   };
@@ -1194,6 +1224,8 @@ function TabRanking({ rankings, loading, userId, userName, userGroup, groupAccen
           const isMe = player.userId === userId;
           const rowName  = isMe ? userName : player.name;
           const rowGroup = subTab === 'nacional' ? (isMe ? userGroup : (player.group_name ?? '')) : undefined;
+          const cityAbbrev = getCityAbbrev(player.city);
+          const rowGroupWithCity = rowGroup && cityAbbrev ? `${rowGroup} · ${cityAbbrev}` : rowGroup;
           return (
             <div key={`${subTab}-${player.pos}`} style={{
               display: 'flex', alignItems: 'center', gap: 12,
@@ -1214,7 +1246,7 @@ function TabRanking({ rankings, loading, userId, userName, userGroup, groupAccen
                 <div style={{ fontSize: 13, fontWeight: isMe ? 700 : 600, color: T.ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {rowName}{isMe && <span style={{ fontSize: 10, color: groupAccent, marginLeft: 6, fontWeight: 700 }}>TÚ</span>}
                 </div>
-                {rowGroup && <div style={{ fontSize: 10.5, color: T.muted, marginTop: 2 }}>{rowGroup}</div>}
+                {rowGroupWithCity && <div style={{ fontSize: 10.5, color: T.muted, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis' }}>{rowGroupWithCity}</div>}
               </div>
               <div className="font-mono" style={{ fontSize: 13, fontWeight: 700, color: T.ink, flexShrink: 0 }}>{player.points} pts</div>
             </div>
@@ -1301,7 +1333,7 @@ function RankingPodium({ top3, visible, userRank, userName, userPoints, userId, 
                 </div>
                 {showGroup && player.group_name && (
                   <div style={{ fontSize: 8.5, color: T.muted, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {player.group_name}
+                    {getCityAbbrev(player.city) ? `${player.group_name} · ${getCityAbbrev(player.city)}` : player.group_name}
                   </div>
                 )}
               </div>

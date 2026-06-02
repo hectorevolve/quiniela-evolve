@@ -12,9 +12,12 @@ import { TorneoScreen } from '@/components/screens/TorneoScreen';
 import { DetalleScreen } from '@/components/screens/DetalleScreen';
 import { PerfilScreen } from '@/components/screens/PerfilScreen';
 import { PremiosScreen } from '@/components/screens/PremiosScreen';
+import { LoginScreen } from '@/components/screens/LoginScreen';
+import { OnboardingScreen } from '@/components/screens/OnboardingScreen';
+import { DEMO_RANKINGS, DEMO_STATS } from './demoData';
 import type { AppUser } from '@/lib/supabase';
 
-type Screen = 'torneo' | 'detalle' | 'perfil' | 'premios';
+type Screen = 'login' | 'onboarding' | 'torneo' | 'detalle' | 'perfil' | 'premios';
 interface ToastState { id: number; message: string; color?: string; textColor?: string }
 interface Tweaks {
   premium: boolean; filled: boolean; cumplido: boolean;
@@ -47,7 +50,7 @@ export default function DemoPage() {
   const [usedPowers, setUsedPowers]   = useState<Set<string>>(new Set());
   const [lateActiveMatchId, setLateActiveMatchId] = useState<string | null>(null);
   const [spyMatchId, setSpyMatchId]   = useState<string | null>(null);
-  const [panelOpen, setPanelOpen]     = useState(false);
+  const [panelOpen, setPanelOpen]     = useState(false);  // ← Panel cerrado por defecto
 
   const goto = useCallback((next: string, matchId?: string) => {
     if (matchId) setSelectedMatchId(matchId);
@@ -63,12 +66,16 @@ export default function DemoPage() {
 
   const renderScreen = () => {
     switch (screen) {
+      case 'login':
+        return <LoginScreen onLogin={(user: AppUser) => goto('onboarding')} />;
+      case 'onboarding':
+        return <OnboardingScreen onDone={() => goto('torneo')} />;
       case 'torneo':
         return <TorneoScreen goto={goto} tweaks={tweaks} fireToast={fireToast}
           usedPowers={usedPowers} setUsedPowers={setUsedPowers}
           lateActiveMatchId={lateActiveMatchId} setLateActiveMatchId={setLateActiveMatchId}
           spyMatchId={spyMatchId} setSpyMatchId={setSpyMatchId}
-          currentUser={DEMO_USER} matchDates={{}}/>;
+          currentUser={DEMO_USER} matchDates={{}} demoRankings={DEMO_RANKINGS}/>;
       case 'detalle':
         return <DetalleScreen goto={goto} tweaks={tweaks} fireToast={fireToast}
           matchId={selectedMatchId}
@@ -77,7 +84,7 @@ export default function DemoPage() {
           spyMatchId={spyMatchId} setSpyMatchId={setSpyMatchId}/>;
       case 'perfil':
         return <PerfilScreen goto={goto} tweaks={tweaks} fireToast={fireToast}
-          currentUser={DEMO_USER} onLogout={() => goto('torneo')}/>;
+          currentUser={DEMO_USER} onLogout={() => goto('torneo')} demoStats={DEMO_STATS}/>;
       case 'premios':
         return <PremiosScreen goto={goto} fireToast={fireToast}
           rank={tweaks.rank} currentUser={DEMO_USER}/>;
@@ -108,19 +115,22 @@ export default function DemoPage() {
 
       {/* Floating panel toggle button */}
       <button
+        id="demo-nav-toggle"
         onClick={() => setPanelOpen(o => !o)}
         style={{
           position: 'fixed', bottom: 24, right: 24, zIndex: 10000,
-          width: 52, height: 52, borderRadius: '50%',
-          background: panelOpen ? '#1AAFFF' : 'rgba(15,23,42,0.92)',
-          border: '1.5px solid rgba(26,175,255,0.4)',
-          color: '#fff', fontSize: 22, cursor: 'pointer',
+          width: 62, height: 62, borderRadius: '50%',
+          background: panelOpen ? '#EF4444' : '#1AAFFF',
+          border: 'none',
+          color: '#fff', fontSize: 28, cursor: 'pointer',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
-          transition: 'background 200ms',
+          boxShadow: '0 8px 24px rgba(26,175,255,0.4)',
+          transition: 'all 300ms ease',
+          fontWeight: 'bold',
         }}
+        title={panelOpen ? 'Cerrar panel' : 'Abrir panel de navegación'}
       >
-        {panelOpen ? '✕' : '🎮'}
+        {panelOpen ? '✕' : '☰'}
       </button>
 
       {/* Control panel overlay */}
@@ -140,33 +150,54 @@ function TweaksPanel({ tweaks, setTweaks, screen, goto }: {
   tweaks: Tweaks; setTweaks: React.Dispatch<React.SetStateAction<Tweaks>>;
   screen: string; goto: (s: string) => void;
 }) {
-  const screens: Screen[] = ['torneo', 'detalle', 'perfil', 'premios'];
+  const screens: Screen[] = ['login', 'onboarding', 'torneo', 'detalle', 'perfil', 'premios'];
   const simTimers = useRef<number[]>([]);
+
+  const screenLabels: Record<Screen, string> = {
+    login: '🔓 Login',
+    onboarding: '👋 Bienvenida/Onboarding',
+    torneo: '⚽ Torneo',
+    detalle: '🔍 Detalle partido',
+    perfil: '👤 Mi perfil',
+    premios: '🎖 Premios',
+  };
 
   return (
     <div style={{
-      background: 'rgba(15,23,42,0.92)', backdropFilter: 'blur(12px)',
-      border: '1px solid rgba(255,255,255,0.08)', borderRadius: 20,
-      padding: '20px 18px', width: 230, color: '#fff', maxHeight: '90vh', overflowY: 'auto',
+      background: 'linear-gradient(135deg, rgba(15,23,42,0.95) 0%, rgba(26,42,80,0.95) 100%)',
+      backdropFilter: 'blur(16px)',
+      border: '1px solid rgba(26,175,255,0.2)',
+      borderRadius: 24,
+      padding: '24px 16px',
+      width: 280,
+      color: '#fff',
+      maxHeight: '85vh',
+      overflowY: 'auto',
       fontFamily: 'var(--font-inter), system-ui, sans-serif',
-      boxShadow: '0 24px 64px rgba(0,0,0,0.6)',
+      boxShadow: '0 20px 60px rgba(0,0,0,0.8), 0 0 40px rgba(26,175,255,0.15)',
     }}>
-      <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1.5, color: 'rgba(255,255,255,0.4)', marginBottom: 16, textTransform: 'uppercase' }}>
-        🎮 Panel de Control
+      <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: 2, color: '#1AAFFF', marginBottom: 20, textTransform: 'uppercase', textAlign: 'center' }}>
+        🎮 Navegación
       </div>
 
-      <PanelSection label="Navegación"/>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 4 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 20 }}>
         {screens.map(s => (
           <button key={s} onClick={() => goto(s)} style={{
-            padding: '8px 12px',
-            background: screen === s ? 'rgba(26,175,255,0.18)' : 'transparent',
-            border: screen === s ? '1px solid rgba(26,175,255,0.45)' : '1px solid rgba(255,255,255,0.07)',
-            borderRadius: 9, color: screen === s ? '#1AAFFF' : 'rgba(255,255,255,0.7)',
-            fontSize: 12.5, fontWeight: screen === s ? 700 : 500, cursor: 'pointer',
-            textAlign: 'left', transition: 'all 150ms',
+            padding: '11px 14px',
+            background: screen === s ? 'rgba(26,175,255,0.25)' : 'rgba(255,255,255,0.05)',
+            border: screen === s ? '1.5px solid #1AAFFF' : '1px solid rgba(26,175,255,0.2)',
+            borderRadius: 11,
+            color: screen === s ? '#1AAFFF' : 'rgba(255,255,255,0.75)',
+            fontSize: 13,
+            fontWeight: screen === s ? 700 : 600,
+            cursor: 'pointer',
+            textAlign: 'center',
+            transition: 'all 150ms ease',
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
           }}>
-            {{ torneo: '⚽ Torneo', detalle: '🔍 Detalle partido', perfil: '👤 Mi perfil', premios: '🎖 Premios' }[s]}
+            {screenLabels[s]}
           </button>
         ))}
       </div>
