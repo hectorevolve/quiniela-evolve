@@ -17,8 +17,9 @@ export interface AppUser {
   group_name: string | null;
   premium: boolean;
   used_powers: string[];      // e.g. ['double', 'late']
-  late_match_id?: string | null;   // partido donde se activó Cambio Tardío (para restaurar al recargar)
-  double_match_id?: string | null; // partido donde se activó ×2
+  late_match_id?: string | null;    // partido donde se activó Cambio Tardío (para restaurar al recargar)
+  double_match_id?: string | null;  // partido donde se activó ×2
+  survey_completed?: boolean;        // encuesta de clima completada (gate de acceso a la quiniela)
 }
 
 /**

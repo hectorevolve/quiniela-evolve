@@ -2,7 +2,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { Phone, Toast, Preloader, MiniLoader } from '@/components/ui';
 import { LoginScreen } from '@/components/screens/LoginScreen';
-import { OnboardingScreen } from '@/components/screens/OnboardingScreen';
+import { SurveyScreen } from '@/components/screens/SurveyScreen';
 import { TorneoScreen } from '@/components/screens/TorneoScreen';
 import { DetalleScreen } from '@/components/screens/DetalleScreen';
 import { PerfilScreen } from '@/components/screens/PerfilScreen';
@@ -12,7 +12,7 @@ import { supabase, type AppUser } from '@/lib/supabase';
 import { getProfile, getMatchDates } from '@/lib/db';
 import { syncPredictionsFromDB, syncBonusFromDB } from '@/lib/predictions';
 
-type Screen = 'login' | 'onboarding' | 'torneo' | 'detalle' | 'perfil' | 'premios' | 'admin';
+type Screen = 'login' | 'survey' | 'torneo' | 'detalle' | 'perfil' | 'premios' | 'admin';
 interface ToastState { id: number; message: string; color?: string; textColor?: string }
 interface Tweaks { premium: boolean; filled: boolean; cumplido: boolean; liveMatch: boolean; liveMinute: number; liveHomeScore: number; liveAwayScore: number; pastMatch: boolean; rank: number; knockoutSlots: boolean }
 
@@ -68,7 +68,8 @@ export default function Home() {
               setLateActiveMatchId(profile.late_match_id);
             }
             setCurrentUser(profile);
-            setScreen('torneo');
+            // Gate de encuesta: si no la completó, mostrar antes de la quiniela
+            setScreen(profile.survey_completed ? 'torneo' : 'survey');
           }
         }
       } catch (err) {
@@ -107,9 +108,12 @@ export default function Home() {
     setCurrentUser(user);
     // Restore used powers from profile
     setUsedPowers(new Set(user.used_powers ?? []));
+    // Restaura el partido del Cambio Tardío si lo usó antes
+    if (user.late_match_id) setLateActiveMatchId(user.late_match_id);
     // Load official match dates from Supabase (updated by sync-results cron)
     getMatchDates().then(setMatchDates).catch(console.error);
-    goto('torneo');
+    // Gate de encuesta: primera vez que entran deben completarla
+    goto(user.survey_completed ? 'torneo' : 'survey');
   }, [goto]);
 
   const handleLogout = useCallback(async () => {
@@ -123,8 +127,12 @@ export default function Home() {
     switch (screen) {
       case 'login':
         return <LoginScreen onLogin={handleLogin} blocked={DEV_TWEAKS ? !tweaks.cumplido : false}/>;
-      case 'onboarding':
-        return <OnboardingScreen onDone={() => goto('torneo')}/>;
+      case 'survey':
+        return <SurveyScreen userName={currentUser?.name} onDone={async () => {
+          // survey_completed ya se marcó en el backend — actualizar estado local
+          if (currentUser) setCurrentUser({ ...currentUser, survey_completed: true });
+          goto('torneo');
+        }}/>;
       case 'torneo':
         return <TorneoScreen goto={goto} tweaks={tweaks} fireToast={fireToast}
           usedPowers={usedPowers} setUsedPowers={setUsedPowers}
@@ -186,7 +194,7 @@ function TweaksPanel({ tweaks, setTweaks, screen, goto, onReplay }: {
   tweaks: Tweaks; setTweaks: React.Dispatch<React.SetStateAction<Tweaks>>;
   screen: string; goto: (s: string) => void; onReplay: () => void;
 }) {
-  const screens: Screen[] = ['login', 'onboarding', 'torneo', 'detalle', 'perfil', 'premios'];
+  const screens: Screen[] = ['login', 'survey', 'torneo', 'detalle', 'perfil', 'premios'];
   const simTimers = useRef<number[]>([]);
   return (
     <div style={{
