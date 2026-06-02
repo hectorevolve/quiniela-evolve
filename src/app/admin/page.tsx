@@ -3807,8 +3807,16 @@ function ImportModalCelulares({ onClose, onDone }: { onClose: () => void; onDone
         const nombre  = findCol(r, 'nombre', 'name');
         const numero  = findCol(r, 'numero', 'num', '#');
         const ciudad  = findCol(r, 'ciudad', 'city', 'localidad', 'estado', 'municipio');
-        // Group from "Cuenta" first, then "Grupo", then default
-        const grupo   = findCol(r, 'cuenta', 'account', 'grupo', 'group') || defaultGroup;
+        // Group from "Cuenta" first, then "Grupo", then default.
+        // Normaliza mayúsculas/variantes del Excel al nombre exacto de la app.
+        const GRUPO_MAP: Record<string, string> = {
+          'HANES': 'Hanes', 'ZURU': 'Zuru', 'RUZ': 'Ruz',
+          'BEPENSA': 'BEPENSA Spirits', 'BEPENSA SPIRITS': 'BEPENSA Spirits',
+          'DISNEY': 'Disney', 'ADM': 'ADM', 'AJEMEX': 'AJEMEX',
+          'EVOLVE': 'Evolve',
+        };
+        const rawGrupo = findCol(r, 'cuenta', 'account', 'grupo', 'group');
+        const grupo    = GRUPO_MAP[rawGrupo.toUpperCase().trim()] ?? rawGrupo ?? defaultGroup;
 
         // Phone priority: laboral → personal → generic
         const rawLaboral  = findLaboral(r);
