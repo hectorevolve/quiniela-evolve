@@ -40,7 +40,9 @@ export async function requireAdmin(req: import('next/server').NextRequest): Prom
   if (error || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const admin = getAdminClient();
   const { data: profile } = await admin.from('profiles').select('role').eq('id', user.id).single();
-  if (profile?.role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  if (profile?.role !== 'admin' && profile?.role !== 'superadmin') {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
   return null;
 }
 
