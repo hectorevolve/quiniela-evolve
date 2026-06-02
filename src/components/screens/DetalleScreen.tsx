@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useMemo } from 'react';
 import { theme as T } from '@/lib/theme';
-import { MATCHES, H2H_DATA, H2H_PRED, DEMO_LIVE_MATCH, isMatchStarted, isMatchOver45Min, type H2HEntry } from '@/lib/data';
+import { MATCHES, H2H_DATA, H2H_PRED, DEMO_LIVE_MATCH, isMatchStarted, isMatchOver45Min, isMatchStartedEx, isMatchOver45MinEx, type H2HEntry } from '@/lib/data';
 import { getMatchH2H, savePowerUsed, type H2HRow } from '@/lib/db';
 import { loadPrediction, savePrediction } from '@/lib/predictions';
 import { SpyModal } from '@/components/screens/SpyModal';
@@ -20,11 +20,12 @@ interface Props {
   setLateActiveMatchId?: (id: string | null) => void;
   spyMatchId?: string | null;
   setSpyMatchId?: (id: string | null) => void;
+  matchDates?: Record<string, string>; // ISO UTC de la DB — para bloquear poderes con precisión
 }
 
 type EditMode = 'empty' | 'editing' | 'saved';
 
-export function DetalleScreen({ goto, tweaks, fireToast, matchId, usedPowers: usedPowersFromParent, setUsedPowers: setUsedPowersFromParent, lateActiveMatchId: lateActiveMatchIdFromParent, setLateActiveMatchId: setLateActiveMatchIdFromParent, spyMatchId: spyMatchIdFromParent, setSpyMatchId: setSpyMatchIdFromParent }: Props) {
+export function DetalleScreen({ goto, tweaks, fireToast, matchId, usedPowers: usedPowersFromParent, setUsedPowers: setUsedPowersFromParent, lateActiveMatchId: lateActiveMatchIdFromParent, setLateActiveMatchId: setLateActiveMatchIdFromParent, spyMatchId: spyMatchIdFromParent, setSpyMatchId: setSpyMatchIdFromParent, matchDates }: Props) {
   const match = MATCHES.find(m => m.id === matchId) ?? MATCHES[0];
 
   // Always open in editing mode so the user can input immediately
@@ -55,8 +56,9 @@ export function DetalleScreen({ goto, tweaks, fireToast, matchId, usedPowers: us
   const lateActive = lateActiveMatchId === match.id;
 
   const liveMinute = tweaks.liveMinute ?? DEMO_LIVE_MATCH.minute;
-  const matchStarted = isMatchStarted(match.date) || (tweaks.liveMatch && match.id === DEMO_LIVE_MATCH.matchId);
-  const matchOver45  = isMatchOver45Min(match.date) || (tweaks.liveMatch && match.id === DEMO_LIVE_MATCH.matchId && (liveMinute ?? 0) >= 45);
+  // Usa la fecha ISO UTC de la DB (matchDates) si está disponible, con fallback al string localizado
+  const matchStarted = isMatchStartedEx(matchDates?.[match.id], match.date) || (tweaks.liveMatch && match.id === DEMO_LIVE_MATCH.matchId);
+  const matchOver45  = isMatchOver45MinEx(matchDates?.[match.id], match.date) || (tweaks.liveMatch && match.id === DEMO_LIVE_MATCH.matchId && (liveMinute ?? 0) >= 45);
   const spyUsed = spyMatchId === match.id;
   const spyUsedElsewhere = usedPowers.has('spy') && !spyUsed;
   const doubleLocked = matchStarted && !usedPowers.has('double') && !lateActive;
@@ -78,8 +80,8 @@ export function DetalleScreen({ goto, tweaks, fireToast, matchId, usedPowers: us
   const confirmPower = () => {
     if (!modal) return;
     setUsedPowers(prev => new Set([...prev, modal]));
-    // Para el ×2 hay que registrar EN QUÉ partido se usó, para duplicar sus puntos en el ranking
-    savePowerUsed(modal, modal === 'double' ? match.id : undefined).catch(console.error);
+    // Para ×2 (duplica puntos) y late (restaura al recargar) se guarda en qué partido
+    savePowerUsed(modal, (modal === 'double' || modal === 'late') ? match.id : undefined).catch(console.error);
     if (modal === 'late') setLateActiveMatchId(match.id);
     setModal(null);
     fireToast('¡Poder activado!', T.bgInk, '#fff');

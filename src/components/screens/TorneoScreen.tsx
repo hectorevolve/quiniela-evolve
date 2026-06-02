@@ -526,7 +526,8 @@ function TabPredicciones({ goto, tweaks, fireToast, usedPowers: usedPowersFromPa
     }
     if (kind === 'late') setLateActiveMatchId(match.id);
     setUsedPowers(prev => new Set([...prev, kind]));
-    savePowerUsed(kind, match.id).catch(console.error);
+    // Pasa el matchId para ×2 (duplica puntos) y late (restaura al recargar)
+    savePowerUsed(kind, (kind === 'double' || kind === 'late') ? match.id : undefined).catch(console.error);
     setModal(null);
     fireToast(`¡Poder "${kind === 'double' ? 'Puntos Dobles' : kind === 'late' ? 'Cambio Tardío' : 'Espía'}" activado!`, T.bgInk, '#fff');
   };

@@ -50,7 +50,8 @@ export function PremiosScreen({ goto, rank, currentUser, demoTiers }: Props) {
 
   // El tramo cuyo rango incluye la posición del usuario
   const userTier = tiers.find(t => rank >= t.from && rank <= t.to) ?? null;
-  // Cuántos lugares premian en total (para el texto del hero)
+  // Lugares cubiertos por al menos un tramo (para el texto del hero)
+  const coveredPlaces = tiers.reduce((sum, t) => sum + (t.to - t.from + 1), 0);
   const maxPlace = tiers.reduce((m, t) => Math.max(m, t.to), 0);
 
   return (
@@ -66,7 +67,9 @@ export function PremiosScreen({ goto, rank, currentUser, demoTiers }: Props) {
         }}>
           <div style={{ fontSize: 48, marginBottom: 8 }}>🏆</div>
           <div className="font-display" style={{ fontSize: 22, fontWeight: 800, color: '#fff', marginBottom: 6 }}>
-            {maxPlace > 0 ? `Los mejores ${maxPlace} ganan` : 'Premios del torneo'}
+            {coveredPlaces > 0
+            ? (coveredPlaces === maxPlace ? `Los mejores ${maxPlace} ganan` : `Hasta el lugar #${maxPlace} hay premios`)
+            : 'Premios del torneo'}
           </div>
           <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.55)', lineHeight: 1.6, marginBottom: 16 }}>
             Los participantes con más puntos al finalizar el Torneo 2026 reciben un reconocimiento exclusivo del Programa de Lealtad Evolve.

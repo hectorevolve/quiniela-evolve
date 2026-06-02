@@ -6,7 +6,7 @@ import { calcPoints } from './points';
 export async function getProfile(userId: string): Promise<AppUser | null> {
   const { data, error } = await supabase
     .from('profiles')
-    .select('id, name, email, phone, role, group_name, premium, used_powers')
+    .select('id, name, email, phone, role, group_name, premium, used_powers, late_match_id, double_match_id')
     .eq('id', userId)
     .single();
   if (error) { console.error('[db] getProfile:', error.message); return null; }
@@ -25,14 +25,16 @@ export async function savePowerUsed(power: string, matchId?: string): Promise<vo
   const { data } = await supabase.from('profiles').select('used_powers').eq('id', userId).single();
   const current: string[] = data?.used_powers ?? [];
   const nextPowers = current.includes(power) ? current : [...current, power];
-  if (power === 'double' && matchId) {
-    // Intenta guardar también el partido del ×2. Si la columna aún no existe
-    // (migración pendiente), reintenta sin ella para no romper la activación.
-    const { error } = await supabase
-      .from('profiles')
-      .update({ used_powers: nextPowers, double_match_id: matchId })
-      .eq('id', userId);
+  if ((power === 'double' || power === 'late') && matchId) {
+    // Para ×2: no sobrescribir double_match_id si ya fue asignado (protege contra race condition)
+    // Para late: guardar en qué partido se usó para restaurarlo al recargar la sesión
+    const field = power === 'double' ? 'double_match_id' : 'late_match_id';
+    const condition = power === 'double'
+      ? supabase.from('profiles').update({ used_powers: nextPowers, [field]: matchId }).eq('id', userId).is('double_match_id', null)
+      : supabase.from('profiles').update({ used_powers: nextPowers, [field]: matchId }).eq('id', userId);
+    const { error } = await condition;
     if (error) {
+      // Columna aún no existe (migración pendiente): guarda solo el poder
       await supabase.from('profiles').update({ used_powers: nextPowers }).eq('id', userId);
     }
   } else {

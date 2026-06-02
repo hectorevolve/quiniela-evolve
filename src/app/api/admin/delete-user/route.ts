@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAdminClient } from '@/lib/server-session';
+import { getAdminClient, requireAdmin } from '@/lib/server-session';
 
 export async function POST(req: NextRequest) {
+  const _authErr = await requireAdmin(req); if (_authErr) return _authErr;
   const { userId } = await req.json() as { userId: string };
   if (!userId) return NextResponse.json({ error: 'missing userId' }, { status: 400 });
 

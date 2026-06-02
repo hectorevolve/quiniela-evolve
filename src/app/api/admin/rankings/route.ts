@@ -1,5 +1,5 @@
-import { NextResponse } from 'next/server';
-import { getAdminClient } from '@/lib/server-session';
+import { NextRequest, NextResponse } from 'next/server';
+import { getAdminClient, requireAdmin } from '@/lib/server-session';
 import { calcPoints } from '@/lib/points';
 
 export interface AdminRankingEntry {
@@ -19,11 +19,12 @@ export interface AdminRankingEntry {
  * Returns rankings computed server-side using the admin client (bypasses RLS).
  * This ensures bonus_awards and all tables are fully readable regardless of RLS policies.
  */
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const _authErr = await requireAdmin(req); if (_authErr) return _authErr;
   const admin = getAdminClient();
 
   const [profilesRes, predsRes, resultsRes, bonusRes] = await Promise.all([
-    admin.from('profiles').select('id, name, group_name, city, used_powers').neq('role', 'superadmin'),
+    admin.from('profiles').select('id, name, group_name, city, used_powers').not('role', 'in', '("admin","superadmin")'),
     admin.from('predictions').select('user_id, match_id, home_score, away_score'),
     admin.from('matches').select('id, result_home, result_away, group_name').not('result_home', 'is', null),
     admin.from('bonus_awards').select('user_id, points'),

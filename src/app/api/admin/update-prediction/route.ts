@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAdminClient } from '@/lib/server-session';
+import { getAdminClient, requireAdmin } from '@/lib/server-session';
 
 /**
  * Admin-only: upsert or delete a prediction for any user.
@@ -7,6 +7,7 @@ import { getAdminClient } from '@/lib/server-session';
  * If homeScore and awayScore are null → deletes the prediction.
  */
 export async function POST(req: NextRequest) {
+  const _authErr = await requireAdmin(req); if (_authErr) return _authErr;
   const admin = getAdminClient();
   const body = await req.json() as {
     userId: string;

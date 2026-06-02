@@ -81,7 +81,8 @@ export default function DemoPage() {
           matchId={selectedMatchId}
           usedPowers={usedPowers} setUsedPowers={setUsedPowers}
           lateActiveMatchId={lateActiveMatchId} setLateActiveMatchId={setLateActiveMatchId}
-          spyMatchId={spyMatchId} setSpyMatchId={setSpyMatchId}/>;
+          spyMatchId={spyMatchId} setSpyMatchId={setSpyMatchId}
+          matchDates={{}}/>;
       case 'perfil':
         return <PerfilScreen goto={goto} tweaks={tweaks} fireToast={fireToast}
           currentUser={DEMO_USER} onLogout={() => goto('torneo')} demoStats={DEMO_STATS}/>;

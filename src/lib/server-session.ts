@@ -20,6 +20,30 @@ export function getAdminClient(): SupabaseClient {
   return _adminClient;
 }
 
+/**
+ * Verifica que el request tenga un Bearer token válido de un usuario con rol 'admin'.
+ * Retorna null si pasa; retorna un NextResponse con 401/403 si falla.
+ * Uso: `const authErr = await requireAdmin(req); if (authErr) return authErr;`
+ */
+export async function requireAdmin(req: import('next/server').NextRequest): Promise<import('next/server').NextResponse | null> {
+  const { NextResponse } = await import('next/server');
+  const authHeader = req.headers.get('authorization');
+  if (!authHeader?.startsWith('Bearer ')) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+  const token = authHeader.slice(7);
+  const anon = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co',
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-anon-key',
+  );
+  const { data: { user }, error } = await anon.auth.getUser(token);
+  if (error || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const admin = getAdminClient();
+  const { data: profile } = await admin.from('profiles').select('role').eq('id', user.id).single();
+  if (profile?.role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  return null;
+}
+
 /** Normalize any phone string to exactly 10 MX digits. Returns null if unrecognizable. */
 export function to10Digits(phone: string): string | null {
   const d = phone.replace(/\D/g, '');

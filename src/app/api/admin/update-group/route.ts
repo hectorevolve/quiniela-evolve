@@ -1,3 +1,5 @@
+import { NextRequest } from 'next/server';
+import { requireAdmin } from '@/lib/server-session';
 /**
  * POST /api/admin/update-group
  * Updates a group's name, color and logo_url using the service-role client (bypasses RLS).
@@ -5,7 +7,8 @@
 import { NextResponse } from 'next/server';
 import { getAdminClient } from '@/lib/server-session';
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
+  const _authErr = await requireAdmin(req); if (_authErr) return _authErr;
   const admin = getAdminClient();
   const body = await req.json() as {
     id: number;

@@ -10,6 +10,19 @@ import { supabase } from '@/lib/supabase';
 import { getRankings, type RankingEntry, getMatchResults, saveMatchResult, getMatches, updateMatch, createMatch, deleteMatch, type DBMatch, type PrizeTier, prizeTierLabel } from '@/lib/db';
 
 type View = 'dashboard' | 'encuesta' | 'celulares' | 'usuarios' | 'rankings' | 'predicciones' | 'partidos' | 'grupos' | 'grupo-detalle' | 'grupos-config';
+
+/**
+ * Wrapper de fetch que agrega automáticamente el Bearer token de la sesión activa.
+ * Úsalo en lugar de fetch() para todas las llamadas a /api/admin/*.
+ */
+async function adminFetch(url: string, opts: RequestInit = {}): Promise<Response> {
+  const { data: { session } } = await (await import('@/lib/supabase')).supabase.auth.getSession();
+  const token = session?.access_token ?? '';
+  const headers = new Headers(opts.headers as HeadersInit | undefined);
+  headers.set('Content-Type', 'application/json');
+  if (token) headers.set('Authorization', `Bearer ${token}`);
+  return fetch(url, { ...opts, headers });
+}
 type AdminUser = { name: string; pts: number; group: string; city: string; pos: number; country: string };
 type AdminMatch = typeof MATCHES[number];
 
@@ -640,7 +653,7 @@ function EditPlayerModal({ entry, onClose, onSaved, onReload }: {
   const handleSave = async () => {
     setSaving(true); setErr(null);
     try {
-      const res = await fetch('/api/admin/update-player', {
+      const res = await adminFetch('/api/admin/update-player', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -842,7 +855,7 @@ function UserPredictionsModal({ entry, onClose }: { entry: RankingEntry; onClose
     const results2: string[] = [];
     for (const matchId of toSave) {
       const p = preds[matchId];
-      const res = await fetch('/api/admin/update-prediction', {
+      const res = await adminFetch('/api/admin/update-prediction', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: entry.userId, matchId, homeScore: p.home, awayScore: p.away }),
@@ -992,7 +1005,7 @@ function ViewRankings() {
   const reload = () => {
     setLoading(true);
     // /api/admin/rankings uses service-role client (bypasses RLS) and has NO CDN cache
-    fetch('/api/admin/rankings', { cache: 'no-store' })
+    adminFetch('/api/admin/rankings', { cache: 'no-store' })
       .then(r => r.json())
       .then(setRankings)
       .catch(console.error)
@@ -1016,7 +1029,7 @@ function ViewRankings() {
     if (!deleteUser) return;
     setDeletingUser(true); setDeleteUserErr(null);
     try {
-      const res = await fetch('/api/admin/delete-user', {
+      const res = await adminFetch('/api/admin/delete-user', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: deleteUser.userId }),
@@ -1190,7 +1203,7 @@ function CreateUserModal({ onClose, onCreated }: { onClose: () => void; onCreate
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) { setError('Sin sesión activa.'); return; }
-      const res = await fetch('/api/admin/create-user', {
+      const res = await adminFetch('/api/admin/create-user', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
         body: JSON.stringify({ name: name.trim(), phone: normalizedPhone, group_name: group, role, premium: false }),
@@ -1653,7 +1666,7 @@ function ViewPartidos() {
     setDeleting(true);
     setDeleteError(null);
     try {
-      const res = await fetch('/api/admin/delete-match', {
+      const res = await adminFetch('/api/admin/delete-match', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ matchId: deleteTarget.id }),
@@ -1682,7 +1695,7 @@ function ViewPartidos() {
     setSaving(matchId);
     await saveMatchResult(matchId, h, a);
     // Bust the user-facing rankings cache so the new result is reflected immediately
-    fetch('/api/admin/revalidate-rankings', { method: 'POST' }).catch(() => {});
+    adminFetch('/api/admin/revalidate-rankings', { method: 'POST' }).catch(() => {});
     setResults(prev => ({ ...prev, [matchId]: [h, a] }));
     setDrafts(prev => ({ ...prev, [matchId]: { home: '', away: '' } }));
     setSaving(null);
@@ -1690,7 +1703,7 @@ function ViewPartidos() {
 
   const clearResult = async (matchId: string) => {
     await saveMatchResult(matchId, null, null);
-    fetch('/api/admin/revalidate-rankings', { method: 'POST' }).catch(() => {});
+    adminFetch('/api/admin/revalidate-rankings', { method: 'POST' }).catch(() => {});
     setResults(prev => { const n = { ...prev }; delete n[matchId]; return n; });
     setDrafts(prev => ({ ...prev, [matchId]: { home: '', away: '' } }));
   };
@@ -1723,7 +1736,7 @@ function ViewPartidos() {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) { setSeedH2HMsg('⚠ Sin sesión'); return; }
-      const res = await fetch('/api/admin/seed-h2h', {
+      const res = await adminFetch('/api/admin/seed-h2h', {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${session.access_token}` },
       });
@@ -2141,7 +2154,7 @@ function ViewGrupoDetalle({ group, liveUsers, onBack, onUserUpdated, onUserRemov
     if (!deleteEntry) return;
     setDeletingUser(true); setDeleteErr(null);
     try {
-      const res = await fetch('/api/admin/delete-user', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: deleteEntry.id }) });
+      const res = await adminFetch('/api/admin/delete-user', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: deleteEntry.id }) });
       if (!res.ok) { const d = await res.json(); setDeleteErr(d.error ?? 'Error'); setDeletingUser(false); return; }
       onUserRemoved(deleteEntry.id);
       setDeleteEntry(null);
@@ -2377,7 +2390,16 @@ function ViewGrupoDetalle({ group, liveUsers, onBack, onUserUpdated, onUserRemov
       {/* Edit / Preds / Delete modals */}
       {editEntry && (
         <EditPlayerModal entry={editEntry} onClose={() => setEditEntry(null)}
-          onSaved={updated => { if (updated.name || updated.group_name !== undefined) onUserUpdated({ ...members.find(m => m.id === editEntry.userId)!, ...(updated.name ? { name: updated.name } : {}), ...(updated.group_name !== undefined ? { group_name: updated.group_name } : {}) }); }}
+          onSaved={updated => {
+            const base = members.find(m => m.id === editEntry.userId)!;
+            onUserUpdated({
+              ...base,
+              ...(updated.name        ? { name: updated.name }               : {}),
+              ...(updated.group_name  !== undefined ? { group_name: updated.group_name }   : {}),
+              ...(updated.city        !== undefined ? { city: updated.city }               : {}),
+              ...(updated.used_powers !== undefined ? { used_powers: updated.used_powers } : {}),
+            });
+          }}
           onReload={() => {}}/>
       )}
       {predsEntry && <UserPredictionsModal entry={predsEntry} onClose={() => setPredsEntry(null)}/>}
@@ -2460,7 +2482,7 @@ function ViewGruposConfig({ onSelectGroup, onBack }: { onSelectGroup: (g: string
       old_name: editing.name,
     };
     if (newLogoUrl !== undefined) body.logo_url = newLogoUrl;
-    const res = await fetch('/api/admin/update-group', {
+    const res = await adminFetch('/api/admin/update-group', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -2846,7 +2868,7 @@ function ImportModal({ onClose, onDone }: {
         continue;
       }
       try {
-        const res = await fetch('/api/admin/create-user', {
+        const res = await adminFetch('/api/admin/create-user', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
           body: JSON.stringify({ name: row.nombre || row.telefono, phone: row.telefono, group_name: row.grupo, role: 'user', premium }),
@@ -3116,7 +3138,7 @@ function ViewUsuariosAdmin({ liveUsers, onUserCreated, onUserDeleted, onUserUpda
     if (!deleteEntry) return;
     setDeletingUser(true); setDeleteErr(null);
     try {
-      const res = await fetch('/api/admin/delete-user', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: deleteEntry.id }) });
+      const res = await adminFetch('/api/admin/delete-user', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: deleteEntry.id }) });
       if (!res.ok) { const d = await res.json(); setDeleteErr(d.error ?? 'Error'); setDeletingUser(false); return; }
       onUserDeleted?.(deleteEntry.id);
       setDeleteEntry(null);
@@ -3134,7 +3156,7 @@ function ViewUsuariosAdmin({ liveUsers, onUserCreated, onUserDeleted, onUserUpda
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) { setError('No hay sesión activa. Inicia sesión primero.'); return; }
-      const res = await fetch('/api/admin/create-user', {
+      const res = await adminFetch('/api/admin/create-user', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
         body: JSON.stringify({ name: name.trim(), phone: normalizedPhone, group_name: group, role, premium }),
@@ -3529,7 +3551,7 @@ function ViewCelulares() {
     if (digits.length < 10) { setErr('Número inválido (10 dígitos).'); return; }
     setSaving(true); setErr(null); setOk(null);
     const token = await getToken();
-    const res = await fetch('/api/admin/allow-phone', {
+    const res = await adminFetch('/api/admin/allow-phone', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ phone: digits, name: newName || null, group_name: newGroup, premium: newPremium }),
@@ -3546,7 +3568,7 @@ function ViewCelulares() {
     if (!confirm(`¿Eliminar ${phone} del whitelist?`)) return;
     setDeleting(phone);
     const token = await getToken();
-    await fetch('/api/admin/allow-phone', {
+    await adminFetch('/api/admin/allow-phone', {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ phone }),
@@ -3832,7 +3854,7 @@ function ImportModalCelulares({ onClose, onDone }: { onClose: () => void; onDone
     let done = 0;
     for (let i = 0; i < all.length; i += CHUNK) {
       const chunk = all.slice(i, i + CHUNK);
-      await fetch('/api/admin/allow-phones-bulk', {
+      await adminFetch('/api/admin/allow-phones-bulk', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
         body: JSON.stringify({ rows: chunk.map(rowPayload) }),
@@ -3848,7 +3870,7 @@ function ImportModalCelulares({ onClose, onDone }: { onClose: () => void; onDone
     let totalSkipped = 0;
     for (let i = 0; i < all.length; i += CHUNK) {
       const chunk = all.slice(i, i + CHUNK);
-      const res = await fetch('/api/admin/bulk-create-users', {
+      const res = await adminFetch('/api/admin/bulk-create-users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
         body: JSON.stringify({ rows: chunk.map(rowPayload) }),
