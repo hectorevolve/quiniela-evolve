@@ -1223,9 +1223,12 @@ function TabRanking({ rankings, loading, userId, userName, userGroup, groupAccen
         {windowRows.map((player) => {
           const isMe = player.userId === userId;
           const rowName  = isMe ? userName : player.name;
-          const rowGroup = subTab === 'nacional' ? (isMe ? userGroup : (player.group_name ?? '')) : undefined;
           const cityAbbrev = getCityAbbrev(player.city);
-          const rowGroupWithCity = rowGroup && cityAbbrev ? `${rowGroup} · ${cityAbbrev}` : rowGroup;
+          const rowGroup = subTab === 'nacional' ? (isMe ? userGroup : (player.group_name ?? '')) : undefined;
+          // "Nacional": grupo · ciudad — "Mi grupo": solo la ciudad (el grupo es el mismo)
+          const rowGroupWithCity = subTab === 'nacional'
+            ? ([rowGroup, cityAbbrev].filter(Boolean).join(' · ') || undefined)
+            : (cityAbbrev || undefined);
           return (
             <div key={`${subTab}-${player.pos}`} style={{
               display: 'flex', alignItems: 'center', gap: 12,
@@ -1331,11 +1334,18 @@ function RankingPodium({ top3, visible, userRank, userName, userPoints, userId, 
                   {player.userId === userId ? userName.split(' ')[0] : player.name.split(' ')[0]}
                   {player.userId === userId ? <span style={{ color: groupAccent }}> (tú)</span> : null}
                 </div>
-                {showGroup && player.group_name && (
-                  <div style={{ fontSize: 8.5, color: T.muted, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {getCityAbbrev(player.city) ? `${player.group_name} · ${getCityAbbrev(player.city)}` : player.group_name}
-                  </div>
-                )}
+                {(() => {
+                  // "Nacional": grupo · ciudad — "Mi grupo": solo ciudad
+                  const cityAbbrev = getCityAbbrev(player.city);
+                  const sub = showGroup
+                    ? ([player.group_name, cityAbbrev].filter(Boolean).join(' · ') || null)
+                    : (cityAbbrev || null);
+                  return sub ? (
+                    <div style={{ fontSize: 8.5, color: T.muted, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {sub}
+                    </div>
+                  ) : null;
+                })()}
               </div>
 
               {/* Platform */}

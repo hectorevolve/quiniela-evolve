@@ -45,6 +45,7 @@ export async function POST(req: NextRequest) {
     phone: string;
     name: string;
     group_name?: string;
+    city?: string | null;
     premium?: boolean;
     role?: string;
   };
@@ -62,6 +63,23 @@ export async function POST(req: NextRequest) {
     digits.length === 13 && digits.startsWith('152') ? digits.slice(3) :
     digits.slice(-10);
   const internalEmail = `${phone10}@auth.quinielaevolve.mx`;
+
+  // Inherit city (and group, if not provided) from the authorized phone whitelist.
+  // Match on the last 10 digits to be robust to +52 / formatting differences.
+  let inheritedCity: string | null = body.city ?? null;
+  let inheritedGroup: string | null = group_name ?? null;
+  {
+    const { data: apRows } = await supabaseAdmin
+      .from('allowed_phones')
+      .select('city, group_name')
+      .ilike('phone', `%${phone10}`)
+      .limit(1);
+    const ap = apRows?.[0] as { city: string | null; group_name: string | null } | undefined;
+    if (ap) {
+      if (!inheritedCity)  inheritedCity  = ap.city ?? null;
+      if (!inheritedGroup) inheritedGroup = ap.group_name ?? null;
+    }
+  }
 
   // Create auth user: phone + internal email (both pre-confirmed for immediate login)
   const { data: newUser, error: createErr } = await supabaseAdmin.auth.admin.createUser({
@@ -81,7 +99,8 @@ export async function POST(req: NextRequest) {
     email:      internalEmail,
     phone,
     role,
-    group_name: group_name ?? null,
+    group_name: inheritedGroup,
+    city:       inheritedCity,
     premium,
   });
   if (profileErr) {
