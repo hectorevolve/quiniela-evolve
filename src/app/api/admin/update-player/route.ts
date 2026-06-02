@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
-import { getAdminClient } from '@/lib/server-session';
+import { getAdminClient, requireAdmin } from '@/lib/server-session';
 import { calcPoints } from '@/lib/points';
 
 /**
@@ -11,6 +11,7 @@ import { calcPoints } from '@/lib/points';
  *   bonus_points:  number  — legacy: direct bonus override (used when target_points not provided)
  */
 export async function POST(req: NextRequest) {
+  const _authErr = await requireAdmin(req); if (_authErr) return _authErr;
   const admin = getAdminClient();
   const body = await req.json() as {
     userId: string;
@@ -77,10 +78,10 @@ export async function POST(req: NextRequest) {
   }
 
   if (bonusPts !== undefined) {
-    // Always delete ALL existing bonus_awards rows for this user first.
-    // The table has its own `id` PK (not user_id), so upsert won't work.
-    // Deleting then inserting gives us a clean single row every time.
-    const { error: delErr } = await admin.from('bonus_awards').delete().eq('user_id', userId);
+    // Elimina SOLO la fila 'admin' del usuario (no las de picks bonus como 'champ','scorer').
+    // Si se borraran todas, los bonos por acertar predicciones especiales se perderían.
+    const { error: delErr } = await admin.from('bonus_awards')
+      .delete().eq('user_id', userId).eq('category', 'admin');
     if (delErr) {
       console.error('[update-player] bonus_awards delete:', delErr.message);
       return NextResponse.json({ error: `DB error: ${delErr.message}` }, { status: 500 });

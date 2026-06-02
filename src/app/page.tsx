@@ -63,6 +63,10 @@ export default function Home() {
             if (profile.used_powers?.length) {
               setUsedPowers(new Set(profile.used_powers));
             }
+            // Restaura el partido donde se usó Cambio Tardío (persiste entre recargas)
+            if (profile.late_match_id) {
+              setLateActiveMatchId(profile.late_match_id);
+            }
             setCurrentUser(profile);
             setScreen('torneo');
           }
@@ -132,7 +136,8 @@ export default function Home() {
           matchId={selectedMatchId}
           usedPowers={usedPowers} setUsedPowers={setUsedPowers}
           lateActiveMatchId={lateActiveMatchId} setLateActiveMatchId={setLateActiveMatchId}
-          spyMatchId={spyMatchId} setSpyMatchId={setSpyMatchId}/>;
+          spyMatchId={spyMatchId} setSpyMatchId={setSpyMatchId}
+          matchDates={matchDates}/>;
       case 'perfil':
         return <PerfilScreen goto={goto} tweaks={tweaks} fireToast={fireToast}
           currentUser={currentUser} onLogout={handleLogout}/>;

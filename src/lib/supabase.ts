@@ -16,7 +16,9 @@ export interface AppUser {
   role: 'user' | 'admin';
   group_name: string | null;
   premium: boolean;
-  used_powers: string[];   // e.g. ['double', 'late']
+  used_powers: string[];      // e.g. ['double', 'late']
+  late_match_id?: string | null;   // partido donde se activó Cambio Tardío (para restaurar al recargar)
+  double_match_id?: string | null; // partido donde se activó ×2
 }
 
 /**

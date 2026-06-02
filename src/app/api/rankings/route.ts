@@ -16,33 +16,6 @@ import { getAdminClient } from '@/lib/server-session';
 import { calcPoints, isExact } from '@/lib/points';
 
 // Mapeo de ciudades a abreviaturas
-const CITY_ABBREV: Record<string, string> = {
-  'Ciudad de México': 'CDMX', 'CDMX': 'CDMX', 'Ciudad México': 'CDMX', 'México': 'CDMX',
-  'Monterrey': 'MTY', 'Monterry': 'MTY',
-  'Guadalajara': 'GDL', 'Jalisco': 'GDL',
-  'Puebla': 'PUE',
-  'Querétaro': 'QRO',
-  'Cancún': 'CUN',
-  'Mérida': 'MID',
-  'Veracruz': 'VER',
-  'Toluca': 'TOL',
-  'Cuernavaca': 'CUE',
-  'León': 'LEN',
-  'Aguascalientes': 'AGS',
-  'San Luis Potosí': 'SLP',
-  'Durango': 'DGO',
-  'Chihuahua': 'CHH',
-  'Hermosillo': 'HMO',
-  'La Paz': 'LPZ',
-  'Mazatlán': 'MZT',
-};
-
-const getCityAbbrev = (city: string | null): string | null => {
-  if (!city) return null;
-  const trimmed = city.trim();
-  return CITY_ABBREV[trimmed] || trimmed.substring(0, 3).toUpperCase();
-};
-
 // Cache this route at the Vercel CDN edge for 60 seconds.
 // Rankings only change when match results arrive (every 15 min via cron),
 // so 60s staleness is completely acceptable.
@@ -56,7 +29,7 @@ export async function GET() {
     admin
       .from('profiles')
       .select('id, name, group_name, city, used_powers')
-      .neq('role', 'superadmin'),
+      .not('role', 'in', '("admin","superadmin")'),
     admin
       .from('matches')
       .select('id, result_home, result_away, group_name')
