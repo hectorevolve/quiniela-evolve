@@ -218,15 +218,15 @@ export interface GroupSettings {
 export async function getGroupSettings(groupName: string): Promise<GroupSettings | null> {
   if (!groupName) return null;
   const BASE = 'prize_1st,prize_2nd,prize_3rd,bonus_champ_type,bonus_champ_value,bonus_runner_type,bonus_runner_value,bonus_third_type,bonus_third_value,bonus_scorer_type,bonus_scorer_value';
-  // Intenta incluir prize_tiers; si la columna aún no existe (migración pendiente),
-  // reintenta sin ella para no romper la pantalla de Premios.
+  // maybeSingle: 0 filas → null sin error (evita 406 en grupos sin settings).
+  // Intenta incluir prize_tiers; si la columna aún no existe, reintenta sin ella.
   const withTiers = await supabase
-    .from('group_settings').select(`${BASE},prize_tiers`).eq('group_name', groupName).single();
-  if (!withTiers.error) return withTiers.data as GroupSettings;
+    .from('group_settings').select(`${BASE},prize_tiers`).eq('group_name', groupName).maybeSingle();
+  if (!withTiers.error) return (withTiers.data as GroupSettings | null) ?? null;
 
   const base = await supabase
-    .from('group_settings').select(BASE).eq('group_name', groupName).single();
-  if (base.error) return null;
+    .from('group_settings').select(BASE).eq('group_name', groupName).maybeSingle();
+  if (base.error || !base.data) return null;
   return { ...base.data, prize_tiers: null } as GroupSettings;
 }
 
