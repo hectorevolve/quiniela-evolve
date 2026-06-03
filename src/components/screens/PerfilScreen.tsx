@@ -27,21 +27,30 @@ interface Props {
   demoStats?: DemoStats;   // presentación: rellena la gráfica y estadísticas sin tocar la DB
 }
 
-const BADGES = [
-  { icon: '🔥', label: 'Racha 3',          unlocked: false, req: 'Acierta 3 partidos seguidos.' },
-  { icon: '🎯', label: 'Profeta Inaugural', unlocked: false, req: 'Acierta el primer partido del torneo.' },
-  { icon: '🥇', label: 'Top Mayorista',     unlocked: false, req: 'Llega al #1 en tu mayorista.' },
-  { icon: '💯', label: 'Exacto ×5',         unlocked: false, req: 'Acierta 5 marcadores exactos.' },
-  { icon: '🚀', label: 'Racha 5',           unlocked: false, req: 'Acierta 5 partidos seguidos.' },
-  { icon: '🏆', label: 'Profeta Final',     unlocked: false, req: 'Acierta el resultado de la final.' },
+const BADGE_DEFS = [
+  { icon: '🔥', label: 'Racha 3',          req: 'Acierta 3 partidos seguidos.' },
+  { icon: '🎯', label: 'Profeta Inaugural', req: 'Acierta el primer partido del torneo.' },
+  { icon: '🥇', label: 'Top Mayorista',     req: 'Llega al #1 en tu grupo.' },
+  { icon: '💯', label: 'Exacto ×5',         req: 'Acierta 5 marcadores exactos.' },
+  { icon: '🚀', label: 'Racha 5',           req: 'Acierta 5 partidos seguidos.' },
+  { icon: '🏆', label: 'Profeta Final',     req: 'Acierta el resultado de la final.' },
 ];
+
+function maxStreak(matches: { userPrediction?: unknown; pointsEarned?: number }[]): number {
+  let cur = 0, best = 0;
+  for (const m of matches) {
+    if (m.userPrediction !== undefined && (m.pointsEarned ?? 0) > 0) { cur++; best = Math.max(best, cur); }
+    else { cur = 0; }
+  }
+  return best;
+}
 
 export function PerfilScreen({ goto, tweaks, fireToast, powersEnabled = true, currentUser, onLogout, demoStats }: Props) {
   const displayName    = currentUser?.name     ?? USER.name;
   const displayGroup   = currentUser?.group_name ?? USER.mayorista;
   const displayInitials = currentUser ? getInitials(currentUser.name) : USER.avatar;
   const [logoutModal, setLogoutModal] = useState(false);
-  const [badgeModal, setBadgeModal] = useState<null | typeof BADGES[number]>(null);
+  const [badgeModal, setBadgeModal] = useState<null | typeof BADGE_DEFS[number] & { unlocked: boolean }>(null);
   const [view, setView] = useState<'main' | 'past'>('main');
   const [pastFilter, setPastFilter] = useState('Todos');
 
@@ -49,6 +58,7 @@ export function PerfilScreen({ goto, tweaks, fireToast, powersEnabled = true, cu
   const [dbResults, setDbResults] = useState<Record<string, [number, number]>>({});
   // Total points from rankings API (includes bonus_awards)
   const [rankingPoints, setRankingPoints] = useState<number | null>(null);
+  const [groupPos, setGroupPos] = useState<number | null>(null);
   useEffect(() => {
     getMatchResults().then(setDbResults).catch(console.error);
   }, []);
@@ -57,6 +67,11 @@ export function PerfilScreen({ goto, tweaks, fireToast, powersEnabled = true, cu
     getRankings().then(entries => {
       const entry = entries.find(e => e.userId === currentUser.id);
       setRankingPoints(entry?.points ?? 0);
+      if (currentUser.group_name) {
+        const groupEntries = entries.filter(e => e.group_name === currentUser.group_name);
+        const pos = groupEntries.findIndex(e => e.userId === currentUser.id) + 1;
+        setGroupPos(pos > 0 ? pos : null);
+      }
     }).catch(console.error);
   }, [currentUser?.id]);
 
@@ -94,6 +109,24 @@ export function PerfilScreen({ goto, tweaks, fireToast, powersEnabled = true, cu
     }
     return groups;
   }, [pastMatches]);
+
+  const badges = useMemo(() => {
+    const streak   = maxStreak(pastMatches);
+    const exactCnt = pastMatches.filter(m => m.exactScore).length;
+    const firstMatch = pastMatches.find(m => m.id === 'a1');
+    const finalMatch = pastMatches.find(m => m.id === 'f_01');
+    return BADGE_DEFS.map(b => ({
+      ...b,
+      unlocked:
+        b.label === 'Racha 3'          ? streak >= 3 :
+        b.label === 'Profeta Inaugural'? !!(firstMatch?.userPrediction && (firstMatch.pointsEarned ?? 0) > 0) :
+        b.label === 'Top Mayorista'    ? groupPos === 1 :
+        b.label === 'Exacto ×5'        ? exactCnt >= 5 :
+        b.label === 'Racha 5'          ? streak >= 5 :
+        b.label === 'Profeta Final'    ? !!(finalMatch?.userPrediction && (finalMatch.pointsEarned ?? 0) > 0) :
+        false,
+    }));
+  }, [pastMatches, groupPos]);
 
   const filteredPast = useMemo(() =>
     pastFilter === 'Todos' ? pastMatches : pastMatches.filter(m => m.group === pastFilter),
@@ -217,7 +250,7 @@ export function PerfilScreen({ goto, tweaks, fireToast, powersEnabled = true, cu
         <Card style={{ marginBottom: 20 }}>
           <div className="font-display" style={{ fontSize: 14, fontWeight: 700, color: T.ink, marginBottom: 12 }}>Mis Badges</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
-            {BADGES.map(b => (
+            {badges.map(b => (
               <div key={b.label} onClick={() => setBadgeModal(b)} style={{
                 display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
                 padding: '12px 8px', borderRadius: 12,
