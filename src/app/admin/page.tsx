@@ -3362,186 +3362,336 @@ function ViewUsuariosAdmin({ liveUsers, onUserCreated, onUserDeleted, onUserUpda
 }
 
 // ─── Encuesta ─────────────────────────────────────────────────────────────────
-type SurveyRow = { id: string; name: string; phone: string | null; group_name: string | null; created_at: string | null };
+type SurveyResponseRow = { answers: Record<string, unknown>; completed_at: string | null; duration_seconds: number | null };
+
+const ENCUESTA_SECTIONS = [
+  { id: 'overview',          title: 'Resumen' },
+  { id: 'datos-segmentacion', title: 'Perfil' },
+  { id: 'satisfaccion',      title: 'Satisfacción' },
+  { id: 'dia_a_dia',         title: 'Día a día' },
+  { id: 'supervisor',        title: 'Supervisor' },
+  { id: 'ejecutivo_rh',      title: 'Ejecutivo / RH' },
+  { id: 'emetrix',           title: 'Emetrix' },
+  { id: 'sueldo_crecimiento', title: 'Sueldo' },
+  { id: 'cierre',            title: 'Mensajes' },
+];
+
+const ENCUESTA_META: Record<string, { label: string; type: 'single_choice'|'likert_1_5'|'scale_0_10'|'long_text'; section: string; options?: {value:string;label:string}[] }> = {
+  puesto:               { section:'datos-segmentacion', type:'single_choice', label:'Puesto', options:[{value:'promotor',label:'Promotor(a)'},{value:'demostrador',label:'Demostrador(a)'},{value:'supervisor',label:'Supervisor(a)/Coord.'},{value:'otro',label:'Otro'}] },
+  antiguedad:           { section:'datos-segmentacion', type:'single_choice', label:'Antigüedad', options:[{value:'menos_3m',label:'< 3 meses'},{value:'3_6m',label:'3–6 meses'},{value:'6m_1a',label:'6m–1 año'},{value:'1_2a',label:'1–2 años'},{value:'mas_2a',label:'> 2 años'}] },
+  cadena:               { section:'datos-segmentacion', type:'single_choice', label:'Cadena', options:[{value:'walmart',label:'Walmart'},{value:'soriana',label:'Soriana'},{value:'chedraui',label:'Chedraui'},{value:'heb',label:'HEB'},{value:'la_comer',label:'La Comer'},{value:'costco',label:'Costco'},{value:'oxxo',label:'OXXO'},{value:'7eleven',label:'7-Eleven'},{value:'otra',label:'Otra'}] },
+  satisfaccion_general: { section:'satisfaccion', type:'likert_1_5', label:'Satisfacción general' },
+  enps:                 { section:'satisfaccion', type:'scale_0_10', label:'eNPS — ¿Recomendarías trabajar en Evolve?' },
+  razon_recomendacion:  { section:'satisfaccion', type:'long_text', label:'Razón de la calificación eNPS' },
+  cambio_uno:           { section:'satisfaccion', type:'long_text', label:'Una cosa que cambiarías' },
+  claridad_objetivos:   { section:'dia_a_dia', type:'likert_1_5', label:'Claridad de objetivos' },
+  herramientas_materiales:{ section:'dia_a_dia', type:'likert_1_5', label:'Herramientas y materiales' },
+  trato_personal_tienda:{ section:'dia_a_dia', type:'likert_1_5', label:'Trato del personal de tienda' },
+  seguridad_traslados:  { section:'dia_a_dia', type:'likert_1_5', label:'Seguridad en traslados' },
+  mayor_reto_ruta:      { section:'dia_a_dia', type:'long_text', label:'Mayor reto en ruta' },
+  incidente_acoso:      { section:'dia_a_dia', type:'single_choice', label:'¿Ha vivido situación de acoso/irrespeto?', options:[{value:'si',label:'Sí'},{value:'no',label:'No'},{value:'prefiero_no_decir',label:'Prefiere no decirlo'}] },
+  respaldo_evolve:      { section:'dia_a_dia', type:'single_choice', label:'¿Evolve te respaldó en esa situación?', options:[{value:'si',label:'Sí, totalmente'},{value:'parcialmente',label:'Parcialmente'},{value:'no',label:'No'}] },
+  supervisor_accesible: { section:'supervisor', type:'likert_1_5', label:'Accesibilidad del supervisor' },
+  supervisor_retroalimentacion:{ section:'supervisor', type:'likert_1_5', label:'Retroalimentación útil' },
+  supervisor_reconocimiento:   { section:'supervisor', type:'likert_1_5', label:'Reconocimiento del esfuerzo' },
+  supervisor_confianza:        { section:'supervisor', type:'likert_1_5', label:'Confianza con el supervisor' },
+  supervisor_mejora:           { section:'supervisor', type:'long_text', label:'¿Qué podría mejorar tu supervisor?' },
+  ejecutivo_respuesta:         { section:'ejecutivo_rh', type:'likert_1_5', label:'Rapidez de respuesta del ejecutivo' },
+  ejecutivo_resolucion:        { section:'ejecutivo_rh', type:'likert_1_5', label:'Resolución de problemas' },
+  ejecutivo_entiende_campo:    { section:'ejecutivo_rh', type:'likert_1_5', label:'Entiende los retos en campo' },
+  rh_satisfaccion:             { section:'ejecutivo_rh', type:'likert_1_5', label:'Satisfacción con RH' },
+  rh_tiempos:                  { section:'ejecutivo_rh', type:'likert_1_5', label:'Tiempos de RH' },
+  ejecutivo_rh_mejora:         { section:'ejecutivo_rh', type:'long_text', label:'¿Qué podría mejorar ejecutivo/RH?' },
+  emetrix_facilidad:           { section:'emetrix', type:'likert_1_5', label:'Facilidad de uso de Emetrix' },
+  emetrix_rendimiento:         { section:'emetrix', type:'likert_1_5', label:'Rendimiento de la app' },
+  soporte_rapidez:             { section:'emetrix', type:'likert_1_5', label:'Rapidez del soporte técnico' },
+  soporte_satisfaccion:        { section:'emetrix', type:'likert_1_5', label:'Satisfacción con soporte' },
+  emetrix_mejora:              { section:'emetrix', type:'long_text', label:'Una mejora para Emetrix' },
+  sueldo_justo:                { section:'sueldo_crecimiento', type:'likert_1_5', label:'Percepción de sueldo justo' },
+  conoce_prestaciones:         { section:'sueldo_crecimiento', type:'single_choice', label:'¿Conoce sus prestaciones?', options:[{value:'si',label:'Sí, las conozco bien'},{value:'parcialmente',label:'Parcialmente'},{value:'no',label:'No las conozco'}] },
+  oportunidades_crecimiento:   { section:'sueldo_crecimiento', type:'likert_1_5', label:'Oportunidades de crecimiento' },
+  orgullo_evolve:              { section:'sueldo_crecimiento', type:'single_choice', label:'¿Sientes orgullo de trabajar en Evolve?', options:[{value:'frecuentemente',label:'Frecuentemente'},{value:'a_veces',label:'A veces'},{value:'rara_vez',label:'Rara vez'},{value:'nunca',label:'Nunca'}] },
+  mensaje_direccion:           { section:'cierre', type:'long_text', label:'Mensaje a la dirección' },
+};
 
 function ViewEncuesta() {
-  const [rows, setRows]             = useState<SurveyRow[]>([]);
-  const [loading, setLoading]       = useState(true);
-  const [groupFilter, setGroupFilter] = useState('Todos');
-  const [search, setSearch]         = useState('');
+  const [responses, setResponses] = useState<SurveyResponseRow[]>([]);
+  const [loading, setLoading]     = useState(true);
+  const [section, setSection]     = useState('overview');
 
   useEffect(() => {
-    supabase
-      .from('profiles')
-      .select('id, name, phone, group_name, created_at')
-      .neq('role', 'admin')
-      .order('created_at', { ascending: true })
-      .then(({ data }) => {
-        setRows((data ?? []) as SurveyRow[]);
-        setLoading(false);
-      });
+    adminFetch('/api/admin/survey-results')
+      .then(r => r.json())
+      .then((data: SurveyResponseRow[]) => { setResponses(data ?? []); setLoading(false); })
+      .catch(() => setLoading(false));
   }, []);
 
-  const groups = useMemo(() => ['Todos', ...Array.from(new Set(rows.map(r => r.group_name ?? 'Sin grupo')))], [rows]);
+  // ── Aggregations ──────────────────────────────────────────────────────────────
+  const n = responses.length;
 
-  const filtered = useMemo(() => {
-    const q = search.toLowerCase();
-    return rows.filter(r => {
-      const matchGroup = groupFilter === 'Todos' || (r.group_name ?? 'Sin grupo') === groupFilter;
-      const matchSearch = !q || r.name.toLowerCase().includes(q) || (r.phone ?? '').includes(q);
-      return matchGroup && matchSearch;
-    });
-  }, [rows, groupFilter, search]);
+  const countsByQ = useMemo(() => {
+    const res: Record<string, Record<string, number>> = {};
+    for (const row of responses) {
+      for (const [qId, val] of Object.entries(row.answers)) {
+        if (typeof val === 'string' && val.length <= 100) {
+          res[qId] = res[qId] ?? {};
+          res[qId][val] = (res[qId][val] ?? 0) + 1;
+        }
+      }
+    }
+    return res;
+  }, [responses]);
+
+  const avgsByQ = useMemo(() => {
+    const sums: Record<string, number> = {};
+    const counts: Record<string, number> = {};
+    for (const row of responses) {
+      for (const [qId, val] of Object.entries(row.answers)) {
+        if (typeof val === 'number') {
+          sums[qId] = (sums[qId] ?? 0) + val;
+          counts[qId] = (counts[qId] ?? 0) + 1;
+        }
+      }
+    }
+    const avgs: Record<string, number> = {};
+    for (const qId of Object.keys(sums)) avgs[qId] = sums[qId] / counts[qId];
+    return avgs;
+  }, [responses]);
+
+  const textsByQ = useMemo(() => {
+    const res: Record<string, string[]> = {};
+    for (const row of responses) {
+      for (const [qId, val] of Object.entries(row.answers)) {
+        if (typeof val === 'string' && val.trim().length > 10) {
+          res[qId] = res[qId] ?? [];
+          res[qId].push(val.trim());
+        }
+      }
+    }
+    return res;
+  }, [responses]);
+
+  const enps = useMemo(() => {
+    const scores = responses.map(r => r.answers['enps']).filter((v): v is number => typeof v === 'number');
+    if (!scores.length) return null;
+    const promoters  = scores.filter(s => s >= 9).length;
+    const detractors = scores.filter(s => s <= 6).length;
+    const total      = scores.length;
+    return { score: Math.round((promoters / total - detractors / total) * 100), promoters, detractors, passives: total - promoters - detractors, total };
+  }, [responses]);
 
   const downloadExcel = () => {
-    const ws = XLSX.utils.json_to_sheet(filtered.map((r, i) => ({
-      '#':           i + 1,
-      'Nombre':      r.name,
-      'Grupo':       r.group_name ?? 'Sin grupo',
-      'Celular':     r.phone ?? '',
-      'Registro':    r.created_at ? new Date(r.created_at).toLocaleDateString('es-MX', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '',
-    })));
-
-    // Column widths
-    ws['!cols'] = [{ wch: 5 }, { wch: 30 }, { wch: 20 }, { wch: 16 }, { wch: 14 }];
-
+    const rows = responses.map((r, i) => {
+      const row: Record<string, unknown> = { '#': i + 1, Fecha: r.completed_at ? new Date(r.completed_at).toLocaleDateString('es-MX') : '' };
+      for (const [qId, meta] of Object.entries(ENCUESTA_META)) row[meta.label] = r.answers[qId] ?? '';
+      return row;
+    });
+    const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Encuesta');
-    const fileName = groupFilter === 'Todos'
-      ? `encuesta_todos_${new Date().toISOString().slice(0, 10)}.xlsx`
-      : `encuesta_${groupFilter.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.xlsx`;
-    XLSX.writeFile(wb, fileName);
+    XLSX.utils.book_append_sheet(wb, ws, 'Respuestas');
+    XLSX.writeFile(wb, `encuesta_clima_${new Date().toISOString().slice(0, 10)}.xlsx`);
   };
 
-  const col = (group: string) => GROUP_COLORS[group] ?? c.blue;
-
-  return (
-    <div>
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20, gap: 12, flexWrap: 'wrap' }}>
-        <div>
-          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: c.text }}>Resultados de encuesta</h2>
-          <p style={{ margin: '4px 0 0', fontSize: 13, color: c.muted }}>
-            {loading ? 'Cargando…' : `${filtered.length} respuestas${groupFilter !== 'Todos' ? ` · ${groupFilter}` : ''}`}
-          </p>
-        </div>
-        <button
-          onClick={downloadExcel}
-          disabled={filtered.length === 0}
-          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 18px', background: filtered.length > 0 ? c.lime : 'rgba(255,255,255,0.06)', color: filtered.length > 0 ? '#0A1628' : c.muted, border: 'none', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: filtered.length > 0 ? 'pointer' : 'default', transition: 'all 150ms' }}
-        >
-          ⬇ Descargar Excel
-        </button>
+  // ── Render helpers ──────────────────────────────────────────────────────────
+  const renderSingleChoice = (qId: string) => {
+    const meta = ENCUESTA_META[qId]; if (!meta?.options) return null;
+    const counts = countsByQ[qId] ?? {};
+    const total  = Object.values(counts).reduce((s, v) => s + v, 0);
+    return (
+      <div key={qId} style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 12, padding: '16px 18px', marginBottom: 12 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: c.text, marginBottom: 10 }}>{meta.label}</div>
+        {meta.options.map(opt => {
+          const cnt = counts[opt.value] ?? 0;
+          const pct = total ? Math.round(cnt / total * 100) : 0;
+          return (
+            <div key={opt.value} style={{ marginBottom: 7 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: c.muted, marginBottom: 3 }}>
+                <span>{opt.label}</span>
+                <span style={{ fontWeight: 700, color: c.text }}>{cnt} <span style={{ color: c.dim }}>({pct}%)</span></span>
+              </div>
+              <div style={{ height: 6, borderRadius: 4, background: c.border, overflow: 'hidden' }}>
+                <div style={{ height: '100%', width: `${pct}%`, background: c.blue, borderRadius: 4, transition: 'width 400ms' }}/>
+              </div>
+            </div>
+          );
+        })}
+        <div style={{ fontSize: 11, color: c.dim, marginTop: 6 }}>{total} respuestas</div>
       </div>
+    );
+  };
 
-      {/* Filters */}
-      <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
-        {/* Search */}
-        <div style={{ flex: 1, minWidth: 180, display: 'flex', alignItems: 'center', gap: 8, background: c.card, border: `1px solid ${c.border}`, borderRadius: 10, padding: '8px 14px' }}>
-          <span style={{ color: c.dim }}>🔍</span>
-          <input
-            value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Buscar por nombre o celular…"
-            style={{ flex: 1, background: 'none', border: 'none', outline: 'none', color: c.text, fontSize: 13, fontFamily: 'inherit' }}
-          />
+  const renderLikert = (qId: string) => {
+    const meta = ENCUESTA_META[qId]; if (!meta) return null;
+    const avg  = avgsByQ[qId];
+    const counts = responses.map(r => r.answers[qId]).filter((v): v is number => typeof v === 'number');
+    const dist: Record<number, number> = {};
+    for (const v of counts) dist[v] = (dist[v] ?? 0) + 1;
+    const max = meta.type === 'likert_1_5' ? 5 : 10;
+    const pctFill = avg !== undefined ? (avg / max) * 100 : 0;
+    const scoreColor = avg === undefined ? c.muted : avg >= max * 0.7 ? c.lime : avg >= max * 0.45 ? c.amber : '#EF4444';
+    return (
+      <div key={qId} style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 12, padding: '16px 18px', marginBottom: 12 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: c.text, marginBottom: 10 }}>{meta.label}</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 10 }}>
+          <div style={{ fontSize: 28, fontWeight: 900, color: scoreColor, lineHeight: 1 }}>
+            {avg !== undefined ? avg.toFixed(1) : '—'}
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ height: 8, borderRadius: 4, background: c.border, overflow: 'hidden' }}>
+              <div style={{ height: '100%', width: `${pctFill}%`, background: scoreColor, borderRadius: 4 }}/>
+            </div>
+            <div style={{ fontSize: 10, color: c.dim, marginTop: 3 }}>de {max} · {counts.length} resp.</div>
+          </div>
         </div>
-
-        {/* Group filter */}
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-          {groups.map(g => {
-            const active = groupFilter === g;
-            const gCol   = g === 'Todos' ? c.blue : col(g);
+        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+          {Array.from({ length: max }, (_, i) => i + (meta.type === 'likert_1_5' ? 1 : 0)).map(v => {
+            const cnt = dist[v] ?? 0;
+            const pct = counts.length ? Math.round(cnt / counts.length * 100) : 0;
             return (
-              <button
-                key={g}
-                onClick={() => setGroupFilter(g)}
-                style={{
-                  padding: '6px 14px', borderRadius: 20, border: active ? `1.5px solid ${gCol}` : `1px solid ${c.border}`,
-                  background: active ? `${gCol}22` : c.card,
-                  color: active ? gCol : c.muted,
-                  fontSize: 12, fontWeight: active ? 700 : 500,
-                  cursor: 'pointer', transition: 'all 150ms',
-                }}
-              >
-                {g}
-              </button>
+              <div key={v} style={{ flex: 1, minWidth: 28, textAlign: 'center', background: cnt > 0 ? `${scoreColor}18` : c.border + '44', borderRadius: 6, padding: '4px 2px' }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: cnt > 0 ? scoreColor : c.dim }}>{cnt}</div>
+                <div style={{ fontSize: 9, color: c.dim }}>{v}</div>
+                <div style={{ fontSize: 9, color: c.muted }}>{pct}%</div>
+              </div>
             );
           })}
         </div>
       </div>
+    );
+  };
 
-      {/* Table */}
+  const renderLongText = (qId: string) => {
+    const meta = ENCUESTA_META[qId]; if (!meta) return null;
+    const texts = (textsByQ[qId] ?? []).filter(t => t.length > 3);
+    if (!texts.length) return (
+      <div key={qId} style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 12, padding: '16px 18px', marginBottom: 12 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: c.text, marginBottom: 6 }}>{meta.label}</div>
+        <div style={{ fontSize: 12, color: c.dim, fontStyle: 'italic' }}>Sin respuestas aún.</div>
+      </div>
+    );
+    return (
+      <div key={qId} style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 12, padding: '16px 18px', marginBottom: 12 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: c.text, marginBottom: 10 }}>{meta.label} <span style={{ fontSize: 11, fontWeight: 500, color: c.dim }}>({texts.length})</span></div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 260, overflowY: 'auto' }}>
+          {texts.map((t, i) => (
+            <div key={i} style={{ fontSize: 12, color: c.muted, background: 'rgba(255,255,255,0.04)', borderRadius: 8, padding: '8px 12px', borderLeft: `3px solid ${c.blue}44` }}>{t}</div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  const renderQuestion = (qId: string) => {
+    const meta = ENCUESTA_META[qId]; if (!meta) return null;
+    if (meta.type === 'single_choice')   return renderSingleChoice(qId);
+    if (meta.type === 'likert_1_5')      return renderLikert(qId);
+    if (meta.type === 'scale_0_10')      return renderLikert(qId);
+    if (meta.type === 'long_text')       return renderLongText(qId);
+    return null;
+  };
+
+  const questionsForSection = (sId: string) => Object.entries(ENCUESTA_META).filter(([, m]) => m.section === sId).map(([qId]) => qId);
+
+  // ── JSX ─────────────────────────────────────────────────────────────────────
+  return (
+    <div>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20, gap: 12, flexWrap: 'wrap' }}>
+        <div>
+          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: c.text }}>Encuesta de Clima Laboral</h2>
+          <p style={{ margin: '4px 0 0', fontSize: 13, color: c.muted }}>
+            {loading ? 'Cargando…' : `${n} respuesta${n !== 1 ? 's' : ''} recibida${n !== 1 ? 's' : ''}`}
+          </p>
+        </div>
+        <button onClick={downloadExcel} disabled={n === 0}
+          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 18px', background: n > 0 ? c.lime : 'rgba(255,255,255,0.06)', color: n > 0 ? '#0A1628' : c.muted, border: 'none', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: n > 0 ? 'pointer' : 'default' }}>
+          ⬇ Descargar Excel
+        </button>
+      </div>
+
       {loading ? (
-        <div style={{ textAlign: 'center', padding: '48px 24px', color: c.muted }}>Cargando encuesta…</div>
-      ) : filtered.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '48px 24px', color: c.muted, fontSize: 14 }}>
-          {rows.length === 0 ? 'Aún no hay respuestas.' : 'Sin resultados para el filtro seleccionado.'}
-        </div>
+        <div style={{ textAlign: 'center', padding: '48px 24px', color: c.muted }}>Cargando respuestas…</div>
+      ) : n === 0 ? (
+        <div style={{ textAlign: 'center', padding: '60px 24px', color: c.muted, fontSize: 14 }}>Aún no hay respuestas registradas.</div>
       ) : (
-        <TableWrap>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-            <thead>
-              <tr style={{ background: 'rgba(255,255,255,0.04)' }}>
-                {['#', 'Nombre', 'Grupo', 'Celular', 'Registro'].map(h => (
-                  <th key={h} style={{ padding: '10px 14px', textAlign: 'left', color: c.muted, fontWeight: 600, fontSize: 11, letterSpacing: 0.8, textTransform: 'uppercase', borderBottom: `1px solid ${c.border}`, whiteSpace: 'nowrap' }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((r, i) => {
-                const gCol = r.group_name ? col(r.group_name) : c.dim;
-                return (
-                  <tr key={r.id} style={{ borderBottom: `1px solid ${c.border}` }}
-                    onMouseEnter={e => (e.currentTarget as HTMLTableRowElement).style.background = c.rowHov}
-                    onMouseLeave={e => (e.currentTarget as HTMLTableRowElement).style.background = 'transparent'}>
-                    <td style={{ padding: '11px 14px', color: c.dim, fontWeight: 500, minWidth: 40 }}>{i + 1}</td>
-                    <td style={{ padding: '11px 14px', color: c.text, fontWeight: 600 }}>{r.name}</td>
-                    <td style={{ padding: '11px 14px', minWidth: 120 }}>
-                      {r.group_name ? (
-                        <span style={{ display: 'inline-block', padding: '2px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700, background: `${gCol}22`, color: gCol, border: `1px solid ${gCol}44` }}>{r.group_name}</span>
-                      ) : (
-                        <span style={{ color: c.dim, fontSize: 11, fontStyle: 'italic' }}>Sin grupo</span>
-                      )}
-                    </td>
-                    <td style={{ padding: '11px 14px', color: c.muted, fontFamily: 'monospace', fontSize: 12 }}>{r.phone ?? '—'}</td>
-                    <td style={{ padding: '11px 14px', color: c.dim, fontSize: 12, whiteSpace: 'nowrap' }}>
-                      {r.created_at ? new Date(r.created_at).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </TableWrap>
-      )}
-
-      {/* Summary by group */}
-      {!loading && rows.length > 0 && groupFilter === 'Todos' && (
-        <div style={{ marginTop: 24 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: c.text, marginBottom: 12 }}>Resumen por grupo</div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {Array.from(new Set(rows.map(r => r.group_name ?? 'Sin grupo'))).map(g => {
-              const count = rows.filter(r => (r.group_name ?? 'Sin grupo') === g).length;
-              const gCol = col(g === 'Sin grupo' ? '' : g);
-              return (
-                <button
-                  key={g}
-                  onClick={() => setGroupFilter(g)}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 8,
-                    padding: '8px 14px', borderRadius: 10,
-                    background: c.card, border: `1px solid ${gCol}44`,
-                    cursor: 'pointer', transition: 'all 150ms',
-                  }}
-                  onMouseEnter={e => (e.currentTarget as HTMLButtonElement).style.background = `${gCol}12`}
-                  onMouseLeave={e => (e.currentTarget as HTMLButtonElement).style.background = c.card}
-                >
-                  <span style={{ fontSize: 20, fontWeight: 800, color: gCol }}>{count}</span>
-                  <span style={{ fontSize: 12, color: c.muted }}>{g}</span>
-                </button>
-              );
-            })}
+        <>
+          {/* Section tabs */}
+          <div style={{ display: 'flex', gap: 6, overflowX: 'auto', marginBottom: 20, scrollbarWidth: 'none', paddingBottom: 2 }}>
+            {ENCUESTA_SECTIONS.map(s => (
+              <button key={s.id} onClick={() => setSection(s.id)}
+                style={{ padding: '6px 14px', borderRadius: 20, border: section === s.id ? `1.5px solid ${c.blue}` : `1px solid ${c.border}`, background: section === s.id ? `${c.blue}22` : c.card, color: section === s.id ? c.blue : c.muted, fontSize: 12, fontWeight: section === s.id ? 700 : 500, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                {s.title}
+              </button>
+            ))}
           </div>
-        </div>
+
+          {/* Overview */}
+          {section === 'overview' && (
+            <div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12, marginBottom: 20 }}>
+                {[
+                  { label: 'Respuestas', val: n, color: c.blue },
+                  { label: 'Satisfacción (1–5)', val: avgsByQ['satisfaccion_general'] !== undefined ? avgsByQ['satisfaccion_general'].toFixed(1) : '—', color: c.lime },
+                  { label: 'eNPS score', val: enps ? `${enps.score > 0 ? '+' : ''}${enps.score}` : '—', color: enps && enps.score >= 0 ? c.lime : '#EF4444' },
+                  { label: 'Promotores eNPS', val: enps ? `${Math.round(enps.promoters / enps.total * 100)}%` : '—', color: c.lime },
+                ].map(kpi => (
+                  <div key={kpi.label} style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 12, padding: '16px', textAlign: 'center' }}>
+                    <div style={{ fontSize: 26, fontWeight: 900, color: kpi.color }}>{kpi.val}</div>
+                    <div style={{ fontSize: 11, color: c.muted, marginTop: 4 }}>{kpi.label}</div>
+                  </div>
+                ))}
+              </div>
+              {enps && (
+                <div style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 12, padding: '16px 18px', marginBottom: 12 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: c.text, marginBottom: 10 }}>Distribución eNPS</div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    {[
+                      { label: 'Promotores (9–10)', cnt: enps.promoters, color: c.lime },
+                      { label: 'Pasivos (7–8)',     cnt: enps.passives,  color: c.amber },
+                      { label: 'Detractores (0–6)', cnt: enps.detractors, color: '#EF4444' },
+                    ].map(seg => {
+                      const pct = Math.round(seg.cnt / enps.total * 100);
+                      return (
+                        <div key={seg.label} style={{ flex: 1, background: `${seg.color}18`, border: `1px solid ${seg.color}44`, borderRadius: 10, padding: '10px 8px', textAlign: 'center' }}>
+                          <div style={{ fontSize: 22, fontWeight: 800, color: seg.color }}>{seg.cnt}</div>
+                          <div style={{ fontSize: 10, color: c.muted }}>{pct}%</div>
+                          <div style={{ fontSize: 9, color: c.dim, marginTop: 2 }}>{seg.label}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+              <div style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 12, padding: '16px 18px' }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: c.text, marginBottom: 10 }}>Promedios por área (Likert 1–5)</div>
+                {['satisfaccion_general','claridad_objetivos','herramientas_materiales','supervisor_accesible','ejecutivo_respuesta','emetrix_facilidad','sueldo_justo','oportunidades_crecimiento'].map(qId => {
+                  const avg = avgsByQ[qId]; if (avg === undefined) return null;
+                  const meta = ENCUESTA_META[qId]; if (!meta) return null;
+                  const pct = (avg / 5) * 100;
+                  const col = avg >= 3.5 ? c.lime : avg >= 2.5 ? c.amber : '#EF4444';
+                  return (
+                    <div key={qId} style={{ marginBottom: 8 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 3 }}>
+                        <span style={{ color: c.muted }}>{meta.label}</span>
+                        <span style={{ fontWeight: 700, color: col }}>{avg.toFixed(1)}</span>
+                      </div>
+                      <div style={{ height: 5, borderRadius: 3, background: c.border, overflow: 'hidden' }}>
+                        <div style={{ height: '100%', width: `${pct}%`, background: col, borderRadius: 3 }}/>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Section questions */}
+          {section !== 'overview' && (
+            <div>
+              {questionsForSection(section).map(qId => renderQuestion(qId))}
+            </div>
+          )}
+        </>
       )}
     </div>
   );
