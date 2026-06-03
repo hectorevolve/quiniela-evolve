@@ -2268,21 +2268,21 @@ function ViewGrupoDetalle({ group, liveUsers, onBack, onUserUpdated, onUserRemov
           <div style={{ fontSize: 20, fontWeight: 800, color: c.text }}>{displayName}</div>
           <div style={{ fontSize: 12, color: c.muted }}>{members.length} miembro{members.length !== 1 ? 's' : ''}</div>
         </div>
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-          {!isSpecial && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 14px', borderRadius: 20, background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}` }}>
-              <span style={{ fontSize: 11, fontWeight: 600, color: powersEnabled ? c.lime : c.muted }}>Poderes</span>
-              <button onClick={togglePowers} disabled={powersToggling} style={{
-                width: 36, height: 20, borderRadius: 10, border: 'none', cursor: powersToggling ? 'default' : 'pointer',
-                background: powersEnabled ? c.lime : 'rgba(255,255,255,0.15)', position: 'relative', flexShrink: 0, transition: 'background 200ms', opacity: powersToggling ? 0.6 : 1,
-              }}>
-                <div style={{ width: 14, height: 14, borderRadius: '50%', background: powersEnabled ? '#0A1628' : '#fff', position: 'absolute', top: 3, left: powersEnabled ? 19 : 3, transition: 'left 200ms' }}/>
-              </button>
-            </div>
-          )}
+        <div style={{ marginLeft: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
           <div style={{ padding: '4px 14px', borderRadius: 20, background: `${col}22`, border: `1px solid ${col}44`, fontSize: 11, fontWeight: 700, color: col }}>
             {isNacional ? 'Todos los usuarios' : isSinGrupo ? 'Sin asignar' : 'Grupo activo'}
           </div>
+          {!isSpecial && (
+            <button onClick={togglePowers} disabled={powersToggling}
+              style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 'none', cursor: powersToggling ? 'default' : 'pointer', padding: 0, opacity: powersToggling ? 0.6 : 1 }}>
+              <span style={{ fontSize: 11, fontWeight: 600, color: powersEnabled ? c.lime : c.dim }}>
+                Poderes {powersEnabled ? 'activos' : 'desactivados'}
+              </span>
+              <div style={{ width: 36, height: 20, borderRadius: 10, background: powersEnabled ? c.lime : 'rgba(255,255,255,0.15)', position: 'relative', flexShrink: 0, transition: 'background 200ms' }}>
+                <div style={{ width: 14, height: 14, borderRadius: '50%', background: powersEnabled ? '#0A1628' : '#fff', position: 'absolute', top: 3, left: powersEnabled ? 19 : 3, transition: 'left 200ms' }}/>
+              </div>
+            </button>
+          )}
         </div>
       </div>
 
