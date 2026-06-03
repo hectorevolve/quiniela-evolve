@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
   const admin = getAdminClient();
 
   const [profilesRes, predsRes, resultsRes, bonusRes] = await Promise.all([
-    admin.from('profiles').select('id, name, group_name, city, used_powers').not('role', 'in', '("admin","superadmin")'),
+    admin.from('profiles').select('id, name, group_name, city, used_powers').neq('role', 'superadmin'),
     admin.from('predictions').select('user_id, match_id, home_score, away_score'),
     admin.from('matches').select('id, result_home, result_away, group_name').not('result_home', 'is', null),
     admin.from('bonus_awards').select('user_id, points'),
