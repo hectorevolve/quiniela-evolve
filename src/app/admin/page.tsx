@@ -1310,6 +1310,7 @@ function CreateUserModal({ onClose, onCreated }: { onClose: () => void; onCreate
 function ViewPredicciones({ users }: { users: AdminUser[] }) {
   const [matchId, setMatchId] = useState<string>(GROUP_MATCH_IDS[0]);
   const [groupFilter, setGroupFilter] = useState('Todos');
+  const [userSearch, setUserSearch] = useState('');
   const [localPreds, setLocalPreds] = useState<Record<string, Record<string, [number,number]>>>(() => {
     const copy: Record<string, Record<string, [number,number]>> = {};
     for (const [name, preds] of Object.entries(USER_PREDICTIONS)) copy[name] = { ...preds };
@@ -1322,7 +1323,12 @@ function ViewPredicciones({ users }: { users: AdminUser[] }) {
   const allGroups = useMemo(() => Array.from(new Set(users.map(u => u.group))), [users]);
   const match = MATCHES.find(m => m.id === matchId);
 
-  const rows = useMemo(() => users.filter(u => groupFilter === 'Todos' || u.group === groupFilter).map(u => ({ user: u, pred: localPreds[u.name]?.[matchId] ?? null })), [users, matchId, groupFilter, localPreds]);
+  const rows = useMemo(() => {
+    const q = userSearch.toLowerCase();
+    return users
+      .filter(u => (groupFilter === 'Todos' || u.group === groupFilter) && (!q || u.name.toLowerCase().includes(q)))
+      .map(u => ({ user: u, pred: localPreds[u.name]?.[matchId] ?? null }));
+  }, [users, matchId, groupFilter, userSearch, localPreds]);
   const dist = useMemo(() => {
     const counts = new Map<string, number>();
     rows.forEach(r => { if (!r.pred) return; const key = `${r.pred[0]}-${r.pred[1]}`; counts.set(key, (counts.get(key) ?? 0) + 1); });
@@ -1351,6 +1357,14 @@ function ViewPredicciones({ users }: { users: AdminUser[] }) {
             {['Todos', ...allGroups].map(g => { const col = g === 'Todos' ? c.blue : (GROUP_COLORS[g] ?? c.blue); const active = groupFilter === g; return <button key={g} onClick={() => setGroupFilter(g)} style={{ padding: '8px 12px', borderRadius: 8, border: `1px solid ${active ? col : c.border}`, background: active ? `${col}22` : c.card, color: active ? col : c.muted, fontWeight: 700, fontSize: 11, cursor: 'pointer', whiteSpace: 'nowrap' }}>{g}</button>; })}
           </div>
         </div>
+      </div>
+
+      {/* Search */}
+      <div style={{ position: 'relative', marginBottom: 16 }}>
+        <span style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: c.dim, fontSize: 14, pointerEvents: 'none' }}>🔍</span>
+        <input value={userSearch} onChange={e => setUserSearch(e.target.value)} placeholder="Buscar usuario…"
+          style={{ width: '100%', padding: '10px 14px 10px 38px', borderRadius: 10, border: `1px solid ${c.border}`, background: c.card, color: c.text, fontSize: 13, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }}/>
+        {userSearch && <button onClick={() => setUserSearch('')} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: c.muted, cursor: 'pointer', fontSize: 16 }}>✕</button>}
       </div>
 
       {match && (
@@ -3150,6 +3164,7 @@ function ImportModal({ onClose, onDone }: {
 function ViewUsuariosAdmin({ liveUsers, onUserCreated, onUserDeleted, onUserUpdated }: { liveUsers: LiveUser[]; onUserCreated: (u: LiveUser) => void; onUserDeleted?: (id: string) => void; onUserUpdated?: (id: string, patch: Partial<LiveUser>) => void }) {
   const [showModal, setShowModal]   = useState(false);
   const [showImport, setShowImport] = useState(false);
+  const [search, setSearch]         = useState('');
   const [name, setName]             = useState('');
   const [phone, setPhone]           = useState('');
   const [group, setGroup]           = useState('Evolve');
@@ -3227,14 +3242,27 @@ function ViewUsuariosAdmin({ liveUsers, onUserCreated, onUserDeleted, onUserUpda
         <div style={{ marginBottom: 16, padding: '12px 16px', background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: 10, fontSize: 13, color: '#22C55E' }}>{success}</div>
       )}
 
+      {/* Search */}
+      <div style={{ position: 'relative', marginBottom: 16 }}>
+        <span style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: c.dim, fontSize: 14, pointerEvents: 'none' }}>🔍</span>
+        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar por nombre, teléfono o grupo…"
+          style={{ width: '100%', padding: '10px 14px 10px 38px', borderRadius: 10, border: `1px solid ${c.border}`, background: c.card, color: c.text, fontSize: 13, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }}/>
+        {search && <button onClick={() => setSearch('')} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: c.muted, cursor: 'pointer', fontSize: 16 }}>✕</button>}
+      </div>
+
       {/* User list */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {liveUsers.length === 0 && (
-          <div style={{ textAlign: 'center', padding: '48px 24px', color: c.muted, fontSize: 14 }}>
-            No hay usuarios aún. ¡Crea el primero!
-          </div>
-        )}
-        {liveUsers.map(u => (
+      {(() => {
+        const q = search.toLowerCase();
+        const filtered = search ? liveUsers.filter(u => u.name.toLowerCase().includes(q) || (u.phone ?? '').includes(q) || (u.group_name ?? '').toLowerCase().includes(q)) : liveUsers;
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {search && <div style={{ fontSize: 12, color: c.muted, marginBottom: 4 }}>{filtered.length} resultado{filtered.length !== 1 ? 's' : ''} de {liveUsers.length}</div>}
+            {filtered.length === 0 && (
+              <div style={{ textAlign: 'center', padding: '48px 24px', color: c.muted, fontSize: 14 }}>
+                {liveUsers.length === 0 ? 'No hay usuarios aún. ¡Crea el primero!' : `Sin resultados para "${search}"`}
+              </div>
+            )}
+            {filtered.map(u => (
           <div key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: c.card, border: `1px solid ${c.border}`, borderRadius: 12, flexWrap: 'wrap' }}>
             <Avatar initials={(u.name.split(' ').map((w: string) => w[0]).slice(0,2).join('')).toUpperCase()} size={32}/>
             <div style={{ flex: 1, minWidth: 120 }}>
@@ -3257,7 +3285,9 @@ function ViewUsuariosAdmin({ liveUsers, onUserCreated, onUserDeleted, onUserUpda
             <button onClick={() => { setDeleteEntry(u); setDeleteErr(null); }} style={{ padding: '5px 8px', borderRadius: 7, background: `${c.rose}15`, border: `1px solid ${c.rose}40`, color: c.rose, fontSize: 13, cursor: 'pointer' }} title="Eliminar usuario">🗑</button>
           </div>
         ))}
-      </div>
+          </div>
+        );
+      })()}
 
       {/* Import modal */}
       {showImport && (
