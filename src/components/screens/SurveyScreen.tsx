@@ -22,6 +22,8 @@ interface Section   { id: string; title: string; questions: Question[] }
 type Answers        = Record<string, string|number>;
 
 // ─── Configuración de la encuesta ────────────────────────────────────────────
+const DEFAULT_SCALE: ScaleDef = { min:1, max:5, minLabel:'Totalmente desacuerdo', maxLabel:'Totalmente de acuerdo' };
+
 const ENCUESTA = {
   id: 'encuesta-clima-cultura-evolve-2026',
   version: '1.0.0',
@@ -41,38 +43,47 @@ const ENCUESTA = {
     {
       id: 'apego_cultural', title: 'Apego cultural',
       questions: [
-        { id:'q4_identificacion_valores', type:'likert_1_5', required:true, label:'Me identifico con los valores y la cultura de Evolve.' },
-        { id:'q5_valores_vividos', type:'likert_1_5', required:true, label:'Los valores de Evolve se viven en el día a día, no son solo discurso.' },
+        { id:'q4_identificacion_valores', type:'likert_1_5', required:true, label:'Me identifico con los valores y la cultura de Evolve.', scale:DEFAULT_SCALE },
+        { id:'q5_valores_vividos', type:'likert_1_5', required:true, label:'Los valores de Evolve se viven en el día a día, no son solo discurso.', scale:DEFAULT_SCALE },
+      ]
+    },
+    {
+      id: 'ambiente_bienestar', title: 'Ambiente y bienestar',
+      questions: [
+        { id:'q24_a_gusto', type:'likert_1_5', required:true, label:'Estoy a gusto en mi trabajo en Evolve.', scale:DEFAULT_SCALE },
+        { id:'q25_ambiente_positivo', type:'likert_1_5', required:true, label:'El ambiente de trabajo en mi área es positivo y respetuoso.', scale:DEFAULT_SCALE },
+        { id:'q26_viene_contento', type:'likert_1_5', required:true, label:'La mayoría de los días vengo contento(a) a trabajar.', scale:DEFAULT_SCALE },
+        { id:'q27_companeros', type:'likert_1_5', required:true, label:'Tengo buena relación con mis compañeros de trabajo.', scale:DEFAULT_SCALE },
       ]
     },
     {
       id: 'lider_directo', title: 'Tu líder directo',
       questions: [
-        { id:'q6_lider_feedback', type:'likert_1_5', required:true, label:'Mi líder directo me da retroalimentación clara y oportuna sobre mi trabajo.' },
-        { id:'q7_lider_autonomia', type:'likert_1_5', required:true, label:'Mi líder directo me da la autonomía necesaria para hacer bien mi trabajo.' },
-        { id:'q8_lider_reconocimiento', type:'likert_1_5', required:true, label:'Mi líder directo reconoce mis logros y aportes.' },
+        { id:'q6_lider_feedback', type:'likert_1_5', required:true, label:'Mi líder directo me da retroalimentación clara y oportuna sobre mi trabajo.', scale:DEFAULT_SCALE },
+        { id:'q7_lider_autonomia', type:'likert_1_5', required:true, label:'Mi líder directo me da la autonomía necesaria para hacer bien mi trabajo.', scale:DEFAULT_SCALE },
+        { id:'q8_lider_reconocimiento', type:'likert_1_5', required:true, label:'Mi líder directo reconoce mis logros y aportes.', scale:DEFAULT_SCALE },
       ]
     },
     {
       id: 'liderazgo_directivo', title: 'Liderazgo directivo',
       questions: [
-        { id:'q9_direccion_comunicacion', type:'likert_1_5', required:true, label:'La dirección de Evolve comunica claramente hacia dónde va la empresa.' },
-        { id:'q10_direccion_confianza', type:'likert_1_5', required:true, label:'Confío en las decisiones que toma la dirección de Evolve.' },
+        { id:'q9_direccion_comunicacion', type:'likert_1_5', required:true, label:'La dirección de Evolve comunica claramente hacia dónde va la empresa.', scale:DEFAULT_SCALE },
+        { id:'q10_direccion_confianza', type:'likert_1_5', required:true, label:'Confío en las decisiones que toma la dirección de Evolve.', scale:DEFAULT_SCALE },
       ]
     },
     {
       id: 'claridad_desarrollo', title: 'Claridad y desarrollo',
       questions: [
-        { id:'q11_expectativas_claras', type:'likert_1_5', required:true, label:'Sé claramente qué se espera de mí en mi puesto.' },
-        { id:'q12_medicion_desempeno', type:'likert_1_5', required:true, label:'Sé cómo se mide mi desempeño.' },
-        { id:'q13_ruta_crecimiento', type:'likert_1_5', required:true, label:'Veo una ruta de crecimiento clara para mí en Evolve.' },
+        { id:'q11_expectativas_claras', type:'likert_1_5', required:true, label:'Sé claramente qué se espera de mí en mi puesto.', scale:DEFAULT_SCALE },
+        { id:'q12_medicion_desempeno', type:'likert_1_5', required:true, label:'Sé cómo se mide mi desempeño.', scale:DEFAULT_SCALE },
+        { id:'q13_ruta_crecimiento', type:'likert_1_5', required:true, label:'Veo una ruta de crecimiento clara para mí en Evolve.', scale:DEFAULT_SCALE },
       ]
     },
     {
       id: 'compensacion', title: 'Compensación y reconocimiento',
       questions: [
-        { id:'q14_compensacion_justa', type:'likert_1_5', required:true, label:'Considero que mi compensación es justa para el rol que desempeño.' },
-        { id:'q15_reconocimiento_no_salarial', type:'likert_1_5', required:true, label:'En Evolve se reconoce el buen trabajo más allá del salario (gestos, oportunidades, visibilidad).' },
+        { id:'q14_compensacion_justa', type:'likert_1_5', required:true, label:'Considero que mi compensación es justa para el rol que desempeño.', scale:DEFAULT_SCALE },
+        { id:'q15_reconocimiento_no_salarial', type:'likert_1_5', required:true, label:'En Evolve se reconoce el buen trabajo más allá del salario (gestos, oportunidades, visibilidad).', scale:DEFAULT_SCALE },
       ]
     },
     {
@@ -85,8 +96,8 @@ const ENCUESTA = {
     {
       id: 'colaboracion', title: 'Colaboración y herramientas',
       questions: [
-        { id:'q18_colaboracion_areas', type:'likert_1_5', required:true, label:'Las áreas con las que más colaboro lo hacen bien conmigo.' },
-        { id:'q19_herramientas_adecuadas', type:'likert_1_5', required:true, label:'Tengo las herramientas (tecnología, accesos, recursos) que necesito para hacer bien mi trabajo.' },
+        { id:'q18_colaboracion_areas', type:'likert_1_5', required:true, label:'Las áreas con las que más colaboro lo hacen bien conmigo.', scale:DEFAULT_SCALE },
+        { id:'q19_herramientas_adecuadas', type:'likert_1_5', required:true, label:'Tengo las herramientas (tecnología, accesos, recursos) que necesito para hacer bien mi trabajo.', scale:DEFAULT_SCALE },
       ]
     },
     {
