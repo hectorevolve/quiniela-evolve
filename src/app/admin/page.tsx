@@ -1034,12 +1034,14 @@ function ViewRankings() {
 
   useEffect(() => { reload(); }, []);
 
+  const [search, setSearch] = useState('');
+
   const list = useMemo(() => {
-    if (tab === 'nacional') return rankings;
-    return rankings
-      .filter(u => u.group_name === tab)
-      .map((u, i) => ({ ...u, pos: i + 1 }));
-  }, [tab, rankings]);
+    const base = tab === 'nacional' ? rankings : rankings.filter(u => u.group_name === tab).map((u, i) => ({ ...u, pos: i + 1 }));
+    if (!search.trim()) return base;
+    const q = search.toLowerCase();
+    return base.filter(u => u.name.toLowerCase().includes(q) || (u.group_name ?? '').toLowerCase().includes(q) || (u.city ?? '').toLowerCase().includes(q));
+  }, [tab, rankings, search]);
 
   const handleSaved = (updated: Partial<RankingEntry>) => {
     setRankings(prev => prev.map(u => u.userId === editEntry?.userId ? { ...u, ...updated } : u));
@@ -1068,6 +1070,15 @@ function ViewRankings() {
         <SectionHeader title="Rankings" sub="Clasificaciones por grupo y nacional"/>
         <button onClick={() => setShowCreate(true)} style={{ padding: '9px 18px', borderRadius: 9, background: c.green, border: 'none', color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap' }}>+ Agregar usuario</button>
       </div>
+
+      {/* Buscador Rankings */}
+      <div style={{ position: 'relative', marginBottom: 12 }}>
+        <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: c.muted, fontSize: 14, pointerEvents: 'none' }}>🔍</span>
+        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar por nombre, grupo o ciudad…"
+          style={{ width: '100%', padding: '9px 12px 9px 36px', borderRadius: 10, border: `1px solid ${c.border}`, background: c.card, color: c.text, fontSize: 13, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }}/>
+        {search && <button onClick={() => setSearch('')} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: c.muted, cursor: 'pointer', fontSize: 16 }}>✕</button>}
+      </div>
+
       <div style={{ display: 'flex', gap: 6, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center' }}>
         <button onClick={() => setTab('nacional')} style={{ padding: '8px 16px', borderRadius: 8, border: `1px solid ${tab === 'nacional' ? c.blue : c.border}`, background: tab === 'nacional' ? `${c.blue}22` : c.card, color: tab === 'nacional' ? c.blue : c.muted, fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>Nacional</button>
         {ALL_GROUPS.map(g => {
@@ -2038,11 +2049,18 @@ function ViewGrupoDetalle({ group, liveUsers, onBack, onUserUpdated, onUserRemov
   const col = isNacional ? c.blue : isSinGrupo ? c.dim : (GROUP_COLORS[group] ?? c.blue);
 
   const nonAdmins = liveUsers.filter(u => u.role !== 'superadmin');
-  const members = isNacional
+  const allMembers = isNacional
     ? nonAdmins
     : isSinGrupo
       ? nonAdmins.filter(u => !u.group_name)
       : nonAdmins.filter(u => u.group_name === group);
+
+  const [memberSearch, setMemberSearch] = useState('');
+  const members = useMemo(() => {
+    if (!memberSearch.trim()) return allMembers;
+    const q = memberSearch.toLowerCase();
+    return allMembers.filter(u => u.name.toLowerCase().includes(q) || (u.email ?? '').toLowerCase().includes(q) || (u.city ?? '').toLowerCase().includes(q) || (u.phone ?? '').includes(q));
+  }, [allMembers, memberSearch]);
 
   // Prizes (tramos flexibles: posiciones sueltas y/o rangos)
   const [tiers, setTiers] = useState<PrizeTier[]>([]);
@@ -2350,8 +2368,16 @@ function ViewGrupoDetalle({ group, liveUsers, onBack, onUserUpdated, onUserRemov
         <div>
           <SectionHeader
             title={isNacional ? 'Todos los usuarios' : isSinGrupo ? 'Sin grupo asignado' : 'Miembros'}
-            sub={`${members.length} usuario${members.length !== 1 ? 's' : ''}`}
+            sub={memberSearch ? `${members.length} de ${allMembers.length} usuario${allMembers.length !== 1 ? 's' : ''}` : `${allMembers.length} usuario${allMembers.length !== 1 ? 's' : ''}`}
           />
+          {/* Buscador de miembros */}
+          <div style={{ position: 'relative', marginBottom: 10 }}>
+            <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: c.muted, fontSize: 13, pointerEvents: 'none' }}>🔍</span>
+            <input value={memberSearch} onChange={e => setMemberSearch(e.target.value)}
+              placeholder="Buscar por nombre, email o teléfono…"
+              style={{ width: '100%', padding: '8px 32px 8px 32px', borderRadius: 9, border: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.04)', color: c.text, fontSize: 12.5, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }}/>
+            {memberSearch && <button onClick={() => setMemberSearch('')} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: c.muted, cursor: 'pointer', fontSize: 14 }}>✕</button>}
+          </div>
           {members.length === 0 ? (
             <div style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 14, padding: '32px 20px', textAlign: 'center', color: c.muted, fontSize: 13 }}>
               {isSinGrupo ? 'Todos los usuarios tienen grupo asignado.' : 'No hay usuarios en este grupo aún.'}<br/>
