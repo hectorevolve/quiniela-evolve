@@ -3628,60 +3628,181 @@ function ViewEncuesta() {
           {/* Overview */}
           {section === 'overview' && (
             <div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12, marginBottom: 20 }}>
+              {/* KPIs */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10, marginBottom: 16 }}>
                 {[
                   { label: 'Respuestas', val: n, color: c.blue },
                   { label: 'Satisfacción (1–5)', val: avgsByQ['satisfaccion_general'] !== undefined ? avgsByQ['satisfaccion_general'].toFixed(1) : '—', color: c.lime },
                   { label: 'eNPS score', val: enps ? `${enps.score > 0 ? '+' : ''}${enps.score}` : '—', color: enps && enps.score >= 0 ? c.lime : '#EF4444' },
-                  { label: 'Promotores eNPS', val: enps ? `${Math.round(enps.promoters / enps.total * 100)}%` : '—', color: c.lime },
+                  { label: 'Sueldo justo (1–5)', val: avgsByQ['sueldo_justo'] !== undefined ? avgsByQ['sueldo_justo'].toFixed(1) : '—', color: avgsByQ['sueldo_justo'] !== undefined ? (avgsByQ['sueldo_justo'] >= 3.5 ? c.lime : avgsByQ['sueldo_justo'] >= 2.5 ? c.amber : '#EF4444') : c.muted },
+                  { label: 'Supervisor (1–5)', val: avgsByQ['supervisor_accesible'] !== undefined ? avgsByQ['supervisor_accesible'].toFixed(1) : '—', color: avgsByQ['supervisor_accesible'] !== undefined ? (avgsByQ['supervisor_accesible'] >= 3.5 ? c.lime : avgsByQ['supervisor_accesible'] >= 2.5 ? c.amber : '#EF4444') : c.muted },
+                  { label: 'Crecimiento (1–5)', val: avgsByQ['oportunidades_crecimiento'] !== undefined ? avgsByQ['oportunidades_crecimiento'].toFixed(1) : '—', color: avgsByQ['oportunidades_crecimiento'] !== undefined ? (avgsByQ['oportunidades_crecimiento'] >= 3.5 ? c.lime : avgsByQ['oportunidades_crecimiento'] >= 2.5 ? c.amber : '#EF4444') : c.muted },
                 ].map(kpi => (
-                  <div key={kpi.label} style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 12, padding: '16px', textAlign: 'center' }}>
-                    <div style={{ fontSize: 26, fontWeight: 900, color: kpi.color }}>{kpi.val}</div>
-                    <div style={{ fontSize: 11, color: c.muted, marginTop: 4 }}>{kpi.label}</div>
+                  <div key={kpi.label} style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 12, padding: '14px 12px', textAlign: 'center' }}>
+                    <div style={{ fontSize: 24, fontWeight: 900, color: kpi.color }}>{kpi.val}</div>
+                    <div style={{ fontSize: 10, color: c.muted, marginTop: 4 }}>{kpi.label}</div>
                   </div>
                 ))}
               </div>
-              {enps && (
-                <div style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 12, padding: '16px 18px', marginBottom: 12 }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: c.text, marginBottom: 10 }}>Distribución eNPS</div>
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    {[
-                      { label: 'Promotores (9–10)', cnt: enps.promoters, color: c.lime },
-                      { label: 'Pasivos (7–8)',     cnt: enps.passives,  color: c.amber },
-                      { label: 'Detractores (0–6)', cnt: enps.detractors, color: '#EF4444' },
-                    ].map(seg => {
-                      const pct = Math.round(seg.cnt / enps.total * 100);
+
+              {/* eNPS + Orgullo */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 16 }}>
+                {enps && (
+                  <div style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 12, padding: '14px 16px' }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: c.text, marginBottom: 10 }}>Distribución eNPS</div>
+                    <div style={{ display: 'flex', gap: 5 }}>
+                      {[
+                        { label: 'Promotores', sub: '9–10', cnt: enps.promoters, color: c.lime },
+                        { label: 'Pasivos',    sub: '7–8',  cnt: enps.passives,  color: c.amber },
+                        { label: 'Detractores',sub: '0–6',  cnt: enps.detractors, color: '#EF4444' },
+                      ].map(seg => {
+                        const pct = Math.round(seg.cnt / enps.total * 100);
+                        return (
+                          <div key={seg.label} style={{ flex: 1, background: `${seg.color}18`, border: `1px solid ${seg.color}44`, borderRadius: 8, padding: '8px 4px', textAlign: 'center' }}>
+                            <div style={{ fontSize: 20, fontWeight: 800, color: seg.color }}>{seg.cnt}</div>
+                            <div style={{ fontSize: 10, color: c.muted }}>{pct}%</div>
+                            <div style={{ fontSize: 8, color: c.dim }}>{seg.label}</div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+                {(() => {
+                  const opts = ENCUESTA_META['orgullo_evolve']?.options ?? [];
+                  const counts = countsByQ['orgullo_evolve'] ?? {};
+                  const total = Object.values(counts).reduce((s, v) => s + v, 0);
+                  if (!total) return <div/>;
+                  return (
+                    <div style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 12, padding: '14px 16px' }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: c.text, marginBottom: 10 }}>Orgullo de trabajar en Evolve</div>
+                      {opts.map(opt => {
+                        const cnt = counts[opt.value] ?? 0;
+                        const pct = total ? Math.round(cnt / total * 100) : 0;
+                        const col = opt.value === 'frecuentemente' ? c.lime : opt.value === 'a_veces' ? c.amber : '#EF4444';
+                        return (
+                          <div key={opt.value} style={{ marginBottom: 6 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 2 }}>
+                              <span style={{ color: c.muted }}>{opt.label}</span>
+                              <span style={{ fontWeight: 700, color: col }}>{cnt}</span>
+                            </div>
+                            <div style={{ height: 4, borderRadius: 3, background: c.border, overflow: 'hidden' }}>
+                              <div style={{ height: '100%', width: `${pct}%`, background: col, borderRadius: 3 }}/>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* Distribución de participantes */}
+              <div style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 12, padding: '14px 16px', marginBottom: 16 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: c.text, marginBottom: 12 }}>Distribución de participantes</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
+                  {(['puesto','antiguedad','cadena'] as const).map(qId => {
+                    const meta = ENCUESTA_META[qId];
+                    const counts = countsByQ[qId] ?? {};
+                    const total = Object.values(counts).reduce((s, v) => s + v, 0);
+                    if (!total || !meta?.options) return null;
+                    return (
+                      <div key={qId}>
+                        <div style={{ fontSize: 11, fontWeight: 600, color: c.muted, marginBottom: 8 }}>{meta.label}</div>
+                        {meta.options.map(opt => {
+                          const cnt = counts[opt.value] ?? 0;
+                          const pct = total ? Math.round(cnt / total * 100) : 0;
+                          if (!cnt) return null;
+                          return (
+                            <div key={opt.value} style={{ marginBottom: 5 }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 2 }}>
+                                <span style={{ color: c.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '70%' }}>{opt.label}</span>
+                                <span style={{ fontWeight: 700, color: c.text, flexShrink: 0 }}>{pct}%</span>
+                              </div>
+                              <div style={{ height: 4, borderRadius: 3, background: c.border, overflow: 'hidden' }}>
+                                <div style={{ height: '100%', width: `${pct}%`, background: c.blue, borderRadius: 3 }}/>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Todos los promedios Likert */}
+              <div style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 12, padding: '14px 16px', marginBottom: 16 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: c.text, marginBottom: 10 }}>Todos los promedios (Likert 1–5)</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 20px' }}>
+                  {Object.entries(ENCUESTA_META)
+                    .filter(([, m]) => m.type === 'likert_1_5')
+                    .map(([qId, meta]) => {
+                      const avg = avgsByQ[qId]; if (avg === undefined) return null;
+                      const pct = (avg / 5) * 100;
+                      const col = avg >= 3.5 ? c.lime : avg >= 2.5 ? c.amber : '#EF4444';
                       return (
-                        <div key={seg.label} style={{ flex: 1, background: `${seg.color}18`, border: `1px solid ${seg.color}44`, borderRadius: 10, padding: '10px 8px', textAlign: 'center' }}>
-                          <div style={{ fontSize: 22, fontWeight: 800, color: seg.color }}>{seg.cnt}</div>
-                          <div style={{ fontSize: 10, color: c.muted }}>{pct}%</div>
-                          <div style={{ fontSize: 9, color: c.dim, marginTop: 2 }}>{seg.label}</div>
+                        <div key={qId} style={{ marginBottom: 6 }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 2 }}>
+                            <span style={{ color: c.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '80%' }}>{meta.label}</span>
+                            <span style={{ fontWeight: 700, color: col, flexShrink: 0 }}>{avg.toFixed(1)}</span>
+                          </div>
+                          <div style={{ height: 4, borderRadius: 3, background: c.border, overflow: 'hidden' }}>
+                            <div style={{ height: '100%', width: `${pct}%`, background: col, borderRadius: 3 }}/>
+                          </div>
                         </div>
                       );
                     })}
-                  </div>
                 </div>
-              )}
-              <div style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 12, padding: '16px 18px' }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: c.text, marginBottom: 10 }}>Promedios por área (Likert 1–5)</div>
-                {['satisfaccion_general','claridad_objetivos','herramientas_materiales','supervisor_accesible','ejecutivo_respuesta','emetrix_facilidad','sueldo_justo','oportunidades_crecimiento'].map(qId => {
-                  const avg = avgsByQ[qId]; if (avg === undefined) return null;
-                  const meta = ENCUESTA_META[qId]; if (!meta) return null;
-                  const pct = (avg / 5) * 100;
-                  const col = avg >= 3.5 ? c.lime : avg >= 2.5 ? c.amber : '#EF4444';
-                  return (
-                    <div key={qId} style={{ marginBottom: 8 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 3 }}>
-                        <span style={{ color: c.muted }}>{meta.label}</span>
-                        <span style={{ fontWeight: 700, color: col }}>{avg.toFixed(1)}</span>
-                      </div>
-                      <div style={{ height: 5, borderRadius: 3, background: c.border, overflow: 'hidden' }}>
-                        <div style={{ height: '100%', width: `${pct}%`, background: col, borderRadius: 3 }}/>
-                      </div>
-                    </div>
-                  );
-                })}
               </div>
+
+              {/* Alerta: incidentes de acoso */}
+              {(() => {
+                const counts = countsByQ['incidente_acoso'] ?? {};
+                const siCnt = counts['si'] ?? 0;
+                const total = Object.values(counts).reduce((s, v) => s + v, 0);
+                if (!total) return null;
+                const pct = Math.round(siCnt / total * 100);
+                const respaldo = countsByQ['respaldo_evolve'] ?? {};
+                return (
+                  <div style={{ background: siCnt > 0 ? 'rgba(239,68,68,0.08)' : `${c.lime}10`, border: `1px solid ${siCnt > 0 ? '#EF444444' : c.lime + '44'}`, borderRadius: 12, padding: '14px 16px', marginBottom: 16 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: siCnt > 0 ? '#EF4444' : c.lime, marginBottom: 8 }}>
+                      {siCnt > 0 ? '⚠ Incidentes de acoso / irrespeto reportados' : '✓ Sin incidentes de acoso reportados'}
+                    </div>
+                    <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                      <div style={{ fontSize: 12, color: c.muted }}><span style={{ fontWeight: 700, color: siCnt > 0 ? '#EF4444' : c.text }}>{siCnt}</span> respondieron Sí ({pct}%)</div>
+                      <div style={{ fontSize: 12, color: c.muted }}><span style={{ fontWeight: 700, color: c.text }}>{counts['no'] ?? 0}</span> respondieron No</div>
+                      <div style={{ fontSize: 12, color: c.muted }}><span style={{ fontWeight: 700, color: c.text }}>{counts['prefiero_no_decir'] ?? 0}</span> prefirieron no decir</div>
+                    </div>
+                    {siCnt > 0 && Object.keys(respaldo).length > 0 && (
+                      <div style={{ marginTop: 8, fontSize: 11, color: c.muted }}>
+                        Respaldo de Evolve: &nbsp;
+                        {[{v:'si',l:'Sí'},{v:'parcialmente',l:'Parcialmente'},{v:'no',l:'No'}].map(x => `${x.l}: ${respaldo[x.v] ?? 0}`).join(' · ')}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {/* Preview de comentarios */}
+              {(['cambio_uno','mayor_reto_ruta','mensaje_direccion'] as const).map(qId => {
+                const texts = (textsByQ[qId] ?? []).filter(t => t.length > 5).slice(0, 3);
+                const meta = ENCUESTA_META[qId];
+                if (!texts.length || !meta) return null;
+                return (
+                  <div key={qId} style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 12, padding: '14px 16px', marginBottom: 12 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: c.text }}>{meta.label}</div>
+                      <button onClick={() => setSection(meta.section)} style={{ fontSize: 11, color: c.blue, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>Ver todos →</button>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {texts.map((t, i) => (
+                        <div key={i} style={{ fontSize: 12, color: c.muted, background: 'rgba(255,255,255,0.04)', borderRadius: 8, padding: '8px 12px', borderLeft: `3px solid ${c.blue}44` }}>{t}</div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
 
