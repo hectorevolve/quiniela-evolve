@@ -2076,6 +2076,31 @@ function ViewGrupoDetalle({ group, liveUsers, onBack, onUserUpdated, onUserRemov
     return allMembers.filter(u => u.name.toLowerCase().includes(q) || (u.email ?? '').toLowerCase().includes(q) || (u.city ?? '').toLowerCase().includes(q) || (u.phone ?? '').includes(q));
   }, [allMembers, memberSearch]);
 
+  // Powers toggle
+  const [powersEnabled, setPowersEnabled] = useState(true);
+  const [groupDbId, setGroupDbId] = useState<number | null>(null);
+  const [powersToggling, setPowersToggling] = useState(false);
+
+  useEffect(() => {
+    if (isSpecial) return;
+    supabase.from('groups').select('id, powers_enabled').eq('name', group).maybeSingle()
+      .then(({ data }) => {
+        if (data) { setGroupDbId(data.id); setPowersEnabled(data.powers_enabled !== false); }
+      });
+  }, [group, isSpecial]);
+
+  const togglePowers = async () => {
+    if (!groupDbId || powersToggling) return;
+    const next = !powersEnabled;
+    setPowersToggling(true);
+    setPowersEnabled(next);
+    await adminFetch('/api/admin/update-group', {
+      method: 'POST',
+      body: JSON.stringify({ id: groupDbId, name: group, color: GROUP_COLORS[group] ?? c.blue, old_name: group, powers_enabled: next }),
+    }).catch(() => setPowersEnabled(!next));
+    setPowersToggling(false);
+  };
+
   // Prizes (tramos flexibles: posiciones sueltas y/o rangos)
   const [tiers, setTiers] = useState<PrizeTier[]>([]);
   const [prizesLoading, setPrizesLoading] = useState(true);
@@ -2243,8 +2268,21 @@ function ViewGrupoDetalle({ group, liveUsers, onBack, onUserUpdated, onUserRemov
           <div style={{ fontSize: 20, fontWeight: 800, color: c.text }}>{displayName}</div>
           <div style={{ fontSize: 12, color: c.muted }}>{members.length} miembro{members.length !== 1 ? 's' : ''}</div>
         </div>
-        <div style={{ marginLeft: 'auto', padding: '4px 14px', borderRadius: 20, background: `${col}22`, border: `1px solid ${col}44`, fontSize: 11, fontWeight: 700, color: col }}>
-          {isNacional ? 'Todos los usuarios' : isSinGrupo ? 'Sin asignar' : 'Grupo activo'}
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          {!isSpecial && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 14px', borderRadius: 20, background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}` }}>
+              <span style={{ fontSize: 11, fontWeight: 600, color: powersEnabled ? c.lime : c.muted }}>Poderes</span>
+              <button onClick={togglePowers} disabled={powersToggling} style={{
+                width: 36, height: 20, borderRadius: 10, border: 'none', cursor: powersToggling ? 'default' : 'pointer',
+                background: powersEnabled ? c.lime : 'rgba(255,255,255,0.15)', position: 'relative', flexShrink: 0, transition: 'background 200ms', opacity: powersToggling ? 0.6 : 1,
+              }}>
+                <div style={{ width: 14, height: 14, borderRadius: '50%', background: powersEnabled ? '#0A1628' : '#fff', position: 'absolute', top: 3, left: powersEnabled ? 19 : 3, transition: 'left 200ms' }}/>
+              </button>
+            </div>
+          )}
+          <div style={{ padding: '4px 14px', borderRadius: 20, background: `${col}22`, border: `1px solid ${col}44`, fontSize: 11, fontWeight: 700, color: col }}>
+            {isNacional ? 'Todos los usuarios' : isSinGrupo ? 'Sin asignar' : 'Grupo activo'}
+          </div>
         </div>
       </div>
 
