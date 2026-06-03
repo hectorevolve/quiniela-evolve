@@ -72,7 +72,7 @@ export default function Home() {
             setCurrentUser(profile);
             // Verificar si el grupo del usuario tiene poderes habilitados
             if (profile.group_name) {
-              fetch('/api/groups').then(r => r.json()).then((groups: { name: string; powers_enabled?: boolean }[]) => {
+              fetch('/api/groups', { cache: 'no-store' }).then(r => r.json()).then((groups: { name: string; powers_enabled?: boolean }[]) => {
                 const g = groups.find(x => x.name === profile.group_name);
                 if (g && g.powers_enabled === false) setPowersEnabled(false);
               }).catch(() => {});
@@ -122,7 +122,7 @@ export default function Home() {
     setCurrentUser(user);
     setUsedPowers(new Set(user.used_powers ?? []));
     if (user.group_name) {
-      fetch('/api/groups').then(r => r.json()).then((groups: { name: string; powers_enabled?: boolean }[]) => {
+      fetch('/api/groups', { cache: 'no-store' }).then(r => r.json()).then((groups: { name: string; powers_enabled?: boolean }[]) => {
         const g = groups.find(x => x.name === user.group_name);
         if (g && g.powers_enabled === false) setPowersEnabled(false);
         else setPowersEnabled(true);
