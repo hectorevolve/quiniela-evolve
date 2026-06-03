@@ -283,11 +283,71 @@ export async function GET() {
   // Bust the rankings cache so users see updated points immediately
   if (resultsUpdated > 0) revalidatePath('/api/rankings');
 
+  // ── Auto-apply bonus points when champion / runner-up / 3rd place are known ──
+  let bonusApplied = 0;
+  if (resultsUpdated > 0) {
+    const [finalRes, thirdRes] = await Promise.all([
+      supabase.from('matches').select('home_code, away_code, result_home, result_away, result_winner').eq('id', 'f_01').maybeSingle(),
+      supabase.from('matches').select('home_code, away_code, result_home, result_away, result_winner').eq('id', 'tp_01').maybeSingle(),
+    ]);
+
+    type MatchRow = { home_code: string; away_code: string; result_home: number | null; result_away: number | null; result_winner?: string | null };
+    const winner = (row: MatchRow): string | null => {
+      if (row.result_winner === 'home') return row.home_code;
+      if (row.result_winner === 'away') return row.away_code;
+      if (row.result_home != null && row.result_away != null) {
+        if (row.result_home > row.result_away) return row.home_code;
+        if (row.result_away > row.result_home) return row.away_code;
+      }
+      return null;
+    };
+
+    const f = finalRes.data as MatchRow | null;
+    const t = thirdRes.data as MatchRow | null;
+    const champCode   = f && f.result_home != null ? winner(f) : null;
+    const runnerCode  = champCode && f ? (champCode === f.home_code ? f.away_code : f.home_code) : null;
+    const thirdCode   = t && t.result_home != null ? winner(t) : null;
+
+    if (champCode || thirdCode) {
+      const { data: allSettings } = await supabase
+        .from('group_settings')
+        .select('group_name, bonus_champ_type, bonus_champ_value, bonus_runner_type, bonus_runner_value, bonus_third_type, bonus_third_value');
+
+      for (const gs of (allSettings ?? []) as Record<string, string>[]) {
+        const { data: members } = await supabase.from('profiles').select('id').eq('group_name', gs.group_name);
+        const memberIds = (members ?? []).map((m: { id: string }) => m.id);
+        if (!memberIds.length) continue;
+
+        const autoAward = async (code: string | null, field: string, category: string, typeCol: string, valueCol: string, resultCol: string) => {
+          if (!code || gs[typeCol] !== 'puntos') return;
+          const pts = parseInt(gs[valueCol] ?? '0');
+          if (!pts) return;
+          const { data: picks } = await supabase.from('bonus_picks').select('user_id').eq(field, code).in('user_id', memberIds);
+          for (const p of (picks ?? []) as { user_id: string }[]) {
+            const { error } = await supabase.from('bonus_awards').upsert(
+              { user_id: p.user_id, group_name: gs.group_name, category, points: pts },
+              { onConflict: 'user_id,group_name,category' },
+            );
+            if (!error) bonusApplied++;
+          }
+          await supabase.from('group_settings').update({ [resultCol]: code }).eq('group_name', gs.group_name);
+        };
+
+        await autoAward(champCode, 'champ_code', 'champ', 'bonus_champ_type', 'bonus_champ_value', 'result_champ');
+        await autoAward(runnerCode, 'runner_up_code', 'runner', 'bonus_runner_type', 'bonus_runner_value', 'result_runner');
+        await autoAward(thirdCode, 'third_code', 'third', 'bonus_third_type', 'bonus_third_value', 'result_third');
+      }
+
+      if (bonusApplied > 0) revalidatePath('/api/rankings');
+    }
+  }
+
   return NextResponse.json({
     knockoutSeeded,
     slotsResolved,
     scheduledUpdated,
     resultsUpdated,
+    bonusApplied,
     total: apiMatches.length,
     ...(skipped.length > 0 ? { skipped } : {}),
   });
