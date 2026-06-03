@@ -3445,53 +3445,42 @@ function ViewUsuariosAdmin({ liveUsers, onUserCreated, onUserDeleted, onUserUpda
 type SurveyResponseRow = { answers: Record<string, unknown>; completed_at: string | null; duration_seconds: number | null };
 
 const ENCUESTA_SECTIONS = [
-  { id: 'overview',          title: 'Resumen' },
-  { id: 'datos-segmentacion', title: 'Perfil' },
-  { id: 'satisfaccion',      title: 'Satisfacción' },
-  { id: 'dia_a_dia',         title: 'Día a día' },
-  { id: 'supervisor',        title: 'Supervisor' },
-  { id: 'ejecutivo_rh',      title: 'Ejecutivo / RH' },
-  { id: 'emetrix',           title: 'Emetrix' },
-  { id: 'sueldo_crecimiento', title: 'Sueldo' },
-  { id: 'cierre',            title: 'Mensajes' },
+  { id: 'overview',            title: 'Resumen' },
+  { id: 'contexto',            title: 'Contexto' },
+  { id: 'apego_cultural',      title: 'Cultura' },
+  { id: 'lider_directo',       title: 'Líder' },
+  { id: 'liderazgo_directivo', title: 'Dirección' },
+  { id: 'claridad_desarrollo', title: 'Desarrollo' },
+  { id: 'compensacion',        title: 'Compensación' },
+  { id: 'balance',             title: 'Balance' },
+  { id: 'colaboracion',        title: 'Colaboración' },
+  { id: 'cierre',              title: 'Cierre' },
 ];
 
 const ENCUESTA_META: Record<string, { label: string; type: 'single_choice'|'likert_1_5'|'scale_0_10'|'long_text'; section: string; options?: {value:string;label:string}[] }> = {
-  puesto:               { section:'datos-segmentacion', type:'single_choice', label:'Puesto', options:[{value:'promotor',label:'Promotor(a)'},{value:'demostrador',label:'Demostrador(a)'},{value:'supervisor',label:'Supervisor(a)/Coord.'},{value:'otro',label:'Otro'}] },
-  antiguedad:           { section:'datos-segmentacion', type:'single_choice', label:'Antigüedad', options:[{value:'menos_3m',label:'< 3 meses'},{value:'3_6m',label:'3–6 meses'},{value:'6m_1a',label:'6m–1 año'},{value:'1_2a',label:'1–2 años'},{value:'mas_2a',label:'> 2 años'}] },
-  cadena:               { section:'datos-segmentacion', type:'single_choice', label:'Cadena', options:[{value:'walmart',label:'Walmart'},{value:'soriana',label:'Soriana'},{value:'chedraui',label:'Chedraui'},{value:'heb',label:'HEB'},{value:'la_comer',label:'La Comer'},{value:'costco',label:'Costco'},{value:'oxxo',label:'OXXO'},{value:'7eleven',label:'7-Eleven'},{value:'otra',label:'Otra'}] },
-  satisfaccion_general: { section:'satisfaccion', type:'likert_1_5', label:'Satisfacción general' },
-  enps:                 { section:'satisfaccion', type:'scale_0_10', label:'eNPS — ¿Recomendarías trabajar en Evolve?' },
-  razon_recomendacion:  { section:'satisfaccion', type:'long_text', label:'Razón de la calificación eNPS' },
-  cambio_uno:           { section:'satisfaccion', type:'long_text', label:'Una cosa que cambiarías' },
-  claridad_objetivos:   { section:'dia_a_dia', type:'likert_1_5', label:'Claridad de objetivos' },
-  herramientas_materiales:{ section:'dia_a_dia', type:'likert_1_5', label:'Herramientas y materiales' },
-  trato_personal_tienda:{ section:'dia_a_dia', type:'likert_1_5', label:'Trato del personal de tienda' },
-  seguridad_traslados:  { section:'dia_a_dia', type:'likert_1_5', label:'Seguridad en traslados' },
-  mayor_reto_ruta:      { section:'dia_a_dia', type:'long_text', label:'Mayor reto en ruta' },
-  incidente_acoso:      { section:'dia_a_dia', type:'single_choice', label:'¿Ha vivido situación de acoso/irrespeto?', options:[{value:'si',label:'Sí'},{value:'no',label:'No'},{value:'prefiero_no_decir',label:'Prefiere no decirlo'}] },
-  respaldo_evolve:      { section:'dia_a_dia', type:'single_choice', label:'¿Evolve te respaldó en esa situación?', options:[{value:'si',label:'Sí, totalmente'},{value:'parcialmente',label:'Parcialmente'},{value:'no',label:'No'}] },
-  supervisor_accesible: { section:'supervisor', type:'likert_1_5', label:'Accesibilidad del supervisor' },
-  supervisor_retroalimentacion:{ section:'supervisor', type:'likert_1_5', label:'Retroalimentación útil' },
-  supervisor_reconocimiento:   { section:'supervisor', type:'likert_1_5', label:'Reconocimiento del esfuerzo' },
-  supervisor_confianza:        { section:'supervisor', type:'likert_1_5', label:'Confianza con el supervisor' },
-  supervisor_mejora:           { section:'supervisor', type:'long_text', label:'¿Qué podría mejorar tu supervisor?' },
-  ejecutivo_respuesta:         { section:'ejecutivo_rh', type:'likert_1_5', label:'Rapidez de respuesta del ejecutivo' },
-  ejecutivo_resolucion:        { section:'ejecutivo_rh', type:'likert_1_5', label:'Resolución de problemas' },
-  ejecutivo_entiende_campo:    { section:'ejecutivo_rh', type:'likert_1_5', label:'Entiende los retos en campo' },
-  rh_satisfaccion:             { section:'ejecutivo_rh', type:'likert_1_5', label:'Satisfacción con RH' },
-  rh_tiempos:                  { section:'ejecutivo_rh', type:'likert_1_5', label:'Tiempos de RH' },
-  ejecutivo_rh_mejora:         { section:'ejecutivo_rh', type:'long_text', label:'¿Qué podría mejorar ejecutivo/RH?' },
-  emetrix_facilidad:           { section:'emetrix', type:'likert_1_5', label:'Facilidad de uso de Emetrix' },
-  emetrix_rendimiento:         { section:'emetrix', type:'likert_1_5', label:'Rendimiento de la app' },
-  soporte_rapidez:             { section:'emetrix', type:'likert_1_5', label:'Rapidez del soporte técnico' },
-  soporte_satisfaccion:        { section:'emetrix', type:'likert_1_5', label:'Satisfacción con soporte' },
-  emetrix_mejora:              { section:'emetrix', type:'long_text', label:'Una mejora para Emetrix' },
-  sueldo_justo:                { section:'sueldo_crecimiento', type:'likert_1_5', label:'Percepción de sueldo justo' },
-  conoce_prestaciones:         { section:'sueldo_crecimiento', type:'single_choice', label:'¿Conoce sus prestaciones?', options:[{value:'si',label:'Sí, las conozco bien'},{value:'parcialmente',label:'Parcialmente'},{value:'no',label:'No las conozco'}] },
-  oportunidades_crecimiento:   { section:'sueldo_crecimiento', type:'likert_1_5', label:'Oportunidades de crecimiento' },
-  orgullo_evolve:              { section:'sueldo_crecimiento', type:'single_choice', label:'¿Sientes orgullo de trabajar en Evolve?', options:[{value:'frecuentemente',label:'Frecuentemente'},{value:'a_veces',label:'A veces'},{value:'rara_vez',label:'Rara vez'},{value:'nunca',label:'Nunca'}] },
-  mensaje_direccion:           { section:'cierre', type:'long_text', label:'Mensaje a la dirección' },
+  area:                        { section:'contexto', type:'single_choice', label:'Área', options:[{value:'operaciones',label:'Operaciones'},{value:'comercial_ventas',label:'Comercial / Ventas'},{value:'tecnologia_sistemas',label:'Tecnología / Sistemas'},{value:'capital_humano',label:'Capital Humano'},{value:'finanzas_admin',label:'Finanzas / Admin'},{value:'marketing_loyalty',label:'Marketing / Loyalty'},{value:'otra',label:'Otra'}] },
+  nivel:                       { section:'contexto', type:'single_choice', label:'Nivel jerárquico', options:[{value:'operativo_analista',label:'Operativo / Analista'},{value:'coordinador_especialista',label:'Coordinador / Especialista'},{value:'gerencia',label:'Gerencia'},{value:'direccion',label:'Dirección'}] },
+  antiguedad:                  { section:'contexto', type:'single_choice', label:'Antigüedad', options:[{value:'menos_6_meses',label:'< 6 meses'},{value:'6m_1a',label:'6m–1 año'},{value:'1_3_anos',label:'1–3 años'},{value:'3_5_anos',label:'3–5 años'},{value:'mas_5_anos',label:'> 5 años'}] },
+  q4_identificacion_valores:   { section:'apego_cultural', type:'likert_1_5', label:'Me identifico con los valores de Evolve' },
+  q5_valores_vividos:          { section:'apego_cultural', type:'likert_1_5', label:'Los valores se viven en el día a día' },
+  q6_lider_feedback:           { section:'lider_directo', type:'likert_1_5', label:'Mi líder me da retroalimentación clara' },
+  q7_lider_autonomia:          { section:'lider_directo', type:'likert_1_5', label:'Mi líder me da autonomía' },
+  q8_lider_reconocimiento:     { section:'lider_directo', type:'likert_1_5', label:'Mi líder reconoce mis logros' },
+  q9_direccion_comunicacion:   { section:'liderazgo_directivo', type:'likert_1_5', label:'La dirección comunica hacia dónde va la empresa' },
+  q10_direccion_confianza:     { section:'liderazgo_directivo', type:'likert_1_5', label:'Confío en las decisiones de la dirección' },
+  q11_expectativas_claras:     { section:'claridad_desarrollo', type:'likert_1_5', label:'Sé qué se espera de mí' },
+  q12_medicion_desempeno:      { section:'claridad_desarrollo', type:'likert_1_5', label:'Sé cómo se mide mi desempeño' },
+  q13_ruta_crecimiento:        { section:'claridad_desarrollo', type:'likert_1_5', label:'Veo ruta de crecimiento en Evolve' },
+  q14_compensacion_justa:      { section:'compensacion', type:'likert_1_5', label:'Mi compensación es justa' },
+  q15_reconocimiento_no_salarial:{ section:'compensacion', type:'likert_1_5', label:'Se reconoce el buen trabajo más allá del salario' },
+  q16_carga_manejable:         { section:'balance', type:'likert_1_5', label:'Mi carga de trabajo es manejable' },
+  q17_desconexion:             { section:'balance', type:'likert_1_5', label:'Puedo desconectarme fuera del horario' },
+  q18_colaboracion_areas:      { section:'colaboracion', type:'likert_1_5', label:'Las áreas con las que colaboro lo hacen bien' },
+  q19_herramientas_adecuadas:  { section:'colaboracion', type:'likert_1_5', label:'Tengo las herramientas que necesito' },
+  q20_enps:                    { section:'cierre', type:'scale_0_10', label:'eNPS — ¿Recomendarías Evolve como lugar de trabajo?' },
+  q21_lo_que_gusta:            { section:'cierre', type:'long_text', label:'Lo que más te gusta de trabajar en Evolve' },
+  q22_cambios_mejoras:         { section:'cierre', type:'long_text', label:'Qué cambiarías o mejorarías en Evolve' },
+  q23_mensaje_directivos:      { section:'cierre', type:'long_text', label:'Mensaje para el equipo directivo' },
 };
 
 function ViewEncuesta() {
@@ -3552,7 +3541,7 @@ function ViewEncuesta() {
   }, [responses]);
 
   const enps = useMemo(() => {
-    const scores = responses.map(r => r.answers['enps']).filter((v): v is number => typeof v === 'number');
+    const scores = responses.map(r => r.answers['q20_enps']).filter((v): v is number => typeof v === 'number');
     if (!scores.length) return null;
     const promoters  = scores.filter(s => s >= 9).length;
     const detractors = scores.filter(s => s <= 6).length;
@@ -3712,11 +3701,11 @@ function ViewEncuesta() {
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10, marginBottom: 16 }}>
                 {[
                   { label: 'Respuestas', val: n, color: c.blue },
-                  { label: 'Satisfacción (1–5)', val: avgsByQ['satisfaccion_general'] !== undefined ? avgsByQ['satisfaccion_general'].toFixed(1) : '—', color: c.lime },
                   { label: 'eNPS score', val: enps ? `${enps.score > 0 ? '+' : ''}${enps.score}` : '—', color: enps && enps.score >= 0 ? c.lime : '#EF4444' },
-                  { label: 'Sueldo justo (1–5)', val: avgsByQ['sueldo_justo'] !== undefined ? avgsByQ['sueldo_justo'].toFixed(1) : '—', color: avgsByQ['sueldo_justo'] !== undefined ? (avgsByQ['sueldo_justo'] >= 3.5 ? c.lime : avgsByQ['sueldo_justo'] >= 2.5 ? c.amber : '#EF4444') : c.muted },
-                  { label: 'Supervisor (1–5)', val: avgsByQ['supervisor_accesible'] !== undefined ? avgsByQ['supervisor_accesible'].toFixed(1) : '—', color: avgsByQ['supervisor_accesible'] !== undefined ? (avgsByQ['supervisor_accesible'] >= 3.5 ? c.lime : avgsByQ['supervisor_accesible'] >= 2.5 ? c.amber : '#EF4444') : c.muted },
-                  { label: 'Crecimiento (1–5)', val: avgsByQ['oportunidades_crecimiento'] !== undefined ? avgsByQ['oportunidades_crecimiento'].toFixed(1) : '—', color: avgsByQ['oportunidades_crecimiento'] !== undefined ? (avgsByQ['oportunidades_crecimiento'] >= 3.5 ? c.lime : avgsByQ['oportunidades_crecimiento'] >= 2.5 ? c.amber : '#EF4444') : c.muted },
+                  { label: 'Cultura (1–5)', val: avgsByQ['q4_identificacion_valores'] !== undefined ? avgsByQ['q4_identificacion_valores'].toFixed(1) : '—', color: avgsByQ['q4_identificacion_valores'] !== undefined ? (avgsByQ['q4_identificacion_valores'] >= 3.5 ? c.lime : avgsByQ['q4_identificacion_valores'] >= 2.5 ? c.amber : '#EF4444') : c.muted },
+                  { label: 'Líder (1–5)', val: avgsByQ['q6_lider_feedback'] !== undefined ? avgsByQ['q6_lider_feedback'].toFixed(1) : '—', color: avgsByQ['q6_lider_feedback'] !== undefined ? (avgsByQ['q6_lider_feedback'] >= 3.5 ? c.lime : avgsByQ['q6_lider_feedback'] >= 2.5 ? c.amber : '#EF4444') : c.muted },
+                  { label: 'Compensación (1–5)', val: avgsByQ['q14_compensacion_justa'] !== undefined ? avgsByQ['q14_compensacion_justa'].toFixed(1) : '—', color: avgsByQ['q14_compensacion_justa'] !== undefined ? (avgsByQ['q14_compensacion_justa'] >= 3.5 ? c.lime : avgsByQ['q14_compensacion_justa'] >= 2.5 ? c.amber : '#EF4444') : c.muted },
+                  { label: 'Crecimiento (1–5)', val: avgsByQ['q13_ruta_crecimiento'] !== undefined ? avgsByQ['q13_ruta_crecimiento'].toFixed(1) : '—', color: avgsByQ['q13_ruta_crecimiento'] !== undefined ? (avgsByQ['q13_ruta_crecimiento'] >= 3.5 ? c.lime : avgsByQ['q13_ruta_crecimiento'] >= 2.5 ? c.amber : '#EF4444') : c.muted },
                 ].map(kpi => (
                   <div key={kpi.label} style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 12, padding: '14px 12px', textAlign: 'center' }}>
                     <div style={{ fontSize: 24, fontWeight: 900, color: kpi.color }}>{kpi.val}</div>
@@ -3749,25 +3738,24 @@ function ViewEncuesta() {
                   </div>
                 )}
                 {(() => {
-                  const opts = ENCUESTA_META['orgullo_evolve']?.options ?? [];
-                  const counts = countsByQ['orgullo_evolve'] ?? {};
+                  const opts = ENCUESTA_META['nivel']?.options ?? [];
+                  const counts = countsByQ['nivel'] ?? {};
                   const total = Object.values(counts).reduce((s, v) => s + v, 0);
                   if (!total) return <div/>;
                   return (
                     <div style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 12, padding: '14px 16px' }}>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: c.text, marginBottom: 10 }}>Orgullo de trabajar en Evolve</div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: c.text, marginBottom: 10 }}>Nivel jerárquico</div>
                       {opts.map(opt => {
                         const cnt = counts[opt.value] ?? 0;
                         const pct = total ? Math.round(cnt / total * 100) : 0;
-                        const col = opt.value === 'frecuentemente' ? c.lime : opt.value === 'a_veces' ? c.amber : '#EF4444';
                         return (
                           <div key={opt.value} style={{ marginBottom: 6 }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 2 }}>
                               <span style={{ color: c.muted }}>{opt.label}</span>
-                              <span style={{ fontWeight: 700, color: col }}>{cnt}</span>
+                              <span style={{ fontWeight: 700, color: c.text }}>{cnt}</span>
                             </div>
                             <div style={{ height: 4, borderRadius: 3, background: c.border, overflow: 'hidden' }}>
-                              <div style={{ height: '100%', width: `${pct}%`, background: col, borderRadius: 3 }}/>
+                              <div style={{ height: '100%', width: `${pct}%`, background: c.blue, borderRadius: 3 }}/>
                             </div>
                           </div>
                         );
@@ -3781,7 +3769,7 @@ function ViewEncuesta() {
               <div style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 12, padding: '14px 16px', marginBottom: 16 }}>
                 <div style={{ fontSize: 12, fontWeight: 700, color: c.text, marginBottom: 12 }}>Distribución de participantes</div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
-                  {(['puesto','antiguedad','cadena'] as const).map(qId => {
+                  {(['area','antiguedad','nivel'] as const).map(qId => {
                     const meta = ENCUESTA_META[qId];
                     const counts = countsByQ[qId] ?? {};
                     const total = Object.values(counts).reduce((s, v) => s + v, 0);
@@ -3865,7 +3853,7 @@ function ViewEncuesta() {
               })()}
 
               {/* Preview de comentarios */}
-              {(['cambio_uno','mayor_reto_ruta','mensaje_direccion'] as const).map(qId => {
+              {(['q22_cambios_mejoras','q21_lo_que_gusta','q23_mensaje_directivos'] as const).map(qId => {
                 const texts = (textsByQ[qId] ?? []).filter(t => t.length > 5).slice(0, 3);
                 const meta = ENCUESTA_META[qId];
                 if (!texts.length || !meta) return null;

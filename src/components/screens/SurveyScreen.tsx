@@ -23,91 +23,79 @@ type Answers        = Record<string, string|number>;
 
 // ─── Configuración de la encuesta ────────────────────────────────────────────
 const ENCUESTA = {
-  id: 'encuesta-clima-evolve-2026',
+  id: 'encuesta-clima-cultura-evolve-2026',
   version: '1.0.0',
-  storageKey: 'evolve-encuesta-clima-v1',
+  storageKey: 'evolve-clima-cultura-v1',
   sections: [
     {
-      id: 'datos-segmentacion', title: 'Cuéntanos de ti',
+      id: 'contexto', title: 'Contexto',
       questions: [
-        { id:'puesto', type:'single_choice', required:true, label:'¿Cuál es tu puesto en Evolve?',
-          options:[{value:'promotor',label:'Promotor(a)'},{value:'demostrador',label:'Demostrador(a)'},{value:'supervisor',label:'Supervisor(a) o Coordinador(a)'},{value:'otro',label:'Otro'}] },
-        { id:'antiguedad', type:'single_choice', required:true, label:'¿Cuánto tiempo llevas trabajando en Evolve?',
-          options:[{value:'menos_3m',label:'Menos de 3 meses'},{value:'3_6m',label:'Entre 3 y 6 meses'},{value:'6m_1a',label:'Entre 6 meses y 1 año'},{value:'1_2a',label:'Entre 1 y 2 años'},{value:'mas_2a',label:'Más de 2 años'}] },
-        { id:'cadena', type:'single_choice', required:true, label:'¿En qué cadena pasas la mayor parte de tu tiempo?',
-          options:[{value:'walmart',label:'Walmart'},{value:'soriana',label:'Soriana'},{value:'chedraui',label:'Chedraui'},{value:'heb',label:'HEB'},{value:'la_comer',label:'La Comer'},{value:'costco',label:'Costco'},{value:'oxxo',label:'OXXO'},{value:'7eleven',label:'7-Eleven'},{value:'otra',label:'Otra'}] },
+        { id:'area', type:'single_choice', required:true, label:'¿En qué área trabajas?',
+          options:[{value:'operaciones',label:'Operaciones'},{value:'comercial_ventas',label:'Comercial / Ventas'},{value:'tecnologia_sistemas',label:'Tecnología / Sistemas'},{value:'capital_humano',label:'Capital Humano'},{value:'finanzas_admin',label:'Finanzas / Administración'},{value:'marketing_loyalty',label:'Marketing / Loyalty'},{value:'otra',label:'Otra'}] },
+        { id:'nivel', type:'single_choice', required:true, label:'¿Cuál es tu nivel jerárquico?',
+          options:[{value:'operativo_analista',label:'Operativo / Analista'},{value:'coordinador_especialista',label:'Coordinador / Especialista'},{value:'gerencia',label:'Gerencia'},{value:'direccion',label:'Dirección'}] },
+        { id:'antiguedad', type:'single_choice', required:true, label:'¿Cuánto tiempo llevas en Evolve?',
+          options:[{value:'menos_6_meses',label:'Menos de 6 meses'},{value:'6m_1a',label:'6 meses a 1 año'},{value:'1_3_anos',label:'1 a 3 años'},{value:'3_5_anos',label:'3 a 5 años'},{value:'mas_5_anos',label:'Más de 5 años'}] },
       ]
     },
     {
-      id: 'satisfaccion', title: 'Tu experiencia en Evolve',
+      id: 'apego_cultural', title: 'Apego cultural',
       questions: [
-        { id:'satisfaccion_general', type:'likert_1_5', required:true, label:'En general, ¿qué tan satisfecho(a) estás trabajando en Evolve?', scale:{min:1,max:5,minLabel:'Muy insatisfecho',maxLabel:'Muy satisfecho'} },
-        { id:'enps', type:'scale_0_10', required:true, metric:'enps', label:'¿Qué tan probable es que recomiendes a un amigo o familiar trabajar en Evolve?', scale:{min:0,max:10,minLabel:'Nada probable',maxLabel:'Totalmente'} },
-        { id:'razon_recomendacion', type:'long_text', required:false, maxLength:500, label:'¿Cuál es la principal razón de la calificación que diste arriba?', placeholder:'Cuéntanos en pocas palabras...' },
-        { id:'cambio_uno', type:'long_text', required:true, maxLength:500, label:'Si pudieras cambiar UNA SOLA cosa de tu experiencia trabajando en Evolve, ¿qué sería?', placeholder:'Una cosa, la que más impacto tendría para ti...' },
+        { id:'q4_identificacion_valores', type:'likert_1_5', required:true, label:'Me identifico con los valores y la cultura de Evolve.' },
+        { id:'q5_valores_vividos', type:'likert_1_5', required:true, label:'Los valores de Evolve se viven en el día a día, no son solo discurso.' },
       ]
     },
     {
-      id: 'dia_a_dia', title: 'Tu día a día en ruta',
+      id: 'lider_directo', title: 'Tu líder directo',
       questions: [
-        { id:'claridad_objetivos', type:'likert_1_5', required:true, label:'¿Qué tan claras son las indicaciones y objetivos que recibes para tu jornada?', scale:{min:1,max:5,minLabel:'Nada claras',maxLabel:'Totalmente claras'} },
-        { id:'herramientas_materiales', type:'likert_1_5', required:true, label:'¿Cuentas con las herramientas y materiales para hacer bien tu trabajo en piso? (uniforme, material POP, app, equipo)', scale:{min:1,max:5,minLabel:'Nunca',maxLabel:'Siempre'} },
-        { id:'trato_personal_tienda', type:'likert_1_5', required:true, label:'¿Qué tan respetuoso y profesional es el trato que recibes de los asociados y jefes de piso en las tiendas?', scale:{min:1,max:5,minLabel:'Muy malo',maxLabel:'Excelente'} },
-        { id:'seguridad_traslados', type:'likert_1_5', required:true, label:'¿Qué tan seguro(a) te sientes durante tus traslados entre tiendas?', scale:{min:1,max:5,minLabel:'Muy inseguro',maxLabel:'Totalmente seguro'} },
-        { id:'mayor_reto_ruta', type:'long_text', required:true, maxLength:500, label:'¿Cuál es el mayor reto que enfrentas en tu día a día en ruta?', placeholder:'Lo que más se te complica...' },
-        { id:'incidente_acoso', type:'single_choice', required:true, sensitive:true, label:'¿Has vivido alguna situación de falta de respeto, acoso o trato injusto por parte del personal de las tiendas?',
-          options:[{value:'si',label:'Sí'},{value:'no',label:'No'},{value:'prefiero_no_decir',label:'Prefiero no decirlo'}] },
-        { id:'respaldo_evolve', type:'single_choice', required:false, sensitive:true, label:'¿Sentiste que Evolve te respaldó cuando viviste esa situación?',
-          condition:{dependsOn:'incidente_acoso',equals:'si'},
-          options:[{value:'si',label:'Sí, totalmente'},{value:'parcialmente',label:'Parcialmente'},{value:'no',label:'No'}] },
+        { id:'q6_lider_feedback', type:'likert_1_5', required:true, label:'Mi líder directo me da retroalimentación clara y oportuna sobre mi trabajo.' },
+        { id:'q7_lider_autonomia', type:'likert_1_5', required:true, label:'Mi líder directo me da la autonomía necesaria para hacer bien mi trabajo.' },
+        { id:'q8_lider_reconocimiento', type:'likert_1_5', required:true, label:'Mi líder directo reconoce mis logros y aportes.' },
       ]
     },
     {
-      id: 'supervisor', title: 'Tu supervisor o coordinador',
+      id: 'liderazgo_directivo', title: 'Liderazgo directivo',
       questions: [
-        { id:'supervisor_accesible', type:'likert_1_5', required:true, label:'¿Qué tan accesible está tu supervisor(a) cuando lo(a) necesitas?', scale:{min:1,max:5,minLabel:'Nunca accesible',maxLabel:'Siempre accesible'} },
-        { id:'supervisor_retroalimentacion', type:'likert_1_5', required:true, label:'La retroalimentación que te da tu supervisor(a), ¿te ayuda a mejorar tu trabajo?', scale:{min:1,max:5,minLabel:'Nunca me ayuda',maxLabel:'Siempre me ayuda'} },
-        { id:'supervisor_reconocimiento', type:'likert_1_5', required:true, label:'¿Tu supervisor(a) reconoce tu esfuerzo cuando haces bien las cosas?', scale:{min:1,max:5,minLabel:'Nunca',maxLabel:'Siempre'} },
-        { id:'supervisor_confianza', type:'likert_1_5', required:true, label:'¿Sientes que puedes hablar con tu supervisor(a) si tienes un problema personal o laboral?', scale:{min:1,max:5,minLabel:'No, nunca',maxLabel:'Con total confianza'} },
-        { id:'supervisor_mejora', type:'long_text', required:false, maxLength:500, label:'¿Qué podría hacer tu supervisor(a) para apoyarte mejor?', placeholder:'Opcional...' },
+        { id:'q9_direccion_comunicacion', type:'likert_1_5', required:true, label:'La dirección de Evolve comunica claramente hacia dónde va la empresa.' },
+        { id:'q10_direccion_confianza', type:'likert_1_5', required:true, label:'Confío en las decisiones que toma la dirección de Evolve.' },
       ]
     },
     {
-      id: 'ejecutivo_rh', title: 'Ejecutivo de cuenta y Recursos Humanos',
+      id: 'claridad_desarrollo', title: 'Claridad y desarrollo',
       questions: [
-        { id:'ejecutivo_respuesta', type:'likert_1_5', required:true, label:'¿Qué tan rápido te responde tu ejecutivo de cuenta cuando le reportas algo?', scale:{min:1,max:5,minLabel:'Nunca a tiempo',maxLabel:'Siempre rápido'} },
-        { id:'ejecutivo_resolucion', type:'likert_1_5', required:true, label:'Cuando tienes un problema operativo, ¿qué tan bien lo resuelve tu ejecutivo de cuenta?', scale:{min:1,max:5,minLabel:'No lo resuelve',maxLabel:'Lo resuelve total'} },
-        { id:'ejecutivo_entiende_campo', type:'likert_1_5', required:true, label:'¿Sientes que tu ejecutivo de cuenta entiende los retos que vives en piso?', scale:{min:1,max:5,minLabel:'No entiende',maxLabel:'Entiende total'} },
-        { id:'rh_satisfaccion', type:'likert_1_5', required:true, label:'¿Qué tan satisfecho(a) estás con la atención que recibes de Recursos Humanos?', scale:{min:1,max:5,minLabel:'Muy insatisfecho',maxLabel:'Muy satisfecho'} },
-        { id:'rh_tiempos', type:'likert_1_5', required:true, label:'Cuando tienes un trámite o duda con RH, ¿te resuelven en tiempo razonable?', scale:{min:1,max:5,minLabel:'Nunca a tiempo',maxLabel:'Siempre a tiempo'} },
-        { id:'ejecutivo_rh_mejora', type:'long_text', required:false, maxLength:500, label:'¿Hay algo específico que el ejecutivo de cuenta o RH podrían mejorar para apoyarte mejor?', placeholder:'Opcional...' },
+        { id:'q11_expectativas_claras', type:'likert_1_5', required:true, label:'Sé claramente qué se espera de mí en mi puesto.' },
+        { id:'q12_medicion_desempeno', type:'likert_1_5', required:true, label:'Sé cómo se mide mi desempeño.' },
+        { id:'q13_ruta_crecimiento', type:'likert_1_5', required:true, label:'Veo una ruta de crecimiento clara para mí en Evolve.' },
       ]
     },
     {
-      id: 'emetrix', title: 'Emetrix y soporte técnico',
+      id: 'compensacion', title: 'Compensación y reconocimiento',
       questions: [
-        { id:'emetrix_facilidad', type:'likert_1_5', required:true, label:'¿Qué tan fácil es usar Emetrix para reportar tus actividades?', scale:{min:1,max:5,minLabel:'Muy difícil',maxLabel:'Muy fácil'} },
-        { id:'emetrix_rendimiento', type:'likert_1_5', required:true, label:'¿Qué tan rápida y estable es la app cuando estás en piso?', scale:{min:1,max:5,minLabel:'Lenta o falla',maxLabel:'Rápida y estable'} },
-        { id:'soporte_rapidez', type:'likert_1_5', required:true, label:'Cuando tienes un problema técnico con Emetrix, ¿qué tan rápido te lo resuelven?', scale:{min:1,max:5,minLabel:'Nunca a tiempo',maxLabel:'Siempre rápido'} },
-        { id:'soporte_satisfaccion', type:'likert_1_5', required:true, label:'¿Qué tan satisfecho(a) estás con la atención del equipo de soporte técnico?', scale:{min:1,max:5,minLabel:'Muy insatisfecho',maxLabel:'Muy satisfecho'} },
-        { id:'emetrix_mejora', type:'long_text', required:false, maxLength:500, label:'Si pudieras agregar o mejorar UNA función de Emetrix, ¿cuál sería?', placeholder:'Opcional...' },
+        { id:'q14_compensacion_justa', type:'likert_1_5', required:true, label:'Considero que mi compensación es justa para el rol que desempeño.' },
+        { id:'q15_reconocimiento_no_salarial', type:'likert_1_5', required:true, label:'En Evolve se reconoce el buen trabajo más allá del salario (gestos, oportunidades, visibilidad).' },
       ]
     },
     {
-      id: 'sueldo_crecimiento', title: 'Sueldo, prestaciones y crecimiento',
+      id: 'balance', title: 'Balance vida-trabajo',
       questions: [
-        { id:'sueldo_justo', type:'likert_1_5', required:true, label:'¿Qué tan justo consideras tu sueldo en relación al trabajo que haces?', scale:{min:1,max:5,minLabel:'Muy injusto',maxLabel:'Muy justo'} },
-        { id:'conoce_prestaciones', type:'single_choice', required:true, label:'¿Conoces las prestaciones a las que tienes derecho en Evolve?',
-          options:[{value:'si',label:'Sí, las conozco bien'},{value:'parcialmente',label:'Parcialmente'},{value:'no',label:'No, no las conozco'}] },
-        { id:'oportunidades_crecimiento', type:'likert_1_5', required:true, label:'¿Sientes que hay oportunidades de crecer dentro de Evolve?', scale:{min:1,max:5,minLabel:'Ninguna',maxLabel:'Muchas'} },
-        { id:'orgullo_evolve', type:'single_choice', required:true, label:'¿Te has sentido orgulloso(a) en algún momento de trabajar en Evolve?',
-          options:[{value:'frecuentemente',label:'Sí, frecuentemente'},{value:'a_veces',label:'A veces'},{value:'rara_vez',label:'Rara vez'},{value:'nunca',label:'Nunca'}] },
+        { id:'q16_carga_manejable', type:'likert_1_5', required:true, label:'Mi carga de trabajo es manejable dentro de mi horario laboral.', scale:{min:1,max:5,minLabel:'Nunca',maxLabel:'Siempre'} },
+        { id:'q17_desconexion', type:'likert_1_5', required:true, label:'Puedo desconectarme de Evolve fuera del horario sin sentir presión.', scale:{min:1,max:5,minLabel:'Nunca',maxLabel:'Siempre'} },
       ]
     },
     {
-      id: 'cierre', title: 'Tu mensaje a la dirección',
+      id: 'colaboracion', title: 'Colaboración y herramientas',
       questions: [
-        { id:'mensaje_direccion', type:'long_text', required:false, maxLength:1000, label:'Si tuvieras la oportunidad de mandarle un mensaje directo a la dirección de Evolve, ¿qué le dirías?', placeholder:'Opcional. Lo que tú quieras decir, sin filtros...' },
+        { id:'q18_colaboracion_areas', type:'likert_1_5', required:true, label:'Las áreas con las que más colaboro lo hacen bien conmigo.' },
+        { id:'q19_herramientas_adecuadas', type:'likert_1_5', required:true, label:'Tengo las herramientas (tecnología, accesos, recursos) que necesito para hacer bien mi trabajo.' },
+      ]
+    },
+    {
+      id: 'cierre', title: 'Última sección',
+      questions: [
+        { id:'q20_enps', type:'scale_0_10', required:true, metric:'enps', label:'En una escala del 0 al 10, ¿qué tan probable es que recomiendes Evolve como un buen lugar de trabajo a un amigo o familiar?', scale:{min:0,max:10,minLabel:'Nada probable',maxLabel:'Totalmente probable'} },
+        { id:'q21_lo_que_gusta', type:'long_text', required:false, maxLength:500, label:'¿Qué es lo que más te gusta de trabajar en Evolve?', placeholder:'Cuéntanos lo que valoras...' },
+        { id:'q22_cambios_mejoras', type:'long_text', required:false, maxLength:500, label:'¿Qué cambiarías o mejorarías en Evolve si pudieras?', placeholder:'Sé honesto, queremos saber...' },
+        { id:'q23_mensaje_directivos', type:'long_text', required:false, maxLength:500, label:'¿Hay algo más que quieras compartir con el equipo directivo?', placeholder:'Es opcional, pero todo cuenta...' },
       ]
     },
   ] as Section[],
