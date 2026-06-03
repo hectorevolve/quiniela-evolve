@@ -2216,7 +2216,7 @@ function ViewGrupoDetalle({ group, liveUsers, onBack, onUserUpdated, onUserRemov
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: isSinGrupo ? '1fr' : 'minmax(0,1fr) minmax(0,1fr)', gap: 24, alignItems: 'start' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isSinGrupo ? '1fr' : 'minmax(0,1fr) minmax(0,1fr)', gap: 24, alignItems: 'start' }} id="grupo-top-grid">
 
         {/* ── Premios del grupo ── */}
         {!isSinGrupo && <div>
@@ -2279,6 +2279,73 @@ function ViewGrupoDetalle({ group, liveUsers, onBack, onUserUpdated, onUserRemov
           </div>
         </div>}
 
+        {/* ── Premios Bonus (misma columna izquierda, debajo de Premios del grupo) ── */}
+        {!isSinGrupo && (
+          <div>
+            <SectionHeader title="Premios bonus" sub="Predicciones especiales — elige si el premio son puntos o algo más"/>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {BONUS_CATEGORIES.map(cat => {
+                const cfg = bonus[cat.key];
+                const isPuntos = cfg.type === 'puntos';
+                const applied = applyResults[cat.key];
+                return (
+                  <div key={cat.key} style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 14, padding: '16px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                      <span style={{ fontSize: 18 }}>{cat.icon}</span>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: c.text }}>{cat.label}</span>
+                    </div>
+                    <div style={{ display: 'flex', borderRadius: 8, border: `1px solid ${c.border}`, overflow: 'hidden', marginBottom: 10 }}>
+                      {(['puntos', 'otro'] as const).map(t => (
+                        <button key={t} onClick={() => setBonus(b => ({ ...b, [cat.key]: { ...b[cat.key], type: t } }))} style={{
+                          flex: 1, padding: '7px', border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 700,
+                          background: cfg.type === t ? (t === 'puntos' ? `${c.lime}33` : `${c.blue}33`) : 'transparent',
+                          color: cfg.type === t ? (t === 'puntos' ? c.lime : c.blue) : c.dim,
+                        }}>
+                          {t === 'puntos' ? '⭐ Puntos' : '🎁 Otro'}
+                        </button>
+                      ))}
+                    </div>
+                    <label style={{ fontSize: 11, color: c.muted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.8 }}>
+                      {isPuntos ? 'Cantidad de puntos' : 'Descripción del premio'}
+                    </label>
+                    <input
+                      type={isPuntos ? 'number' : 'text'}
+                      value={cfg.value}
+                      onChange={e => setBonus(b => ({ ...b, [cat.key]: { ...b[cat.key], value: e.target.value } }))}
+                      placeholder={isPuntos ? 'Ej. 15' : 'Ej. Tarjeta Amazon $500'}
+                      style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.06)', color: c.text, fontSize: 13, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box', marginTop: 6, marginBottom: isPuntos ? 10 : 0 }}
+                    />
+                    {isPuntos && (
+                      <>
+                        <label style={{ fontSize: 11, color: c.muted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.8 }}>
+                          {cat.key === 'scorer' ? 'Nombre del goleador real' : 'Código del equipo real (ej. ARG)'}
+                        </label>
+                        <input
+                          value={cfg.result}
+                          onChange={e => setBonus(b => ({ ...b, [cat.key]: { ...b[cat.key], result: e.target.value } }))}
+                          placeholder={cat.key === 'scorer' ? 'Ej. Messi' : 'Ej. ARG'}
+                          style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.06)', color: c.text, fontSize: 13, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box', marginTop: 6, marginBottom: 10 }}
+                        />
+                        <button onClick={() => applyBonusPoints(cat.key)} disabled={applyingKey === cat.key || !cfg.result.trim() || !cfg.value}
+                          style={{ width: '100%', padding: '9px', borderRadius: 8, border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 12, background: applied !== undefined ? `${c.lime}33` : `${c.blue}22`, color: applied !== undefined ? c.lime : c.blue }}>
+                          {applyingKey === cat.key ? 'Aplicando…' : applied !== undefined ? `✓ ${applied} usuario${applied !== 1 ? 's' : ''} premiado${applied !== 1 ? 's' : ''}` : '⚡ Aplicar puntos'}
+                        </button>
+                      </>
+                    )}
+                  </div>
+                );
+              })}
+              <button onClick={saveBonus} disabled={bonusSaveStatus === 'saving'} style={{
+                width: '100%', padding: '11px', borderRadius: 10, border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 13,
+                background: bonusSaveStatus === 'saved' ? `${c.lime}33` : bonusSaveStatus === 'error' ? `${c.rose}33` : `${col}33`,
+                color: bonusSaveStatus === 'saved' ? c.lime : bonusSaveStatus === 'error' ? c.rose : col,
+              }}>
+                {bonusSaveStatus === 'saving' ? 'Guardando…' : bonusSaveStatus === 'saved' ? '✓ Configuración guardada' : bonusSaveStatus === 'error' ? '✗ Error' : 'Guardar configuración bonus'}
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* ── Miembros ── */}
         <div>
           <SectionHeader
@@ -2325,87 +2392,6 @@ function ViewGrupoDetalle({ group, liveUsers, onBack, onUserUpdated, onUserRemov
         </div>
 
       </div>
-
-      {/* ── Premios Bonus ── */}
-      {!isSinGrupo && (
-        <div style={{ marginTop: 28 }}>
-          <SectionHeader title="Premios bonus" sub="Predicciones especiales — elige si el premio son puntos o algo más"/>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 14 }}>
-            {BONUS_CATEGORIES.map(cat => {
-              const cfg = bonus[cat.key];
-              const isPuntos = cfg.type === 'puntos';
-              const applied = applyResults[cat.key];
-              return (
-                <div key={cat.key} style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 14, padding: '18px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-                    <span style={{ fontSize: 20 }}>{cat.icon}</span>
-                    <span style={{ fontSize: 13, fontWeight: 700, color: c.text }}>{cat.label}</span>
-                  </div>
-
-                  {/* Type toggle */}
-                  <div style={{ display: 'flex', borderRadius: 8, border: `1px solid ${c.border}`, overflow: 'hidden', marginBottom: 12 }}>
-                    {(['puntos', 'otro'] as const).map(t => (
-                      <button key={t} onClick={() => setBonus(b => ({ ...b, [cat.key]: { ...b[cat.key], type: t } }))} style={{
-                        flex: 1, padding: '7px', border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 700,
-                        background: cfg.type === t ? (t === 'puntos' ? `${c.lime}33` : `${c.blue}33`) : 'transparent',
-                        color: cfg.type === t ? (t === 'puntos' ? c.lime : c.blue) : c.dim,
-                        transition: 'all 150ms',
-                      }}>
-                        {t === 'puntos' ? '⭐ Puntos' : '🎁 Otro'}
-                      </button>
-                    ))}
-                  </div>
-
-                  {/* Value input */}
-                  <label style={{ fontSize: 11, color: c.muted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.8 }}>
-                    {isPuntos ? 'Cantidad de puntos' : 'Descripción del premio'}
-                  </label>
-                  <input
-                    type={isPuntos ? 'number' : 'text'}
-                    value={cfg.value}
-                    onChange={e => setBonus(b => ({ ...b, [cat.key]: { ...b[cat.key], value: e.target.value } }))}
-                    placeholder={isPuntos ? 'Ej. 15' : 'Ej. Tarjeta Amazon $500'}
-                    style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.06)', color: c.text, fontSize: 13, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box', marginTop: 6, marginBottom: 12 }}
-                  />
-
-                  {/* Result input + apply button (only for puntos) */}
-                  {isPuntos && (
-                    <>
-                      <label style={{ fontSize: 11, color: c.muted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.8 }}>
-                        {cat.key === 'scorer' ? 'Nombre del goleador real' : 'Código del equipo real (ej. ARG)'}
-                      </label>
-                      <input
-                        value={cfg.result}
-                        onChange={e => setBonus(b => ({ ...b, [cat.key]: { ...b[cat.key], result: e.target.value } }))}
-                        placeholder={cat.key === 'scorer' ? 'Ej. Messi' : 'Ej. ARG'}
-                        style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.06)', color: c.text, fontSize: 13, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box', marginTop: 6, marginBottom: 12 }}
-                      />
-                      <button
-                        onClick={() => applyBonusPoints(cat.key)}
-                        disabled={applyingKey === cat.key || !cfg.result.trim() || !cfg.value}
-                        style={{
-                          width: '100%', padding: '9px', borderRadius: 8, border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 12,
-                          background: applied !== undefined ? `${c.lime}33` : `${c.blue}22`,
-                          color: applied !== undefined ? c.lime : c.blue,
-                        }}>
-                        {applyingKey === cat.key ? 'Aplicando…' : applied !== undefined ? `✓ ${applied} usuario${applied !== 1 ? 's' : ''} premiado${applied !== 1 ? 's' : ''}` : '⚡ Aplicar puntos'}
-                      </button>
-                    </>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-
-          <button onClick={saveBonus} disabled={bonusSaveStatus === 'saving'} style={{
-            marginTop: 14, padding: '11px 28px', borderRadius: 10, border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 13,
-            background: bonusSaveStatus === 'saved' ? `${c.lime}33` : bonusSaveStatus === 'error' ? `${c.rose}33` : `${col}33`,
-            color: bonusSaveStatus === 'saved' ? c.lime : bonusSaveStatus === 'error' ? c.rose : col,
-          }}>
-            {bonusSaveStatus === 'saving' ? 'Guardando…' : bonusSaveStatus === 'saved' ? '✓ Configuración guardada' : bonusSaveStatus === 'error' ? '✗ Error' : 'Guardar configuración bonus'}
-          </button>
-        </div>
-      )}
 
       {/* Edit / Preds / Delete modals */}
       {editEntry && (
