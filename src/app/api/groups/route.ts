@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getAdminClient } from '@/lib/server-session';
 
-export type GroupConfig = { name: string; color: string; logo_url?: string | null };
+export type GroupConfig = { name: string; color: string; logo_url?: string | null; powers_enabled?: boolean };
 
 // Groups change rarely (only when admin edits name/color/logo).
 // Cache at the CDN edge for 5 minutes.
@@ -14,7 +14,7 @@ export async function GET() {
     const admin = getAdminClient();
     const { data, error } = await admin
       .from('groups')
-      .select('name, color, logo_url')
+      .select('name, color, logo_url, powers_enabled')
       .order('name');
 
     if (error) throw error;

@@ -98,6 +98,7 @@ interface Props {
   goto: (s: string, matchId?: string) => void;
   tweaks: { premium: boolean; filled: boolean; liveMatch: boolean; liveMinute?: number; liveHomeScore?: number; liveAwayScore?: number; pastMatch: boolean; knockoutSlots: boolean; rank?: number };
   fireToast: (msg: string, color?: string, textColor?: string) => void;
+  powersEnabled?: boolean;
   usedPowers?: Set<string>;
   setUsedPowers?: React.Dispatch<React.SetStateAction<Set<string>>>;
   lateActiveMatchId?: string | null;
@@ -202,7 +203,7 @@ function useMatchTimer(dateStr: string, apiStatus: string, apiDuration: string, 
   return state;
 }
 
-export function TorneoScreen({ goto, tweaks, fireToast, usedPowers, setUsedPowers, lateActiveMatchId, setLateActiveMatchId, spyMatchId, setSpyMatchId, currentUser, matchDates, demoRankings, onRankUpdate }: Props) {
+export function TorneoScreen({ goto, tweaks, fireToast, powersEnabled = true, usedPowers, setUsedPowers, lateActiveMatchId, setLateActiveMatchId, spyMatchId, setSpyMatchId, currentUser, matchDates, demoRankings, onRankUpdate }: Props) {
   const displayUser = currentUser ?? USER;
   const displayName     = currentUser?.name       ?? USER.name;
   const displayGroup    = currentUser?.group_name  ?? USER.group;
@@ -329,7 +330,7 @@ export function TorneoScreen({ goto, tweaks, fireToast, usedPowers, setUsedPower
 
       {/* Content */}
       <div style={{ flex: 1, overflowY: 'auto' }}>
-        {tab === 'predicciones' && <TabPredicciones goto={goto} tweaks={tweaks} fireToast={fireToast} usedPowers={usedPowers} setUsedPowers={setUsedPowers} lateActiveMatchId={lateActiveMatchId} setLateActiveMatchId={setLateActiveMatchId} spyMatchId={spyMatchId} setSpyMatchId={setSpyMatchId} matchDates={matchDates}/>}
+        {tab === 'predicciones' && <TabPredicciones goto={goto} tweaks={tweaks} fireToast={fireToast} powersEnabled={powersEnabled} usedPowers={usedPowers} setUsedPowers={setUsedPowers} lateActiveMatchId={lateActiveMatchId} setLateActiveMatchId={setLateActiveMatchId} spyMatchId={spyMatchId} setSpyMatchId={setSpyMatchId} matchDates={matchDates}/>}
         {tab === 'ranking'      && <TabRanking rankings={liveRankings} loading={rankingsLoading} userId={currentUser?.id ?? ''} userName={displayName} userGroup={displayGroup} groupAccent={getGroupColor(displayGroup)}/>}
         {tab === 'bonus'        && (
           <TabBonus
@@ -349,7 +350,7 @@ export function TorneoScreen({ goto, tweaks, fireToast, usedPowers, setUsedPower
 }
 
 // ──────── Tab: Predicciones ────────
-function TabPredicciones({ goto, tweaks, fireToast, usedPowers: usedPowersFromParent, setUsedPowers: setUsedPowersFromParent, lateActiveMatchId: lateActiveMatchIdFromParent, setLateActiveMatchId: setLateActiveMatchIdFromParent, spyMatchId: spyMatchIdFromParent, setSpyMatchId: setSpyMatchIdFromParent, matchDates }: Props) {
+function TabPredicciones({ goto, tweaks, fireToast, powersEnabled = true, usedPowers: usedPowersFromParent, setUsedPowers: setUsedPowersFromParent, lateActiveMatchId: lateActiveMatchIdFromParent, setLateActiveMatchId: setLateActiveMatchIdFromParent, spyMatchId: spyMatchIdFromParent, setSpyMatchId: setSpyMatchIdFromParent, matchDates }: Props) {
   const [filter, setFilter] = useState('Todos');
   const [search, setSearch] = useState('');
   const [onlyUnpredicted, setOnlyUnpredicted] = useState(false);
@@ -749,6 +750,7 @@ function TabPredicciones({ goto, tweaks, fireToast, usedPowers: usedPowersFromPa
           <div style={{ padding: '0 14px', display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 16 }} className="evo-stagger">
             {group.matches.map(match => (
               <MatchCard key={match.id} match={match} usedPowers={usedPowers}
+                powersEnabled={powersEnabled}
                 lateActiveMatchId={lateActiveMatchId}
                 spyMatchId={spyMatchId}
                 matchStarted={isMatchStartedEx(matchDates?.[match.id], match.date) || liveMatch?.matchId === match.id}
@@ -871,9 +873,10 @@ function TabPredicciones({ goto, tweaks, fireToast, usedPowers: usedPowersFromPa
   );
 }
 
-function MatchCard({ match, usedPowers, lateActiveMatchId, spyMatchId, matchStarted, matchOver45, onPower, onView, fireToast }: {
+function MatchCard({ match, usedPowers, powersEnabled = true, lateActiveMatchId, spyMatchId, matchStarted, matchOver45, onPower, onView, fireToast }: {
   match: Match;
   usedPowers: Set<string>;
+  powersEnabled?: boolean;
   lateActiveMatchId: string | null;
   spyMatchId?: string | null;
   matchStarted?: boolean;
@@ -1008,7 +1011,7 @@ function MatchCard({ match, usedPowers, lateActiveMatchId, spyMatchId, matchStar
       </div>
 
       {/* Powers */}
-      {!isTBD && (() => {
+      {powersEnabled && !isTBD && (() => {
         const spyUsed = spyMatchId === match.id;
         const spyUsedElsewhere = usedPowers.has('spy') && !spyUsed;
         const doubleLocked = started && !usedPowers.has('double') && !lateActive;

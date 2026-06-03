@@ -13,6 +13,7 @@ interface Props {
   goto: (s: string, matchId?: string) => void;
   tweaks: { premium: boolean; filled: boolean; liveMatch: boolean; liveMinute?: number };
   fireToast: (msg: string, color?: string, textColor?: string) => void;
+  powersEnabled?: boolean;
   matchId: string;
   usedPowers?: Set<string>;
   setUsedPowers?: React.Dispatch<React.SetStateAction<Set<string>>>;
@@ -25,7 +26,7 @@ interface Props {
 
 type EditMode = 'empty' | 'editing' | 'saved';
 
-export function DetalleScreen({ goto, tweaks, fireToast, matchId, usedPowers: usedPowersFromParent, setUsedPowers: setUsedPowersFromParent, lateActiveMatchId: lateActiveMatchIdFromParent, setLateActiveMatchId: setLateActiveMatchIdFromParent, spyMatchId: spyMatchIdFromParent, setSpyMatchId: setSpyMatchIdFromParent, matchDates }: Props) {
+export function DetalleScreen({ goto, tweaks, fireToast, powersEnabled = true, matchId, usedPowers: usedPowersFromParent, setUsedPowers: setUsedPowersFromParent, lateActiveMatchId: lateActiveMatchIdFromParent, setLateActiveMatchId: setLateActiveMatchIdFromParent, spyMatchId: spyMatchIdFromParent, setSpyMatchId: setSpyMatchIdFromParent, matchDates }: Props) {
   const match = MATCHES.find(m => m.id === matchId) ?? MATCHES[0];
 
   // Always open in editing mode so the user can input immediately
@@ -210,12 +211,12 @@ export function DetalleScreen({ goto, tweaks, fireToast, matchId, usedPowers: us
                 )}
 
                 {/* Powers */}
-                <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+                {powersEnabled && <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
                   <PowerIcon kind="double" size={36} used={usedPowers.has('double')} locked={doubleLocked} onClick={() => setModal('double')}/>
                   <PowerIcon kind="late"   size={36} used={usedPowers.has('late')}   locked={lateLocked}   onClick={() => setModal('late')}/>
                   <PowerIcon kind="spy"    size={36} used={spyUsed}    locked={spyLocked}    allowClickWhenUsed={spyUsed}
                     onClick={() => setSpyModal({ phase: spyUsed ? 'results' : 'confirm' })}/>
-                </div>
+                </div>}
 
                 {/* CTA button — changes per mode */}
                 {editBlocked ? (

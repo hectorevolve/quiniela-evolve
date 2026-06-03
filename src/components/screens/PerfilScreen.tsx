@@ -21,6 +21,7 @@ interface Props {
   goto: (s: string) => void;
   tweaks: { premium: boolean; pastMatch: boolean };
   fireToast: (msg: string, color?: string, textColor?: string) => void;
+  powersEnabled?: boolean;
   currentUser?: AppUser | null;
   onLogout?: () => Promise<void> | void;
   demoStats?: DemoStats;   // presentación: rellena la gráfica y estadísticas sin tocar la DB
@@ -35,7 +36,7 @@ const BADGES = [
   { icon: '🏆', label: 'Profeta Final',     unlocked: false, req: 'Acierta el resultado de la final.' },
 ];
 
-export function PerfilScreen({ goto, tweaks, fireToast, currentUser, onLogout, demoStats }: Props) {
+export function PerfilScreen({ goto, tweaks, fireToast, powersEnabled = true, currentUser, onLogout, demoStats }: Props) {
   const displayName    = currentUser?.name     ?? USER.name;
   const displayGroup   = currentUser?.group_name ?? USER.mayorista;
   const displayInitials = currentUser ? getInitials(currentUser.name) : USER.avatar;
@@ -150,7 +151,7 @@ export function PerfilScreen({ goto, tweaks, fireToast, currentUser, onLogout, d
         </div>
 
         {/* Powers */}
-        <Card style={{ marginBottom: 12 }}>
+        {powersEnabled && <Card style={{ marginBottom: 12 }}>
           <div className="font-display" style={{ fontSize: 14, fontWeight: 700, color: T.ink, marginBottom: 14 }}>Mis Poderes</div>
           <div style={{ display: 'flex', justifyContent: 'space-around' }}>
             {powers.map(p => (
@@ -165,7 +166,7 @@ export function PerfilScreen({ goto, tweaks, fireToast, currentUser, onLogout, d
               </div>
             ))}
           </div>
-        </Card>
+        </Card>}
 
         {/* Stats — computed from completed matches (or demoStats en presentación) */}
         {(() => {

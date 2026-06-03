@@ -2458,7 +2458,7 @@ function ViewGrupoDetalle({ group, liveUsers, onBack, onUserUpdated, onUserRemov
 }
 
 // ─── Gestión de Grupos ───────────────────────────────────────────────────────
-type DBGroup = { id: number; name: string; color: string; logo_url?: string | null };
+type DBGroup = { id: number; name: string; color: string; logo_url?: string | null; powers_enabled?: boolean };
 
 const COLOR_PRESETS = [
   '#A3E635','#1AAFFF','#F59E0B','#0063E5','#8B5CF6',
@@ -2476,6 +2476,7 @@ function ViewGruposConfig({ onSelectGroup, onBack }: { onSelectGroup: (g: string
   const [editing, setEditing]   = useState<DBGroup | null>(null);
   const [editName, setEditName] = useState('');
   const [editColor, setEditColor] = useState('');
+  const [editPowersEnabled, setEditPowersEnabled] = useState(true);
   const [editLogoFile, setEditLogoFile] = useState<File | null>(null);
   const [editLogoPreview, setEditLogoPreview] = useState<string | null>(null);
   const [uploadingLogo, setUploadingLogo] = useState(false);
@@ -2484,7 +2485,7 @@ function ViewGruposConfig({ onSelectGroup, onBack }: { onSelectGroup: (g: string
 
   const load = () => {
     setLoading(true);
-    supabase.from('groups').select('id, name, color, logo_url').order('name')
+    supabase.from('groups').select('id, name, color, logo_url, powers_enabled').order('name')
       .then(({ data }) => { setDbGroups((data ?? []) as DBGroup[]); setLoading(false); });
   };
   useEffect(() => { load(); }, []);
@@ -2526,6 +2527,7 @@ function ViewGruposConfig({ onSelectGroup, onBack }: { onSelectGroup: (g: string
       name: editName.trim(),
       color: editColor,
       old_name: editing.name,
+      powers_enabled: editPowersEnabled,
     };
     if (newLogoUrl !== undefined) body.logo_url = newLogoUrl;
     const res = await adminFetch('/api/admin/update-group', {
@@ -2554,7 +2556,7 @@ function ViewGruposConfig({ onSelectGroup, onBack }: { onSelectGroup: (g: string
     setSaving(false);
   };
 
-  const openEdit = (g: DBGroup) => { setEditing(g); setEditName(g.name); setEditColor(g.color); setEditLogoFile(null); setEditLogoPreview(g.logo_url ?? null); setErr(null); };
+  const openEdit = (g: DBGroup) => { setEditing(g); setEditName(g.name); setEditColor(g.color); setEditPowersEnabled(g.powers_enabled !== false); setEditLogoFile(null); setEditLogoPreview(g.logo_url ?? null); setErr(null); };
 
   const inputS: React.CSSProperties = {
     padding: '9px 12px', borderRadius: 8, border: `1px solid ${c.border}`,
@@ -2698,6 +2700,22 @@ function ViewGruposConfig({ onSelectGroup, onBack }: { onSelectGroup: (g: string
                   <div style={{ fontSize: 11, color: c.dim, marginTop: 4 }}>PNG, JPG o SVG recomendado</div>
                 </div>
               </div>
+            </div>
+
+            {/* Powers toggle */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 22, padding: '12px 14px', background: 'rgba(255,255,255,0.04)', borderRadius: 10, border: `1px solid ${c.border}` }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: c.text }}>Poderes activos</div>
+                <div style={{ fontSize: 11, color: c.muted, marginTop: 2 }}>
+                  {editPowersEnabled ? 'Los usuarios de este grupo pueden usar poderes' : 'Los poderes están ocultos para este grupo'}
+                </div>
+              </div>
+              <button onClick={() => setEditPowersEnabled(v => !v)} style={{
+                width: 44, height: 24, borderRadius: 12, border: 'none', cursor: 'pointer',
+                background: editPowersEnabled ? c.lime : 'rgba(255,255,255,0.15)', position: 'relative', flexShrink: 0, transition: 'background 200ms',
+              }}>
+                <div style={{ width: 18, height: 18, borderRadius: '50%', background: editPowersEnabled ? '#0A1628' : '#fff', position: 'absolute', top: 3, left: editPowersEnabled ? 23 : 3, transition: 'left 200ms' }}/>
+              </button>
             </div>
 
             {err && <div style={{ marginBottom: 14, padding: '9px 12px', background: 'rgba(244,63,94,0.1)', border: '1px solid rgba(244,63,94,0.3)', borderRadius: 8, fontSize: 13, color: c.rose }}>{err}</div>}

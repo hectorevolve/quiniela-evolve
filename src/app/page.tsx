@@ -26,7 +26,7 @@ export default function Home() {
   const [tweaks, setTweaks] = useState<Tweaks>({ premium: true, filled: false, cumplido: true, liveMatch: false, liveMinute: 30, liveHomeScore: 0, liveAwayScore: 0, pastMatch: false, rank: 1, knockoutSlots: false });
   const [selectedMatchId, setSelectedMatchId] = useState<string>('a1');
   const [usedPowers, setUsedPowers] = useState<Set<string>>(new Set());
-  // Powers are always available — no premium gate
+  const [powersEnabled, setPowersEnabled] = useState(true);
   const [lateActiveMatchId, setLateActiveMatchId] = useState<string | null>(null);
   const [spyMatchId, setSpyMatchId] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
@@ -70,6 +70,13 @@ export default function Home() {
               setLateActiveMatchId(profile.late_match_id);
             }
             setCurrentUser(profile);
+            // Verificar si el grupo del usuario tiene poderes habilitados
+            if (profile.group_name) {
+              fetch('/api/groups').then(r => r.json()).then((groups: { name: string; powers_enabled?: boolean }[]) => {
+                const g = groups.find(x => x.name === profile.group_name);
+                if (g && g.powers_enabled === false) setPowersEnabled(false);
+              }).catch(() => {});
+            }
             // Cargar posición real en el ranking
             getRankings().then(entries => {
               const entry = entries.find(e => e.userId === profile.id);
@@ -113,8 +120,14 @@ export default function Home() {
 
   const handleLogin = useCallback((user: AppUser) => {
     setCurrentUser(user);
-    // Restore used powers from profile
     setUsedPowers(new Set(user.used_powers ?? []));
+    if (user.group_name) {
+      fetch('/api/groups').then(r => r.json()).then((groups: { name: string; powers_enabled?: boolean }[]) => {
+        const g = groups.find(x => x.name === user.group_name);
+        if (g && g.powers_enabled === false) setPowersEnabled(false);
+        else setPowersEnabled(true);
+      }).catch(() => {});
+    }
     // Restaura el partido del Cambio Tardío si lo usó antes
     if (user.late_match_id) setLateActiveMatchId(user.late_match_id);
     // Load official match dates from Supabase (updated by sync-results cron)
@@ -147,6 +160,7 @@ export default function Home() {
         }}/>;
       case 'torneo':
         return <TorneoScreen goto={goto} tweaks={tweaks} fireToast={fireToast}
+          powersEnabled={powersEnabled}
           usedPowers={usedPowers} setUsedPowers={setUsedPowers}
           lateActiveMatchId={lateActiveMatchId} setLateActiveMatchId={setLateActiveMatchId}
           spyMatchId={spyMatchId} setSpyMatchId={setSpyMatchId}
@@ -154,6 +168,7 @@ export default function Home() {
           onRankUpdate={(pos) => setUserRank(pos)}/>;
       case 'detalle':
         return <DetalleScreen goto={goto} tweaks={tweaks} fireToast={fireToast}
+          powersEnabled={powersEnabled}
           matchId={selectedMatchId}
           usedPowers={usedPowers} setUsedPowers={setUsedPowers}
           lateActiveMatchId={lateActiveMatchId} setLateActiveMatchId={setLateActiveMatchId}
@@ -161,6 +176,7 @@ export default function Home() {
           matchDates={matchDates}/>;
       case 'perfil':
         return <PerfilScreen goto={goto} tweaks={tweaks} fireToast={fireToast}
+          powersEnabled={powersEnabled}
           currentUser={currentUser} onLogout={handleLogout}/>;
       case 'premios':
         return <PremiosScreen goto={goto} fireToast={fireToast} rank={userRank} currentUser={currentUser}/>;

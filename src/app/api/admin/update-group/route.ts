@@ -16,9 +16,10 @@ export async function POST(req: NextRequest) {
     color: string;
     logo_url?: string | null;
     old_name: string;
+    powers_enabled?: boolean;
   };
 
-  const { id, name, color, logo_url, old_name } = body;
+  const { id, name, color, logo_url, old_name, powers_enabled } = body;
   if (!id || !name) return NextResponse.json({ error: 'Missing fields' }, { status: 400 });
 
   // Update group name in profiles and allowed_phones if name changed
@@ -29,6 +30,7 @@ export async function POST(req: NextRequest) {
 
   const patch: Record<string, unknown> = { name, color };
   if (logo_url !== undefined) patch.logo_url = logo_url;
+  if (powers_enabled !== undefined) patch.powers_enabled = powers_enabled;
 
   const { error } = await admin.from('groups').update(patch).eq('id', id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
