@@ -1,9 +1,10 @@
 'use client';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { theme as T } from '@/lib/theme';
 import { RANKING, MATCHES, KNOCKOUT_MATCHES, USER_PREDICTIONS, GROUP_MATCH_IDS } from '@/lib/data';
 import { Header, Avatar, Chip, Card, Eyebrow } from '@/components/ui';
 import { EvolveMark } from '@/components/brand/EvolveMark';
+import { saveMatchResult, getMatchResults } from '@/lib/db';
 
 type AdminUser = typeof RANKING[number];
 type AdminMatch = typeof MATCHES[number];
@@ -515,6 +516,7 @@ function TabPartidos() {
 function TabResultados() {
   const allMatches = [...MATCHES, ...(KNOCKOUT_MATCHES ?? [])];
   const [results, setResults] = useState<Record<string, [number,number]>>({});
+  const [saving, setSaving] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, { home: string; away: string }>>(() => {
     const d: Record<string, { home: string; away: string }> = {};
     allMatches.forEach(m => { d[m.id] = { home: '', away: '' }; });
@@ -522,6 +524,13 @@ function TabResultados() {
   });
   const [phaseFilter, setPhaseFilter] = useState('Todos');
   const [search, setSearch] = useState('');
+
+  // Cargar resultados existentes de Supabase al montar
+  useEffect(() => {
+    getMatchResults().then(dbResults => {
+      setResults(dbResults as Record<string, [number, number]>);
+    }).catch(console.error);
+  }, []);
 
   const phases = useMemo(() => {
     const set = new Set(allMatches.map(m => m.group));
@@ -536,16 +545,22 @@ function TabResultados() {
     );
   }, [phaseFilter, search]);
 
-  const saveResult = (matchId: string) => {
+  const saveResult = async (matchId: string) => {
     const h = parseInt(drafts[matchId]?.home ?? '');
     const a = parseInt(drafts[matchId]?.away ?? '');
     if (isNaN(h) || isNaN(a)) return;
+    setSaving(matchId);
+    await saveMatchResult(matchId, h, a).catch(console.error);
     setResults(prev => ({ ...prev, [matchId]: [h, a] }));
     setDrafts(prev => ({ ...prev, [matchId]: { home: '', away: '' } }));
+    setSaving(null);
   };
 
-  const clearResult = (matchId: string) => {
+  const clearResult = async (matchId: string) => {
+    setSaving(matchId);
+    await saveMatchResult(matchId, null, null).catch(console.error);
     setResults(prev => { const n = { ...prev }; delete n[matchId]; return n; });
+    setSaving(null);
   };
 
   const savedCount = Object.keys(results).length;
@@ -592,7 +607,7 @@ function TabResultados() {
                     <span style={{ fontSize: 10, fontWeight: 600, color: T.muted }}>Resultado:</span>
                     <span style={{ fontFamily: 'monospace', fontSize: 18, fontWeight: 800, color: T.limeDeep }}>{saved[0]} – {saved[1]}</span>
                   </div>
-                  <button onClick={() => clearResult(m.id)} style={{ padding: '4px 10px', borderRadius: 6, border: `1px solid ${T.rose}44`, background: '#FFF1F2', color: T.rose, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>Borrar</button>
+                  <button onClick={() => clearResult(m.id)} disabled={saving === m.id} style={{ padding: '4px 10px', borderRadius: 6, border: `1px solid ${T.rose}44`, background: '#FFF1F2', color: T.rose, fontSize: 11, fontWeight: 600, cursor: 'pointer', opacity: saving === m.id ? 0.5 : 1 }}>{saving === m.id ? '…' : 'Borrar'}</button>
                 </div>
               ) : (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -604,7 +619,7 @@ function TabResultados() {
                   <input type="number" min={0} placeholder="0" value={draft.away}
                     onChange={e => setDrafts(prev => ({ ...prev, [m.id]: { ...prev[m.id], away: e.target.value } }))}
                     style={{ width: 44, padding: '6px 8px', borderRadius: 8, border: `1.5px solid ${T.border}`, fontSize: 15, fontWeight: 800, textAlign: 'center', color: T.ink, fontFamily: 'inherit', outline: 'none' }}/>
-                  <button onClick={() => saveResult(m.id)} style={{ flex: 1, padding: '7px 10px', borderRadius: 8, border: 'none', background: T.ink, color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Guardar</button>
+                  <button onClick={() => saveResult(m.id)} disabled={saving === m.id} style={{ flex: 1, padding: '7px 10px', borderRadius: 8, border: 'none', background: T.ink, color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', opacity: saving === m.id ? 0.5 : 1 }}>{saving === m.id ? 'Guardando…' : 'Guardar'}</button>
                 </div>
               )}
             </div>

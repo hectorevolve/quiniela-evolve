@@ -1,13 +1,26 @@
+import { useState, useEffect } from 'react';
 import { theme as T } from '@/lib/theme';
-import { PREDICTION_DISTRIBUTIONS, type Match, type PredictionBucket } from '@/lib/data';
+import { type Match, type PredictionBucket } from '@/lib/data';
 import { PowerIcon } from '@/components/ui';
 
 export function SpyModal({ match, phase, onConfirm, onClose }: {
   match: Match; phase: 'confirm' | 'results';
   onConfirm: () => void; onClose: () => void;
 }) {
-  const buckets: PredictionBucket[] = PREDICTION_DISTRIBUTIONS[match.id] ?? [];
-  const total = buckets.reduce((s, b) => s + b.count, 0);
+  const [buckets, setBuckets] = useState<PredictionBucket[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (phase !== 'results') return;
+    setLoading(true);
+    fetch(`/api/predictions?matchId=${match.id}`)
+      .then(r => r.json())
+      .then(({ buckets: b, total: t }) => { setBuckets(b ?? []); setTotal(t ?? 0); })
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, [phase, match.id]);
+
   const sorted = [...buckets].sort((a, b) => b.count - a.count);
   const topCount = sorted[0]?.count ?? 1;
 
@@ -50,7 +63,9 @@ export function SpyModal({ match, phase, onConfirm, onClose }: {
         </div>
       </div>
 
-      {sorted.length === 0 ? (
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: '24px 0', color: T.muted, fontSize: 13 }}>Cargando predicciones…</div>
+      ) : sorted.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '24px 0', color: T.muted, fontSize: 13 }}>
           Aún no hay predicciones registradas para este partido.
         </div>
