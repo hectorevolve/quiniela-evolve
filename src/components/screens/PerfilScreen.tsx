@@ -30,7 +30,7 @@ interface Props {
 const BADGE_DEFS = [
   { icon: '🔥', label: 'Racha 3',          req: 'Acierta 3 partidos seguidos.' },
   { icon: '🎯', label: 'Profeta Inaugural', req: 'Acierta el primer partido del torneo.' },
-  { icon: '🥇', label: 'Top Mayorista',     req: 'Llega al #1 en tu grupo.' },
+  { icon: '🥇', label: 'Líder del Grupo',   req: 'Llega al #1 en tu grupo.' },
   { icon: '💯', label: 'Exacto ×5',         req: 'Acierta 5 marcadores exactos.' },
   { icon: '🚀', label: 'Racha 5',           req: 'Acierta 5 partidos seguidos.' },
   { icon: '🏆', label: 'Profeta Final',     req: 'Acierta el resultado de la final.' },
@@ -120,7 +120,7 @@ export function PerfilScreen({ goto, tweaks, fireToast, powersEnabled = true, cu
       unlocked:
         b.label === 'Racha 3'          ? streak >= 3 :
         b.label === 'Profeta Inaugural'? !!(firstMatch?.userPrediction && (firstMatch.pointsEarned ?? 0) > 0) :
-        b.label === 'Top Mayorista'    ? groupPos === 1 :
+        b.label === 'Líder del Grupo'  ? groupPos === 1 :
         b.label === 'Exacto ×5'        ? exactCnt >= 5 :
         b.label === 'Racha 5'          ? streak >= 5 :
         b.label === 'Profeta Final'    ? !!(finalMatch?.userPrediction && (finalMatch.pointsEarned ?? 0) > 0) :
