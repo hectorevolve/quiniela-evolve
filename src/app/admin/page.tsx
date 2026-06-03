@@ -2288,141 +2288,12 @@ function ViewGrupoDetalle({ group, liveUsers, onBack, onUserUpdated, onUserRemov
 
       <div style={{ display: 'grid', gridTemplateColumns: isSinGrupo ? '1fr' : 'minmax(0,1fr) minmax(0,1fr)', gap: 24, alignItems: 'start' }} id="grupo-top-grid">
 
-        {/* ── Premios del grupo ── */}
-        {!isSinGrupo && <div>
-          <SectionHeader title="Premios del grupo" sub="Define lugares sueltos y/o rangos (ej. del 4° al 10°)"/>
-          <div style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 14, padding: '20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {prizesLoading ? (
-              <div style={{ textAlign: 'center', padding: '20px', color: c.muted, fontSize: 13 }}>Cargando…</div>
-            ) : (
-              <>
-                {/* Encabezado de columnas */}
-                <div style={{ display: 'grid', gridTemplateColumns: '64px 64px 1fr 32px', gap: 8, fontSize: 10, fontWeight: 700, color: c.muted, textTransform: 'uppercase', letterSpacing: 0.8, paddingLeft: 2 }}>
-                  <span>Del</span><span>Al</span><span>Premio</span><span/>
-                </div>
-
-                {tiers.length === 0 && (
-                  <div style={{ textAlign: 'center', padding: '14px', color: c.muted, fontSize: 12.5, background: 'rgba(255,255,255,0.03)', borderRadius: 8 }}>
-                    Sin tramos. Agrega el primero abajo.
-                  </div>
-                )}
-
-                {tiers.map((t, i) => (
-                  <div key={i} style={{ display: 'grid', gridTemplateColumns: '64px 64px 1fr 32px', gap: 8, alignItems: 'center' }}>
-                    <input type="number" min={1} value={t.from}
-                      onChange={e => updateTier(i, { from: parseInt(e.target.value) || 1 })}
-                      style={{ width: '100%', padding: '9px 8px', borderRadius: 8, border: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.06)', color: c.text, fontSize: 13, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box', textAlign: 'center' }}/>
-                    <input type="number" min={t.from} value={t.to}
-                      onChange={e => updateTier(i, { to: parseInt(e.target.value) || t.from })}
-                      style={{ width: '100%', padding: '9px 8px', borderRadius: 8, border: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.06)', color: c.text, fontSize: 13, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box', textAlign: 'center' }}/>
-                    <input value={t.reward}
-                      onChange={e => updateTier(i, { reward: e.target.value })}
-                      placeholder="Ej. $1,000 MXN o Audífonos"
-                      style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.06)', color: c.text, fontSize: 13, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }}/>
-                    <button onClick={() => removeTier(i)} title="Quitar tramo" style={{ width: 32, height: 32, borderRadius: 8, border: `1px solid ${c.border}`, background: 'transparent', color: c.rose, cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>🗑</button>
-                  </div>
-                ))}
-
-                <button onClick={addTier} style={{ width: '100%', padding: '9px', borderRadius: 9, border: `1px dashed ${c.border}`, background: 'transparent', color: c.muted, fontWeight: 600, fontSize: 12.5, cursor: 'pointer' }}>
-                  + Agregar tramo
-                </button>
-
-                <button onClick={savePrizes} disabled={saveStatus === 'saving'} style={{
-                  width: '100%', padding: '11px', borderRadius: 10, border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 13, marginTop: 4,
-                  background: saveStatus === 'saved' ? `${c.lime}33` : saveStatus === 'error' ? `${c.rose}33` : `${col}33`,
-                  color: saveStatus === 'saved' ? c.lime : saveStatus === 'error' ? c.rose : col,
-                  transition: 'all 200ms',
-                }}>
-                  {saveStatus === 'saving' ? 'Guardando…' : saveStatus === 'saved' ? '✓ Guardado' : saveStatus === 'error' ? '✗ Error al guardar' : 'Guardar premios'}
-                </button>
-
-                {/* Vista previa de etiquetas */}
-                {tiers.some(t => (t.reward ?? '').trim()) && (
-                  <div style={{ fontSize: 11, color: c.muted, lineHeight: 1.7, marginTop: 2 }}>
-                    {tiers.filter(t => (t.reward ?? '').trim()).map((t, i) => (
-                      <div key={i}>· <strong style={{ color: c.text }}>{prizeTierLabel({ from: Math.min(t.from, t.to), to: Math.max(t.from, t.to), reward: t.reward })}</strong>: {t.reward}</div>
-                    ))}
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-        </div>}
-
-        {/* ── Premios Bonus (misma columna izquierda, debajo de Premios del grupo) ── */}
-        {!isSinGrupo && (
-          <div>
-            <SectionHeader title="Premios bonus" sub="Predicciones especiales — elige si el premio son puntos o algo más"/>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {BONUS_CATEGORIES.map(cat => {
-                const cfg = bonus[cat.key];
-                const isPuntos = cfg.type === 'puntos';
-                const applied = applyResults[cat.key];
-                return (
-                  <div key={cat.key} style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 14, padding: '16px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-                      <span style={{ fontSize: 18 }}>{cat.icon}</span>
-                      <span style={{ fontSize: 13, fontWeight: 700, color: c.text }}>{cat.label}</span>
-                    </div>
-                    <div style={{ display: 'flex', borderRadius: 8, border: `1px solid ${c.border}`, overflow: 'hidden', marginBottom: 10 }}>
-                      {(['puntos', 'otro'] as const).map(t => (
-                        <button key={t} onClick={() => setBonus(b => ({ ...b, [cat.key]: { ...b[cat.key], type: t } }))} style={{
-                          flex: 1, padding: '7px', border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 700,
-                          background: cfg.type === t ? (t === 'puntos' ? `${c.lime}33` : `${c.blue}33`) : 'transparent',
-                          color: cfg.type === t ? (t === 'puntos' ? c.lime : c.blue) : c.dim,
-                        }}>
-                          {t === 'puntos' ? '⭐ Puntos' : '🎁 Otro'}
-                        </button>
-                      ))}
-                    </div>
-                    <label style={{ fontSize: 11, color: c.muted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.8 }}>
-                      {isPuntos ? 'Cantidad de puntos' : 'Descripción del premio'}
-                    </label>
-                    <input
-                      type={isPuntos ? 'number' : 'text'}
-                      value={cfg.value}
-                      onChange={e => setBonus(b => ({ ...b, [cat.key]: { ...b[cat.key], value: e.target.value } }))}
-                      placeholder={isPuntos ? 'Ej. 15' : 'Ej. Tarjeta Amazon $500'}
-                      style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.06)', color: c.text, fontSize: 13, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box', marginTop: 6, marginBottom: isPuntos ? 10 : 0 }}
-                    />
-                    {isPuntos && (
-                      <>
-                        <label style={{ fontSize: 11, color: c.muted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.8 }}>
-                          {cat.key === 'scorer' ? 'Nombre del goleador real' : 'Código del equipo real (ej. ARG)'}
-                        </label>
-                        <input
-                          value={cfg.result}
-                          onChange={e => setBonus(b => ({ ...b, [cat.key]: { ...b[cat.key], result: e.target.value } }))}
-                          placeholder={cat.key === 'scorer' ? 'Ej. Messi' : 'Ej. ARG'}
-                          style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.06)', color: c.text, fontSize: 13, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box', marginTop: 6, marginBottom: 10 }}
-                        />
-                        <button onClick={() => applyBonusPoints(cat.key)} disabled={applyingKey === cat.key || !cfg.result.trim() || !cfg.value}
-                          style={{ width: '100%', padding: '9px', borderRadius: 8, border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 12, background: applied !== undefined ? `${c.lime}33` : `${c.blue}22`, color: applied !== undefined ? c.lime : c.blue }}>
-                          {applyingKey === cat.key ? 'Aplicando…' : applied !== undefined ? `✓ ${applied} usuario${applied !== 1 ? 's' : ''} premiado${applied !== 1 ? 's' : ''}` : '⚡ Aplicar puntos'}
-                        </button>
-                      </>
-                    )}
-                  </div>
-                );
-              })}
-              <button onClick={saveBonus} disabled={bonusSaveStatus === 'saving'} style={{
-                width: '100%', padding: '11px', borderRadius: 10, border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 13,
-                background: bonusSaveStatus === 'saved' ? `${c.lime}33` : bonusSaveStatus === 'error' ? `${c.rose}33` : `${col}33`,
-                color: bonusSaveStatus === 'saved' ? c.lime : bonusSaveStatus === 'error' ? c.rose : col,
-              }}>
-                {bonusSaveStatus === 'saving' ? 'Guardando…' : bonusSaveStatus === 'saved' ? '✓ Configuración guardada' : bonusSaveStatus === 'error' ? '✗ Error' : 'Guardar configuración bonus'}
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* ── Miembros ── */}
+        {/* ── Columna izquierda: Miembros ── */}
         <div>
           <SectionHeader
             title={isNacional ? 'Todos los usuarios' : isSinGrupo ? 'Sin grupo asignado' : 'Miembros'}
             sub={memberSearch ? `${members.length} de ${allMembers.length} usuario${allMembers.length !== 1 ? 's' : ''}` : `${allMembers.length} usuario${allMembers.length !== 1 ? 's' : ''}`}
           />
-          {/* Buscador de miembros */}
           <div style={{ position: 'relative', marginBottom: 10 }}>
             <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: c.muted, fontSize: 13, pointerEvents: 'none' }}>🔍</span>
             <input value={memberSearch} onChange={e => setMemberSearch(e.target.value)}
@@ -2448,12 +2319,10 @@ function ViewGrupoDetalle({ group, liveUsers, onBack, onUserUpdated, onUserRemov
                     </div>
                   </div>
                   <PowerPills usedPowers={u.used_powers ?? []}/>
-                  {/* Premium toggle */}
                   <button onClick={() => togglePremium(u)} disabled={togglingId === u.id} title={u.premium ? 'Quitar Premium' : 'Dar Premium'}
                     style={{ padding: '4px 10px', borderRadius: 20, border: 'none', cursor: 'pointer', fontSize: 10, fontWeight: 700, background: u.premium ? `${c.lime}33` : 'rgba(255,255,255,0.08)', color: u.premium ? c.lime : c.dim, flexShrink: 0 }}>
                     {togglingId === u.id ? '…' : u.premium ? '⭐ Premium' : 'Free'}
                   </button>
-                  {/* Action buttons */}
                   <button onClick={() => setPredsEntry(liveUserToEntry(u))} style={{ padding: '5px 10px', borderRadius: 7, background: 'rgba(201,243,29,0.1)', border: `1px solid ${c.lime}40`, color: c.lime, fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>📋 Predicciones</button>
                   <button onClick={() => setEditEntry(liveUserToEntry(u))} style={{ padding: '5px 10px', borderRadius: 7, background: `${c.blue}20`, border: `1px solid ${c.blue}50`, color: c.blue, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>✏️ Editar</button>
                   {!isSpecial && (
@@ -2468,6 +2337,131 @@ function ViewGrupoDetalle({ group, liveUsers, onBack, onUserUpdated, onUserRemov
             </div>
           )}
         </div>
+
+        {/* ── Columna derecha: Premios del grupo + Premios bonus apilados ── */}
+        {!isSinGrupo && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+
+            {/* Premios del grupo */}
+            <div>
+              <SectionHeader title="Premios del grupo" sub="Define lugares sueltos y/o rangos (ej. del 4° al 10°)"/>
+              <div style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 14, padding: '20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {prizesLoading ? (
+                  <div style={{ textAlign: 'center', padding: '20px', color: c.muted, fontSize: 13 }}>Cargando…</div>
+                ) : (
+                  <>
+                    <div style={{ display: 'grid', gridTemplateColumns: '64px 64px 1fr 32px', gap: 8, fontSize: 10, fontWeight: 700, color: c.muted, textTransform: 'uppercase', letterSpacing: 0.8, paddingLeft: 2 }}>
+                      <span>Del</span><span>Al</span><span>Premio</span><span/>
+                    </div>
+                    {tiers.length === 0 && (
+                      <div style={{ textAlign: 'center', padding: '14px', color: c.muted, fontSize: 12.5, background: 'rgba(255,255,255,0.03)', borderRadius: 8 }}>
+                        Sin tramos. Agrega el primero abajo.
+                      </div>
+                    )}
+                    {tiers.map((t, i) => (
+                      <div key={i} style={{ display: 'grid', gridTemplateColumns: '64px 64px 1fr 32px', gap: 8, alignItems: 'center' }}>
+                        <input type="number" min={1} value={t.from}
+                          onChange={e => updateTier(i, { from: parseInt(e.target.value) || 1 })}
+                          style={{ width: '100%', padding: '9px 8px', borderRadius: 8, border: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.06)', color: c.text, fontSize: 13, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box', textAlign: 'center' }}/>
+                        <input type="number" min={t.from} value={t.to}
+                          onChange={e => updateTier(i, { to: parseInt(e.target.value) || t.from })}
+                          style={{ width: '100%', padding: '9px 8px', borderRadius: 8, border: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.06)', color: c.text, fontSize: 13, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box', textAlign: 'center' }}/>
+                        <input value={t.reward}
+                          onChange={e => updateTier(i, { reward: e.target.value })}
+                          placeholder="Ej. $1,000 MXN o Audífonos"
+                          style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.06)', color: c.text, fontSize: 13, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }}/>
+                        <button onClick={() => removeTier(i)} title="Quitar tramo" style={{ width: 32, height: 32, borderRadius: 8, border: `1px solid ${c.border}`, background: 'transparent', color: c.rose, cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>🗑</button>
+                      </div>
+                    ))}
+                    <button onClick={addTier} style={{ width: '100%', padding: '9px', borderRadius: 9, border: `1px dashed ${c.border}`, background: 'transparent', color: c.muted, fontWeight: 600, fontSize: 12.5, cursor: 'pointer' }}>
+                      + Agregar tramo
+                    </button>
+                    <button onClick={savePrizes} disabled={saveStatus === 'saving'} style={{
+                      width: '100%', padding: '11px', borderRadius: 10, border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 13, marginTop: 4,
+                      background: saveStatus === 'saved' ? `${c.lime}33` : saveStatus === 'error' ? `${c.rose}33` : `${col}33`,
+                      color: saveStatus === 'saved' ? c.lime : saveStatus === 'error' ? c.rose : col, transition: 'all 200ms',
+                    }}>
+                      {saveStatus === 'saving' ? 'Guardando…' : saveStatus === 'saved' ? '✓ Guardado' : saveStatus === 'error' ? '✗ Error al guardar' : 'Guardar premios'}
+                    </button>
+                    {tiers.some(t => (t.reward ?? '').trim()) && (
+                      <div style={{ fontSize: 11, color: c.muted, lineHeight: 1.7, marginTop: 2 }}>
+                        {tiers.filter(t => (t.reward ?? '').trim()).map((t, i) => (
+                          <div key={i}>· <strong style={{ color: c.text }}>{prizeTierLabel({ from: Math.min(t.from, t.to), to: Math.max(t.from, t.to), reward: t.reward })}</strong>: {t.reward}</div>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* Premios bonus */}
+            <div>
+              <SectionHeader title="Premios bonus" sub="Predicciones especiales — elige si el premio son puntos o algo más"/>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {BONUS_CATEGORIES.map(cat => {
+                  const cfg = bonus[cat.key];
+                  const isPuntos = cfg.type === 'puntos';
+                  const applied = applyResults[cat.key];
+                  return (
+                    <div key={cat.key} style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 14, padding: '16px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                        <span style={{ fontSize: 18 }}>{cat.icon}</span>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: c.text }}>{cat.label}</span>
+                      </div>
+                      <div style={{ display: 'flex', borderRadius: 8, border: `1px solid ${c.border}`, overflow: 'hidden', marginBottom: 10 }}>
+                        {(['puntos', 'otro'] as const).map(t => (
+                          <button key={t} onClick={() => setBonus(b => ({ ...b, [cat.key]: { ...b[cat.key], type: t } }))} style={{
+                            flex: 1, padding: '7px', border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 700,
+                            background: cfg.type === t ? (t === 'puntos' ? `${c.lime}33` : `${c.blue}33`) : 'transparent',
+                            color: cfg.type === t ? (t === 'puntos' ? c.lime : c.blue) : c.dim,
+                          }}>
+                            {t === 'puntos' ? '⭐ Puntos' : '🎁 Otro'}
+                          </button>
+                        ))}
+                      </div>
+                      <label style={{ fontSize: 11, color: c.muted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.8 }}>
+                        {isPuntos ? 'Cantidad de puntos' : 'Descripción del premio'}
+                      </label>
+                      <input
+                        type={isPuntos ? 'number' : 'text'}
+                        value={cfg.value}
+                        onChange={e => setBonus(b => ({ ...b, [cat.key]: { ...b[cat.key], value: e.target.value } }))}
+                        placeholder={isPuntos ? 'Ej. 15' : 'Ej. Tarjeta Amazon $500'}
+                        style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.06)', color: c.text, fontSize: 13, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box', marginTop: 6, marginBottom: isPuntos ? 10 : 0 }}
+                      />
+                      {isPuntos && (
+                        <>
+                          <label style={{ fontSize: 11, color: c.muted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.8 }}>
+                            {cat.key === 'scorer' ? 'Nombre del goleador real' : 'Código del equipo real (ej. ARG)'}
+                          </label>
+                          <input
+                            value={cfg.result}
+                            onChange={e => setBonus(b => ({ ...b, [cat.key]: { ...b[cat.key], result: e.target.value } }))}
+                            placeholder={cat.key === 'scorer' ? 'Ej. Messi' : 'Ej. ARG'}
+                            style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.06)', color: c.text, fontSize: 13, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box', marginTop: 6, marginBottom: 10 }}
+                          />
+                          <button onClick={() => applyBonusPoints(cat.key)} disabled={applyingKey === cat.key || !cfg.result.trim() || !cfg.value}
+                            style={{ width: '100%', padding: '9px', borderRadius: 8, border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 12, background: applied !== undefined ? `${c.lime}33` : `${c.blue}22`, color: applied !== undefined ? c.lime : c.blue }}>
+                            {applyingKey === cat.key ? 'Aplicando…' : applied !== undefined ? `✓ ${applied} usuario${applied !== 1 ? 's' : ''} premiado${applied !== 1 ? 's' : ''}` : '⚡ Aplicar puntos'}
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  );
+                })}
+                <button onClick={saveBonus} disabled={bonusSaveStatus === 'saving'} style={{
+                  width: '100%', padding: '11px', borderRadius: 10, border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 13,
+                  background: bonusSaveStatus === 'saved' ? `${c.lime}33` : bonusSaveStatus === 'error' ? `${c.rose}33` : `${col}33`,
+                  color: bonusSaveStatus === 'saved' ? c.lime : bonusSaveStatus === 'error' ? c.rose : col,
+                }}>
+                  {bonusSaveStatus === 'saving' ? 'Guardando…' : bonusSaveStatus === 'saved' ? '✓ Configuración guardada' : bonusSaveStatus === 'error' ? '✗ Error' : 'Guardar configuración bonus'}
+                </button>
+              </div>
+            </div>
+
+          </div>
+        )}
 
       </div>
 
