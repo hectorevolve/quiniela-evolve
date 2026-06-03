@@ -342,7 +342,7 @@ export function TorneoScreen({ goto, tweaks, fireToast, powersEnabled = true, us
             userGroup={displayGroup}
           />
         )}
-        {tab === 'detalles'     && <TabDetalles goto={goto} openSub={openSub} userGroup={displayGroup} rankings={liveRankings} groupAccent={getGroupColor(displayGroup)} groupLogoUrl={getGroupLogo(displayGroup)}/>}
+        {tab === 'detalles'     && <TabDetalles goto={goto} openSub={openSub} userGroup={displayGroup} rankings={liveRankings} groupAccent={getGroupColor(displayGroup)} groupLogoUrl={getGroupLogo(displayGroup)} powersEnabled={powersEnabled}/>}
       </div>
 
     </div>
@@ -1564,7 +1564,7 @@ function GroupAvatar({ group, size = 80, colorOverride, logoUrlOverride }: { gro
 }
 
 // ──────── Tab: Detalles ────────
-function TabDetalles({ goto, openSub, userGroup, rankings, groupAccent = T.lime, groupLogoUrl }: { goto: (s: string) => void; openSub: (name: SubScreenName) => void; userGroup: string; rankings: RankingEntry[]; groupAccent?: string; groupLogoUrl?: string | null }) {
+function TabDetalles({ goto, openSub, userGroup, rankings, groupAccent = T.lime, groupLogoUrl, powersEnabled = true }: { goto: (s: string) => void; openSub: (name: SubScreenName) => void; userGroup: string; rankings: RankingEntry[]; groupAccent?: string; groupLogoUrl?: string | null; powersEnabled?: boolean }) {
   const [settings, setSettings] = useState<GroupSettings | null>(null);
   useEffect(() => {
     if (userGroup) getGroupSettings(userGroup).then(setSettings).catch(console.error);
@@ -1623,7 +1623,7 @@ function TabDetalles({ goto, openSub, userGroup, rankings, groupAccent = T.lime,
       </button>
 
       {/* Powers */}
-      <Card>
+      {powersEnabled && <Card>
         <div className="font-display" style={{ fontSize: 14, fontWeight: 700, color: T.ink, marginBottom: 14 }}>Poderes activos</div>
         <div style={{ display: 'flex', justifyContent: 'space-around' }}>
           {(['double', 'late', 'spy'] as const).map(kind => (
@@ -1633,7 +1633,7 @@ function TabDetalles({ goto, openSub, userGroup, rankings, groupAccent = T.lime,
             </button>
           ))}
         </div>
-      </Card>
+      </Card>}
 
       {/* Points system */}
       <Card>
