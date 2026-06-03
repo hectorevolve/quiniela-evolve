@@ -29,7 +29,7 @@ export async function GET() {
     admin
       .from('profiles')
       .select('id, name, group_name, city, used_powers')
-      .not('role', 'in', '("admin","superadmin")'),
+      .neq('role', 'superadmin'),
     admin
       .from('matches')
       .select('id, result_home, result_away, group_name')
