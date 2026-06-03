@@ -149,22 +149,6 @@ export function PerfilScreen({ goto, tweaks, fireToast, currentUser, onLogout, d
           <div style={{ fontSize: 13, color: T.muted, marginTop: 4 }}>{displayGroup}</div>
         </div>
 
-        {/* Estatus */}
-        <Card style={{ marginBottom: 12 }}>
-          <div className="font-display" style={{ fontSize: 14, fontWeight: 700, color: T.ink, marginBottom: 14 }}>Estatus del mes</div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            {months.map(m => (
-              <div key={m.label} style={{ flex: 1, background: T.bgSoft, borderRadius: 12, padding: '12px 8px', textAlign: 'center', border: `1px solid ${T.border}` }}>
-                <div style={{ fontSize: 11, color: T.muted, marginBottom: 6 }}>{m.label}</div>
-                <div style={{ height: 48, background: T.border, borderRadius: 4, overflow: 'hidden', display: 'flex', alignItems: 'flex-end', marginBottom: 6 }}>
-                  <div style={{ width: '100%', height: `${m.pct}%`, background: m.color, transition: 'height 600ms' }}/>
-                </div>
-                <div style={{ fontSize: 12, fontWeight: 700, color: m.color }}>{m.pct}%</div>
-              </div>
-            ))}
-          </div>
-        </Card>
-
         {/* Powers */}
         <Card style={{ marginBottom: 12 }}>
           <div className="font-display" style={{ fontSize: 14, fontWeight: 700, color: T.ink, marginBottom: 14 }}>Mis Poderes</div>
