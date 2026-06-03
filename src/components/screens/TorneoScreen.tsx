@@ -107,6 +107,7 @@ interface Props {
   currentUser?: AppUser | null;
   matchDates?: Record<string, string>;
   demoRankings?: RankingEntry[];   // presentación: inyecta ranking ficticio sin tocar la DB
+  onRankUpdate?: (pos: number) => void;  // notifica la posición real al parent para sincronizar PremiosScreen
 }
 
 type SubScreenName = 'puntos' | 'campeon' | 'goleador' | 'subcampeon' | 'tercero' | 'poder-double' | 'poder-late' | 'poder-spy';
@@ -201,7 +202,7 @@ function useMatchTimer(dateStr: string, apiStatus: string, apiDuration: string, 
   return state;
 }
 
-export function TorneoScreen({ goto, tweaks, fireToast, usedPowers, setUsedPowers, lateActiveMatchId, setLateActiveMatchId, spyMatchId, setSpyMatchId, currentUser, matchDates, demoRankings }: Props) {
+export function TorneoScreen({ goto, tweaks, fireToast, usedPowers, setUsedPowers, lateActiveMatchId, setLateActiveMatchId, spyMatchId, setSpyMatchId, currentUser, matchDates, demoRankings, onRankUpdate }: Props) {
   const displayUser = currentUser ?? USER;
   const displayName     = currentUser?.name       ?? USER.name;
   const displayGroup    = currentUser?.group_name  ?? USER.group;
@@ -222,7 +223,14 @@ export function TorneoScreen({ goto, tweaks, fireToast, usedPowers, setUsedPower
     if (demoRankings) { setLiveRankings(demoRankings); setRankingsLoading(false); return; } // presentación
     setRankingsLoading(true);
     getRankings()
-      .then(data => setLiveRankings(data))
+      .then(data => {
+        setLiveRankings(data);
+        // Notifica la posición real al parent para sincronizar PremiosScreen
+        if (onRankUpdate && currentUser?.id) {
+          const entry = data.find(e => e.userId === currentUser.id);
+          if (entry) onRankUpdate(entry.pos);
+        }
+      })
       .catch(console.error)
       .finally(() => setRankingsLoading(false));
   };

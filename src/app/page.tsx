@@ -9,7 +9,7 @@ import { PerfilScreen } from '@/components/screens/PerfilScreen';
 import { PremiosScreen } from '@/components/screens/PremiosScreen';
 import { AdminScreen } from '@/components/screens/AdminScreen';
 import { supabase, type AppUser } from '@/lib/supabase';
-import { getProfile, getMatchDates } from '@/lib/db';
+import { getProfile, getMatchDates, getRankings } from '@/lib/db';
 import { syncPredictionsFromDB, syncBonusFromDB } from '@/lib/predictions';
 
 type Screen = 'login' | 'survey' | 'torneo' | 'detalle' | 'perfil' | 'premios' | 'admin';
@@ -32,6 +32,8 @@ export default function Home() {
   const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
   // ISO UTC kickoff times from Supabase (synced from football-data.org API)
   const [matchDates, setMatchDates] = useState<Record<string, string>>({});
+  // Posición real del usuario en el ranking (se carga del API)
+  const [userRank, setUserRank] = useState<number>(0);
 
   // Powers are available to all users — no premium gate
 
@@ -68,6 +70,11 @@ export default function Home() {
               setLateActiveMatchId(profile.late_match_id);
             }
             setCurrentUser(profile);
+            // Cargar posición real en el ranking
+            getRankings().then(entries => {
+              const entry = entries.find(e => e.userId === profile.id);
+              if (entry) setUserRank(entry.pos);
+            }).catch(console.error);
             // Gate de encuesta: si no la completó, mostrar antes de la quiniela
             setScreen(profile.survey_completed ? 'torneo' : 'survey');
           }
@@ -112,6 +119,11 @@ export default function Home() {
     if (user.late_match_id) setLateActiveMatchId(user.late_match_id);
     // Load official match dates from Supabase (updated by sync-results cron)
     getMatchDates().then(setMatchDates).catch(console.error);
+    // Cargar posición real en el ranking del grupo
+    getRankings().then(entries => {
+      const entry = entries.find(e => e.userId === user.id);
+      if (entry) setUserRank(entry.pos);
+    }).catch(console.error);
     // Gate de encuesta: primera vez que entran deben completarla
     goto(user.survey_completed ? 'torneo' : 'survey');
   }, [goto]);
@@ -138,7 +150,8 @@ export default function Home() {
           usedPowers={usedPowers} setUsedPowers={setUsedPowers}
           lateActiveMatchId={lateActiveMatchId} setLateActiveMatchId={setLateActiveMatchId}
           spyMatchId={spyMatchId} setSpyMatchId={setSpyMatchId}
-          currentUser={currentUser} matchDates={matchDates}/>;
+          currentUser={currentUser} matchDates={matchDates}
+          onRankUpdate={(pos) => setUserRank(pos)}/>;
       case 'detalle':
         return <DetalleScreen goto={goto} tweaks={tweaks} fireToast={fireToast}
           matchId={selectedMatchId}
@@ -150,7 +163,7 @@ export default function Home() {
         return <PerfilScreen goto={goto} tweaks={tweaks} fireToast={fireToast}
           currentUser={currentUser} onLogout={handleLogout}/>;
       case 'premios':
-        return <PremiosScreen goto={goto} fireToast={fireToast} rank={tweaks.rank} currentUser={currentUser}/>;
+        return <PremiosScreen goto={goto} fireToast={fireToast} rank={userRank} currentUser={currentUser}/>;
       case 'admin':
         return <AdminScreen goto={goto}/>;
     }
