@@ -234,10 +234,11 @@ export function TorneoScreen({ goto, tweaks, fireToast, powersEnabled = true, us
     getRankings()
       .then(data => {
         setLiveRankings(data);
-        // Notifica la posición real al parent para sincronizar PremiosScreen
+        // Notifica posición en grupo al parent para sincronizar PremiosScreen
         if (onRankUpdate && currentUser?.id) {
-          const entry = data.find(e => e.userId === currentUser.id);
-          if (entry) onRankUpdate(entry.pos);
+          const groupList = data.filter(e => e.group_name === currentUser.group_name);
+          const groupPos  = groupList.findIndex(e => e.userId === currentUser.id);
+          onRankUpdate(groupPos !== -1 ? groupPos + 1 : (data.find(e => e.userId === currentUser.id)?.pos ?? 0));
         }
       })
       .catch(console.error)
