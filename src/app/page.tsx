@@ -153,7 +153,7 @@ export default function Home() {
       case 'login':
         return <LoginScreen onLogin={handleLogin} blocked={DEV_TWEAKS ? !tweaks.cumplido : false}/>;
       case 'survey':
-        return <SurveyScreen userName={currentUser?.name} onDone={async () => {
+        return <SurveyScreen userName={currentUser?.name} userGroup={currentUser?.group_name ?? undefined} onDone={async () => {
           // survey_completed ya se marcó en el backend — actualizar estado local
           if (currentUser) setCurrentUser({ ...currentUser, survey_completed: true });
           goto('torneo');
