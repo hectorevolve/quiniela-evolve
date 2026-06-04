@@ -32,7 +32,7 @@ export function SpyModal({ match, phase, onConfirm, onClose }: {
         </div>
         <div className="font-display" style={{ fontSize: 20, fontWeight: 700, color: T.ink, marginBottom: 6 }}>Espía</div>
         <div style={{ fontSize: 13.5, color: T.slate, marginBottom: 16, lineHeight: 1.6 }}>
-          Revela cómo se distribuyen las predicciones del grupo para este partido.
+          Revela cómo se distribuyen las predicciones de todos los participantes para este partido.
         </div>
         <div style={{ background: T.bgSoft, borderRadius: 10, padding: '10px 14px', marginBottom: 12 }}>
           <div style={{ fontSize: 11, color: T.muted, marginBottom: 2 }}>Partido</div>
@@ -58,7 +58,7 @@ export function SpyModal({ match, phase, onConfirm, onClose }: {
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
         <PowerIcon kind="spy" size={36} used/>
         <div>
-          <div className="font-display" style={{ fontSize: 16, fontWeight: 700, color: T.ink }}>Predicciones del grupo</div>
+          <div className="font-display" style={{ fontSize: 16, fontWeight: 700, color: T.ink }}>Predicciones de todos</div>
           <div style={{ fontSize: 12, color: T.muted }}>{match.home.code} vs {match.away.code} · {total.toLocaleString()} predicciones</div>
         </div>
       </div>
