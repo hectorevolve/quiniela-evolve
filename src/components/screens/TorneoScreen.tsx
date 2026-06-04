@@ -119,6 +119,14 @@ const MONTH_IDX_MAP: Record<string, number> = {
   'jul.':6,'ago.':7,'sep.':8,'oct.':9,'nov.':10,'dic.':11,
 };
 
+// Nombres en DB vienen como "APELLIDO1 APELLIDO2 NOMBRE1 NOMBRE2"
+// Devuelve "NOMBRE1 APELLIDO1" para que quepan en pantalla
+function shortName(full: string): string {
+  const w = full.trim().split(/\s+/);
+  if (w.length <= 2) return full;
+  return `${w[2]} ${w[0]}`;
+}
+
 function parseMatchDate(dateStr: string): Date | null {
   // Format: 'jue. 22 may. 2026 12:45 pm'
   const p = dateStr.split(' ');
@@ -1275,7 +1283,7 @@ function TabRanking({ rankings, loading, userId, userName, userGroup, groupAccen
         )}
         {windowRows.map((player) => {
           const isMe = player.userId === userId;
-          const rowName  = isMe ? userName : player.name;
+          const rowName  = isMe ? shortName(userName) : shortName(player.name);
           const cityAbbrev = getCityAbbrev(player.city);
           const rowGroup = subTab === 'nacional' ? (isMe ? userGroup : (player.group_name ?? '')) : undefined;
           // "Nacional": grupo · ciudad — "Mi grupo": solo la ciudad (el grupo es el mismo)
@@ -1372,7 +1380,7 @@ function RankingPodium({ top3, visible, userRank, userName, userPoints, userId, 
 
               {/* Avatar */}
               <Avatar
-                initials={player.name.slice(0, 2).toUpperCase()}
+                initials={shortName(player.name).slice(0, 2).toUpperCase()}
                 size={isCenter ? 54 : 42}
                 ring={colors[i]}
                 style={{ marginBottom: 6 }}
@@ -1384,7 +1392,7 @@ function RankingPodium({ top3, visible, userRank, userName, userPoints, userId, 
                   fontSize: isCenter ? 11.5 : 10, fontWeight: 700, color: '#fff',
                   overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                 }}>
-                  {player.userId === userId ? userName.split(' ')[0] : player.name.split(' ')[0]}
+                  {player.userId === userId ? shortName(userName) : shortName(player.name)}
                   {player.userId === userId ? <span style={{ color: groupAccent }}> (tú)</span> : null}
                 </div>
                 {(() => {
