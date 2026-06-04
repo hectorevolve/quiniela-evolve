@@ -1393,7 +1393,7 @@ function RankingPodium({ top3, visible, userRank, userName, userPoints, userId, 
                   fontSize: isCenter ? 11.5 : 10, fontWeight: 700, color: '#fff',
                   overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                 }}>
-                  {player.userId === userId ? shortName(userName) : shortName(player.name)}
+                  {player.userId === userId ? shortName(userName).split(' ')[0] : shortName(player.name).split(' ')[0]}
                   {player.userId === userId ? <span style={{ color: groupAccent }}> (tú)</span> : null}
                 </div>
                 {(() => {
