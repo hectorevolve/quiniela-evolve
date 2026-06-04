@@ -58,7 +58,7 @@ export function SpyModal({ match, phase, onConfirm, onClose }: {
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
         <PowerIcon kind="spy" size={36} used/>
         <div>
-          <div className="font-display" style={{ fontSize: 16, fontWeight: 700, color: T.ink }}>Predicciones de todos</div>
+          <div className="font-display" style={{ fontSize: 16, fontWeight: 700, color: T.ink }}>El pulso del torneo</div>
           <div style={{ fontSize: 12, color: T.muted }}>{match.home.code} vs {match.away.code} · {total.toLocaleString()} predicciones</div>
         </div>
       </div>
