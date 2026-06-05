@@ -26,29 +26,13 @@ function fmtPhone(raw: string): string {
   return `${d.slice(0, 2)} ${d.slice(2, 6)} ${d.slice(6)}`;
 }
 
-// ─── Survey groups ────────────────────────────────────────────────────────────
-type GroupConfig = { name: string; color: string };
-
-const FALLBACK_GROUPS: GroupConfig[] = [
-  { name: 'Evolve',          color: '#A3E635' },
-  { name: 'BEPENSA Spirits', color: '#1AAFFF' },
-  { name: 'ADM',             color: '#F59E0B' },
-  { name: 'Disney',          color: '#0063E5' },
-  { name: 'Ruz',             color: '#8B5CF6' },
-  { name: 'Zuru',            color: '#22C55E' },
-  { name: 'AJEMEX',          color: '#EF4444' },
-  { name: 'Delongi',         color: '#F97316' },
-  { name: 'Juguetimax',      color: '#EC4899' },
-  { name: 'Hanes',           color: '#14B8A6' },
-];
 
 // Steps:
 // 'phone'        → enter phone number (check whitelist)
-// 'survey-promo' → new users: show $15K prize screen
-// 'survey-form'  → new users: enter name + pick group, then send OTP
+// 'survey-promo' → new users: show $15K prize screen + send OTP
 // 'otp'          → enter SMS verification code
 // 'admin-login'  → hidden admin: email + password
-type Step = 'phone' | 'survey-promo' | 'survey-form' | 'otp' | 'admin-login';
+type Step = 'phone' | 'survey-promo' | 'otp' | 'admin-login';
 
 export function LoginScreen({ onLogin, blocked = false }: Props) {
   const [step, setStep]       = useState<Step>('phone');
@@ -59,18 +43,6 @@ export function LoginScreen({ onLogin, blocked = false }: Props) {
   const [info, setInfo]       = useState<string | null>(null);
   const [isNewUser, setIsNewUser] = useState(false);
 
-  // Survey form
-  const [surveyName, setSurveyName]   = useState('');
-  const [surveyGroup, setSurveyGroup] = useState('');
-
-  // Dynamic groups from DB
-  const [surveyGroups, setSurveyGroups] = useState<GroupConfig[]>(FALLBACK_GROUPS);
-  useEffect(() => {
-    fetch('/api/groups')
-      .then(r => r.json())
-      .then((data: GroupConfig[]) => { if (Array.isArray(data) && data.length) setSurveyGroups(data); })
-      .catch(() => {/* keep fallback */});
-  }, []);
 
   // Admin login form
   const [adminEmail, setAdminEmail]   = useState('');
@@ -102,15 +74,14 @@ export function LoginScreen({ onLogin, blocked = false }: Props) {
     return true;
   };
 
-  // ─── Registrar nuevo usuario (post-encuesta + post-OTP) ─────────────────────
+  // ─── Registrar nuevo usuario (post-OTP) ─────────────────────────────────────
+  // Nombre y grupo se toman del whitelist en el backend — no se envían desde el cliente
   const registerAndLogin = async () => {
     const res = await fetch('/api/auth/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         phone: phone.replace(/\D/g, ''),
-        name: surveyName.trim(),
-        group_name: surveyGroup || null,
       }),
     });
     const data = await res.json() as { token_hash?: string; error?: string };
@@ -193,11 +164,8 @@ export function LoginScreen({ onLogin, blocked = false }: Props) {
     }
   };
 
-  // ─── Paso survey-form: enviar OTP después de la encuesta ────────────────────
+  // ─── Paso survey-promo: enviar OTP directamente (nombre/grupo vienen del whitelist) ──
   const handleSurveySubmit = async () => {
-    if (!surveyName.trim()) { setError('Ingresa tu nombre completo.'); return; }
-    if (!surveyGroup)       { setError('Selecciona tu grupo.'); return; }
-
     setLoading(true); setError(null);
     try {
       const result = await sendOtp();
@@ -362,7 +330,7 @@ export function LoginScreen({ onLogin, blocked = false }: Props) {
         <div style={{ position: 'absolute', top: '30%', left: '50%', transform: 'translateX(-50%)', width: 260, height: 260, background: 'radial-gradient(circle, rgba(26,175,255,0.25) 0%, transparent 65%)', filter: 'blur(16px)', pointerEvents: 'none' }}/>
         <ChevronMotif size={180} opacity={0.06} style={{ position: 'absolute', top: -20, right: -30, pointerEvents: 'none' }}/>
         <ChevronMotif size={100} opacity={0.04} style={{ position: 'absolute', bottom: -10, left: -20, pointerEvents: 'none' }}/>
-        {step !== 'survey-promo' && step !== 'survey-form' && (
+        {step !== 'survey-promo' && (
           <>
             <FallingBall size={52} delay={0}   duration={4.5} x="22%" glow/>
             <FallingBall size={36} delay={1.2} duration={5.5} x="68%"/>
@@ -373,7 +341,7 @@ export function LoginScreen({ onLogin, blocked = false }: Props) {
           <QELockup size={32} mode="light" compact/>
         </div>
         <div style={{ position: 'relative', zIndex: 2, animation: 'evo-fade-in 500ms ease 400ms both' }}>
-          {step === 'survey-promo' || step === 'survey-form' ? (
+          {step === 'survey-promo' ? (
             <Pill color="rgba(201,243,29,0.15)" textColor="#C9F31D" style={{ border: '1px solid rgba(201,243,29,0.3)' }}>
               🏆 ¡Premio hasta $15,000 pesos!
             </Pill>
@@ -469,92 +437,13 @@ export function LoginScreen({ onLogin, blocked = false }: Props) {
               </div>
             </div>
 
-            <Button variant="ink" fullWidth size="lg" onClick={() => { setStep('survey-form'); setError(null); }}>
-              ¡Contestar encuesta! →
+            <Button variant="ink" fullWidth size="lg" onClick={handleSurveySubmit} disabled={loading}>
+              {loading ? 'Enviando código…' : '¡Contestar encuesta! →'}
             </Button>
           </>
         )}
 
-        {/* ════ PASO 3: Formulario de encuesta ════ */}
-        {step === 'survey-form' && (
-          <>
-            <button onClick={() => { setStep('survey-promo'); setError(null); }} style={{ alignSelf: 'flex-start', background: 'none', border: 'none', cursor: 'pointer', color: T.blue, fontSize: 13, padding: '0 0 14px', display: 'flex', alignItems: 'center', gap: 4 }}>
-              ← Volver
-            </button>
-
-            <div className="font-display" style={{ fontSize: 20, fontWeight: 700, color: T.ink, marginBottom: 4, letterSpacing: '-0.02em' }}>Tu información</div>
-            <div style={{ fontSize: 13, color: T.slate, marginBottom: 20, lineHeight: 1.5 }}>
-              Estos datos aparecerán en el ranking de la quiniela
-            </div>
-
-            {/* Nombre */}
-            <div style={{ marginBottom: 20 }}>
-              <label style={labelStyle}>Nombre completo</label>
-              <input
-                type="text" placeholder="¿Cómo te llamas?"
-                value={surveyName}
-                onChange={e => { setSurveyName(e.target.value); setError(null); }}
-                disabled={loading}
-                style={inputStyle}
-                onFocus={e => e.currentTarget.style.borderColor = T.blue}
-                onBlur={e => e.currentTarget.style.borderColor = T.border}
-              />
-            </div>
-
-            {/* Grupo */}
-            <div style={{ marginBottom: 24 }}>
-              <label style={{ ...labelStyle, marginBottom: 10 }}>¿A qué grupo perteneces?</label>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                {surveyGroups.map(g => {
-                  const selected = surveyGroup === g.name;
-                  return (
-                    <button
-                      key={g.name}
-                      onClick={() => { setSurveyGroup(g.name); setError(null); }}
-                      disabled={loading}
-                      style={{
-                        display: 'flex', alignItems: 'center', gap: 8,
-                        padding: '12px 14px', borderRadius: 14, cursor: 'pointer',
-                        border: selected ? `2px solid ${g.color}` : `1.5px solid ${T.border}`,
-                        background: selected ? `${g.color}15` : '#fff',
-                        transition: 'all 150ms',
-                        fontFamily: 'inherit',
-                      }}
-                    >
-                      <div style={{ width: 28, height: 28, borderRadius: '50%', background: g.color, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 12, fontWeight: 800, color: '#fff' }}>
-                        {g.name.slice(0, 2).toUpperCase()}
-                      </div>
-                      <div style={{ textAlign: 'left', flex: 1, minWidth: 0 }}>
-                        <div style={{
-                          fontSize: 13, fontWeight: 700,
-                          color: selected ? g.color : T.ink,
-                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                        }}>
-                          {g.name}
-                        </div>
-                      </div>
-                      {selected && (
-                        <div style={{ width: 18, height: 18, borderRadius: '50%', background: g.color, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                          <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                            <polyline points="1.5,5 4,7.5 8.5,2" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-                          </svg>
-                        </div>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {error && <ErrorBox msg={error}/>}
-
-            <Button variant="ink" fullWidth size="lg" onClick={handleSurveySubmit} style={{ opacity: loading ? 0.7 : 1 }}>
-              {loading ? 'Enviando código…' : 'Continuar → Verificar celular'}
-            </Button>
-          </>
-        )}
-
-        {/* ════ PASO 4: Código OTP ════ */}
+        {/* ════ PASO 3: Código OTP ════ */}
         {step === 'otp' && (
           <>
             <button onClick={() => { setStep('phone'); setError(null); setOtp(''); }} style={{ alignSelf: 'flex-start', background: 'none', border: 'none', cursor: 'pointer', color: T.blue, fontSize: 13, padding: '0 0 14px', display: 'flex', alignItems: 'center', gap: 4 }}>

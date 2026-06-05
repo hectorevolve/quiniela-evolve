@@ -3,27 +3,21 @@ import { randomUUID } from 'crypto';
 import { to10Digits, checkPhoneAllowed, createSessionTokenForEmail, getAdminClient } from '@/lib/server-session';
 
 /**
- * Self-registration after survey.
- * Accepts: { phone, name, group_name }
+ * Self-registration after OTP verification.
+ * Accepts: { phone } — name and group_name are taken from the whitelist (allowed_phones).
  * Creates an internal-email Supabase account (phone10@auth.quinielaevolve.mx)
  * and returns a token_hash for auto-login.
  */
 export async function POST(req: NextRequest) {
   const body = (await req.json()) as {
-    phone?:      string;
-    name?:       string;
-    group_name?: string;
+    phone?: string;
   };
 
-  const { name, group_name } = body;
   const phone10 = to10Digits(body.phone ?? '');
 
   // ── Validaciones básicas ─────────────────────────────────────────────────────
   if (!phone10) {
     return NextResponse.json({ error: 'invalid_phone' }, { status: 400 });
-  }
-  if (!name?.trim()) {
-    return NextResponse.json({ error: 'invalid_name' }, { status: 400 });
   }
 
   // ── Verificar whitelist / no duplicado ───────────────────────────────────────
@@ -34,6 +28,10 @@ export async function POST(req: NextRequest) {
   if (phoneCheck.hasAccount) {
     return NextResponse.json({ error: 'already_registered' }, { status: 409 });
   }
+
+  // Nombre y grupo vienen del whitelist; si no hay nombre usamos el teléfono como fallback
+  const resolvedName  = phoneCheck.name?.trim() || phone10;
+  const resolvedGroup = phoneCheck.group_name ?? null;
 
   const admin      = getAdminClient();
   const phoneE164  = `+52${phone10}`;
@@ -60,11 +58,11 @@ export async function POST(req: NextRequest) {
   // ── Crear perfil ─────────────────────────────────────────────────────────────
   const { error: profileErr } = await admin.from('profiles').insert({
     id:         newUser.user.id,
-    name:       name.trim(),
+    name:       resolvedName,
     email:      internalEmail,
     phone:      phoneE164,
     role:       'user',
-    group_name: group_name ?? phoneCheck.group_name ?? null,
+    group_name: resolvedGroup,
     city:       phoneCheck.city ?? null,
     premium:    phoneCheck.premium ?? false,
   });
