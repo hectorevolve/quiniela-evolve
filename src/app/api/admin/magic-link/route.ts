@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
   if (!phone10) return NextResponse.json({ error: 'invalid_phone' }, { status: 400 });
 
   const sig = sign(phone10);
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://quinielaevolve.vercel.app';
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://quiniela-evolve.vercel.app';
   const link = `${appUrl}/api/auth/admin-access?phone=${phone10}&sig=${sig}`;
 
   return NextResponse.json({ link });

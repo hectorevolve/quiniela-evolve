@@ -38,7 +38,7 @@ export async function GET(req: NextRequest) {
   }
 
   // Redirect to app with the fresh token
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://quinielaevolve.vercel.app';
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://quiniela-evolve.vercel.app';
   const dest = `${appUrl}/?admin_token=${result.token_hash}`;
   return NextResponse.redirect(dest);
 }
