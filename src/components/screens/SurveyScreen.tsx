@@ -462,9 +462,15 @@ export function SurveyScreen({ onDone, userName, userGroup }: Props) {
             </div>
             <div style={{ fontSize:9, fontWeight:600, letterSpacing:'1.2px', color:MUTED, marginBottom:16 }}>GRUPO EVOLVE</div>
             <h1 style={{ fontSize:32, fontWeight:700, letterSpacing:'-1px', margin:'0 0 10px' }}>¡Hola!</h1>
-            <p style={{ fontSize:15, color:MUTED, lineHeight:1.5, margin:'0 0 28px', maxWidth:320 }}>
+            <p style={{ fontSize:15, color:MUTED, lineHeight:1.5, margin:'0 0 16px', maxWidth:320 }}>
               Cuéntanos cómo te sientes trabajando en Evolve. Tu opinión es 100% anónima y nos ayuda a mejorar.
             </p>
+            {/* Prize banner */}
+            <div style={{ width:'100%', borderRadius:16, background:'linear-gradient(135deg,#0F2027 0%,#1a3a2a 100%)', padding:'16px 20px', marginBottom:20, textAlign:'center' }}>
+              <div style={{ fontSize:12, color:'rgba(255,255,255,0.7)', marginBottom:4 }}>🏆 Contesta y participa por</div>
+              <div style={{ fontSize:36, fontWeight:800, color:'#C9F31D', letterSpacing:'-1px', lineHeight:1 }}>$15,000</div>
+              <div style={{ fontSize:14, fontWeight:600, color:'rgba(255,255,255,0.85)', marginTop:2 }}>pesos en premios</div>
+            </div>
             <div style={{ display:'flex', flexDirection:'column', gap:8, width:'100%' }}>
               {[
                 { bg:'#ECFDF5', color:'#059669', icon:'✓', title:'Totalmente anónima', sub:'Nadie sabrá que fuiste tú' },
