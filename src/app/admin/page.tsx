@@ -3906,7 +3906,7 @@ function ViewCelulares() {
 
   const load = async () => {
     setLoadingList(true);
-    const { data } = await supabase.from('allowed_phones').select('phone, name, group_name, city, premium, phone_type').order('phone');
+    const { data } = await supabase.from('allowed_phones').select('phone, name, group_name, city, premium, phone_type').order('phone').limit(5000);
     setPhones((data ?? []) as AllowedPhone[]);
     setLoadingList(false);
   };
