@@ -44,8 +44,9 @@ export async function POST(req: NextRequest) {
 
   const userAgent = req.headers.get('user-agent')?.slice(0, 500) ?? null;
 
-  // ── 1. Insertar respuesta ANÓNIMA (sin user_id — anonimato garantizado) ──
+  // ── 1. Insertar respuesta con user_id ────────────────────────────────────
   const { error: surveyErr } = await admin.from('survey_responses').insert({
+    user_id:           userId,
     survey_id:         body.surveyId,
     survey_version:    body.version ?? '1.0.0',
     started_at:        body.startedAt ?? new Date().toISOString(),
