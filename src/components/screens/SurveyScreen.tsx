@@ -456,8 +456,9 @@ export function SurveyScreen({ onDone, userName, userGroup }: Props) {
       {step === 'welcome' && (
         <div style={{ flex:1, display:'flex', flexDirection:'column', padding:'0 24px 24px' }}>
           <div style={{ flex:1, display:'flex', flexDirection:'column', justifyContent:'center', alignItems:'center', textAlign:'center', padding:'20px 0' }}>
-            <div style={{ width:56, height:56, borderRadius:14, background:INK, display:'flex', alignItems:'center', justifyContent:'center', marginBottom:6 }}>
-              <span style={{ color:LIME, fontWeight:800, fontSize:30, letterSpacing:'-2px', lineHeight:1, fontStyle:'italic' }}>E</span>
+            <div style={{ width:80, height:80, borderRadius:18, overflow:'hidden', marginBottom:6 }}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/evolve-mark.png" alt="Evolve" style={{ width:'100%', height:'100%', objectFit:'cover' }}/>
             </div>
             <div style={{ fontSize:9, fontWeight:600, letterSpacing:'1.2px', color:MUTED, marginBottom:16 }}>GRUPO EVOLVE</div>
             <h1 style={{ fontSize:32, fontWeight:700, letterSpacing:'-1px', margin:'0 0 10px' }}>¡Hola!</h1>
