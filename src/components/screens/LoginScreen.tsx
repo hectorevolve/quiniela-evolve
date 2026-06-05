@@ -469,23 +469,6 @@ export function LoginScreen({ onLogin, blocked = false }: Props) {
               </div>
             </div>
 
-            <div style={{ fontSize: 15, fontWeight: 600, color: T.ink, marginBottom: 8 }}>¿Qué necesitamos saber?</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20 }}>
-              {[
-                ['📋', 'Tu nombre completo'],
-                ['🏢', 'Tu grupo de trabajo'],
-              ].map(([icon, text]) => (
-                <div key={text} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: '#F8FAFC', borderRadius: 12, border: `1px solid ${T.border}` }}>
-                  <span style={{ fontSize: 18 }}>{icon}</span>
-                  <span style={{ fontSize: 14, color: T.ink, fontWeight: 500 }}>{text}</span>
-                </div>
-              ))}
-            </div>
-
-            <div style={{ fontSize: 12, color: T.muted, marginBottom: 20, textAlign: 'center', lineHeight: 1.5 }}>
-              Solo toma 30 segundos · Tu info se usa para el ranking de la quiniela
-            </div>
-
             <Button variant="ink" fullWidth size="lg" onClick={() => { setStep('survey-form'); setError(null); }}>
               ¡Contestar encuesta! →
             </Button>
