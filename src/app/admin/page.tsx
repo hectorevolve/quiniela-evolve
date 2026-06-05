@@ -4469,7 +4469,7 @@ export default function AdminPage() {
   // Load real users from Supabase on mount
   useEffect(() => {
     if (authState !== 'allowed') return;
-    supabase.from('profiles').select('id, name, email, phone, role, group_name, city, premium, used_powers').order('created_at')
+    supabase.from('profiles').select('id, name, email, phone, role, group_name, city, premium, used_powers').order('created_at').limit(5000)
       .then(({ data }) => { if (data) setLiveUsers(data.map((u: LiveUser & { used_powers: string[] | null }) => ({ ...u, used_powers: u.used_powers ?? [] })) as LiveUser[]); });
   }, [authState]);
 
