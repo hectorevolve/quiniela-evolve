@@ -3236,9 +3236,8 @@ function ViewUsuariosAdmin({ liveUsers, onUserCreated, onUserDeleted, onUserUpda
     if (!u.phone) { setLinkMsg('❌ Sin teléfono'); setTimeout(() => setLinkMsg(null), 3000); return; }
     const res = await adminFetch('/api/admin/magic-link', { method: 'POST', body: JSON.stringify({ phone: u.phone }) });
     const json = await res.json();
-    if (!res.ok || !json.token_hash) { setLinkMsg('❌ Error generando link'); setTimeout(() => setLinkMsg(null), 3000); return; }
-    const url = `${window.location.origin}/?admin_token=${json.token_hash}`;
-    await navigator.clipboard.writeText(url);
+    if (!res.ok || !json.link) { setLinkMsg('❌ Error generando link'); setTimeout(() => setLinkMsg(null), 3000); return; }
+    await navigator.clipboard.writeText(json.link);
     setLinkMsg(`✓ Link copiado para ${u.name.split(' ')[0]}`);
     setTimeout(() => setLinkMsg(null), 4000);
   };

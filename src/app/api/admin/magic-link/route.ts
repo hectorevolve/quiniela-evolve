@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { to10Digits, createSessionToken } from '@/lib/server-session';
+import { to10Digits } from '@/lib/server-session';
+import { createHmac } from 'crypto';
 
 function getAdminClient() {
   return createClient(
@@ -22,9 +23,15 @@ async function verifyAdmin(token: string): Promise<boolean> {
   return data?.role === 'admin' || data?.role === 'superadmin';
 }
 
+function sign(phone10: string): string {
+  const secret = process.env.SUPABASE_SERVICE_ROLE_KEY ?? 'fallback-secret';
+  return createHmac('sha256', secret).update(phone10).digest('hex');
+}
+
 /**
- * Generate a one-time login token for a user (by phone or user id).
- * Admin only. Used when SMS delivery fails.
+ * Generate a permanent (non-expiring) login link for a user.
+ * The link is signed with HMAC so it can't be forged.
+ * Each time the user opens it, a fresh Supabase session is generated server-side.
  */
 export async function POST(req: NextRequest) {
   const authHeader = req.headers.get('authorization');
@@ -39,10 +46,9 @@ export async function POST(req: NextRequest) {
   const phone10 = to10Digits(phone ?? '');
   if (!phone10) return NextResponse.json({ error: 'invalid_phone' }, { status: 400 });
 
-  const result = await createSessionToken(phone10);
-  if ('error' in result) {
-    return NextResponse.json({ error: result.error }, { status: 500 });
-  }
+  const sig = sign(phone10);
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://quinielaevolve.vercel.app';
+  const link = `${appUrl}/api/auth/admin-access?phone=${phone10}&sig=${sig}`;
 
-  return NextResponse.json({ token_hash: result.token_hash });
+  return NextResponse.json({ link });
 }
