@@ -29,7 +29,10 @@ export async function POST(req: NextRequest) {
     const data = (await res.json()) as Array<{ success: boolean; code: string }>;
     const result = data?.[0];
 
+    console.log(`[emetrix-send] phone=${phone10} response=`, JSON.stringify(data));
+
     if (!result) {
+      console.error(`[emetrix-send] empty response for ${phone10}`);
       return NextResponse.json({ error: 'emetrix_error' }, { status: 500 });
     }
 

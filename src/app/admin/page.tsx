@@ -3906,8 +3906,18 @@ function ViewCelulares() {
 
   const load = async () => {
     setLoadingList(true);
-    const { data } = await supabase.from('allowed_phones').select('phone, name, group_name, city, premium, phone_type').order('phone').limit(5000);
-    setPhones((data ?? []) as AllowedPhone[]);
+    // PostgREST caps at 1000 rows per request — paginate to get all
+    const all: AllowedPhone[] = [];
+    const PAGE = 1000;
+    for (let from = 0; ; from += PAGE) {
+      const { data } = await supabase.from('allowed_phones')
+        .select('phone, name, group_name, city, premium, phone_type')
+        .order('phone').range(from, from + PAGE - 1);
+      if (!data || data.length === 0) break;
+      all.push(...(data as AllowedPhone[]));
+      if (data.length < PAGE) break;
+    }
+    setPhones(all);
     setLoadingList(false);
   };
   useEffect(() => { load(); }, []);
@@ -4469,8 +4479,20 @@ export default function AdminPage() {
   // Load real users from Supabase on mount
   useEffect(() => {
     if (authState !== 'allowed') return;
-    supabase.from('profiles').select('id, name, email, phone, role, group_name, city, premium, used_powers').order('created_at').limit(5000)
-      .then(({ data }) => { if (data) setLiveUsers(data.map((u: LiveUser & { used_powers: string[] | null }) => ({ ...u, used_powers: u.used_powers ?? [] })) as LiveUser[]); });
+    // PostgREST caps at 1000 rows — paginate to get all users
+    (async () => {
+      const all: LiveUser[] = [];
+      const PAGE = 1000;
+      for (let from = 0; ; from += PAGE) {
+        const { data } = await supabase.from('profiles')
+          .select('id, name, email, phone, role, group_name, city, premium, used_powers')
+          .order('created_at').range(from, from + PAGE - 1);
+        if (!data || data.length === 0) break;
+        all.push(...data.map((u: LiveUser & { used_powers: string[] | null }) => ({ ...u, used_powers: u.used_powers ?? [] })) as LiveUser[]);
+        if (data.length < PAGE) break;
+      }
+      setLiveUsers(all);
+    })();
   }, [authState]);
 
   // ── Guard screens ──
