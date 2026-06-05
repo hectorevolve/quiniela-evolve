@@ -50,6 +50,29 @@ export default function Home() {
 
     (async () => {
       try {
+        // ── Admin magic-link: ?admin_token=xxx auto-login ──────────────────────
+        const params = new URLSearchParams(window.location.search);
+        const adminToken = params.get('admin_token');
+        if (adminToken) {
+          // Remove token from URL immediately (don't expose it)
+          window.history.replaceState({}, '', window.location.pathname);
+          const { data, error } = await supabase.auth.verifyOtp({ token_hash: adminToken, type: 'email' });
+          if (!error && data.user) {
+            const profile = await getProfile(data.user.id);
+            if (profile) {
+              await Promise.all([
+                syncPredictionsFromDB(data.user.id).catch(console.error),
+                syncBonusFromDB(data.user.id).catch(console.error),
+              ]);
+              if (profile.used_powers?.length) setUsedPowers(new Set(profile.used_powers));
+              if (profile.late_match_id) setLateActiveMatchId(profile.late_match_id);
+              setCurrentUser(profile);
+              getMatchDates().then(setMatchDates).catch(console.error);
+              setScreen(profile.survey_completed ? 'torneo' : 'survey');
+              authDone = true; maybeHideLoader(); return;
+            }
+          }
+        }
         const { data: { session } } = await supabase.auth.getSession();
         if (session?.user) {
           const profile = await getProfile(session.user.id);

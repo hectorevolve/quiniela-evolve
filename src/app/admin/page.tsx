@@ -3230,6 +3230,18 @@ function ViewUsuariosAdmin({ liveUsers, onUserCreated, onUserDeleted, onUserUpda
   const [deleteEntry, setDeleteEntry] = useState<LiveUser | null>(null);
   const [deletingUser, setDeletingUser] = useState(false);
   const [deleteErr, setDeleteErr]   = useState<string | null>(null);
+  const [linkMsg, setLinkMsg]       = useState<string | null>(null);
+
+  const handleMagicLink = async (u: LiveUser) => {
+    if (!u.phone) { setLinkMsg('❌ Sin teléfono'); setTimeout(() => setLinkMsg(null), 3000); return; }
+    const res = await adminFetch('/api/admin/magic-link', { method: 'POST', body: JSON.stringify({ phone: u.phone }) });
+    const json = await res.json();
+    if (!res.ok || !json.token_hash) { setLinkMsg('❌ Error generando link'); setTimeout(() => setLinkMsg(null), 3000); return; }
+    const url = `${window.location.origin}/?admin_token=${json.token_hash}`;
+    await navigator.clipboard.writeText(url);
+    setLinkMsg(`✓ Link copiado para ${u.name.split(' ')[0]}`);
+    setTimeout(() => setLinkMsg(null), 4000);
+  };
 
   const handleDeleteUser = async () => {
     if (!deleteEntry) return;
@@ -3291,6 +3303,9 @@ function ViewUsuariosAdmin({ liveUsers, onUserCreated, onUserDeleted, onUserUpda
       {success && (
         <div style={{ marginBottom: 16, padding: '12px 16px', background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: 10, fontSize: 13, color: '#22C55E' }}>{success}</div>
       )}
+      {linkMsg && (
+        <div style={{ marginBottom: 16, padding: '12px 16px', background: 'rgba(26,175,255,0.1)', border: '1px solid rgba(26,175,255,0.3)', borderRadius: 10, fontSize: 13, color: c.blue }}>{linkMsg} — mándalo por WhatsApp para que entre sin código SMS</div>
+      )}
 
       {/* Search */}
       <div style={{ position: 'relative', marginBottom: 16 }}>
@@ -3331,6 +3346,7 @@ function ViewUsuariosAdmin({ liveUsers, onUserCreated, onUserDeleted, onUserUpda
             </div>
             <PowerPills usedPowers={u.used_powers ?? []}/>
             <button onClick={() => setPredsEntry(liveUserToEntry(u))} style={{ padding: '5px 10px', borderRadius: 7, background: 'rgba(201,243,29,0.1)', border: `1px solid ${c.lime}40`, color: c.lime, fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>📋 Predicciones</button>
+            <button onClick={() => handleMagicLink(u)} style={{ padding: '5px 10px', borderRadius: 7, background: 'rgba(26,175,255,0.1)', border: `1px solid rgba(26,175,255,0.4)`, color: c.blue, fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }} title="Copiar link de acceso directo">🔗 Link</button>
             <button onClick={() => setEditEntry(liveUserToEntry(u))} style={{ padding: '5px 10px', borderRadius: 7, background: `${c.blue}20`, border: `1px solid ${c.blue}50`, color: c.blue, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>✏️ Editar</button>
             <button onClick={() => { setDeleteEntry(u); setDeleteErr(null); }} style={{ padding: '5px 8px', borderRadius: 7, background: `${c.rose}15`, border: `1px solid ${c.rose}40`, color: c.rose, fontSize: 13, cursor: 'pointer' }} title="Eliminar usuario">🗑</button>
           </div>
