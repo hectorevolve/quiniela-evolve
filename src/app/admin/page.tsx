@@ -9,7 +9,7 @@ import { Avatar } from '@/components/ui';
 import { supabase } from '@/lib/supabase';
 import { getRankings, type RankingEntry, getMatchResults, saveMatchResult, getMatches, updateMatch, createMatch, deleteMatch, type DBMatch, type PrizeTier, prizeTierLabel } from '@/lib/db';
 
-type View = 'dashboard' | 'encuesta' | 'celulares' | 'usuarios' | 'rankings' | 'predicciones' | 'partidos' | 'grupos' | 'grupo-detalle' | 'grupos-config';
+type View = 'dashboard' | 'encuesta' | 'celulares' | 'reportes' | 'usuarios' | 'rankings' | 'predicciones' | 'partidos' | 'grupos' | 'grupo-detalle' | 'grupos-config';
 
 /**
  * Wrapper de fetch que agrega automáticamente el Bearer token de la sesión activa.
@@ -28,6 +28,7 @@ type AdminMatch = typeof MATCHES[number];
 
 const NAV: { id: View; label: string }[] = [
   { id: 'dashboard',    label: 'Dashboard' },
+  { id: 'reportes',     label: 'Reportes' },
   { id: 'encuesta',     label: 'Encuesta' },
   { id: 'celulares',    label: 'Celulares' },
   { id: 'grupos',        label: 'Grupos' },
@@ -3901,6 +3902,166 @@ function ViewEncuesta() {
   );
 }
 
+// ─── Reportes automáticos ─────────────────────────────────────────────────────
+/**
+ * Snapshot computed every 12 h (9 AM and 9 PM Mexico City = UTC-6) from June 5 2026.
+ * Data is calculated client-side from raw timestamps returned by /api/admin/report-data.
+ */
+function ViewReportes() {
+  type RawProfile = { created_at: string; survey_completed_at: string | null };
+  type RawPred    = { user_id: string; updated_at: string };
+  type Snapshot   = {
+    slotTime: Date;
+    totalUsers: number;
+    usersWithSurvey: number;
+    usersWithPreds: number;
+    totalPreds: number;
+  };
+
+  const [loading,   setLoading]   = useState(true);
+  const [error,     setError]     = useState<string | null>(null);
+  const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
+  const [lastFetch, setLastFetch] = useState<Date | null>(null);
+
+  const load = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await adminFetch('/api/admin/report-data');
+      if (!res.ok) throw new Error(`Error ${res.status} cargando datos`);
+      const { profiles, predictions } = (await res.json()) as { profiles: RawProfile[]; predictions: RawPred[] };
+
+      // Slot times: every 12 h starting June 5 2026 9:00 AM Mexico City (UTC-6 = 15:00 UTC)
+      const START_UTC = new Date('2026-06-05T15:00:00.000Z');
+      const HALF_DAY  = 12 * 60 * 60 * 1000;
+      const now       = new Date();
+      const slots: Date[] = [];
+      for (let t = START_UTC.getTime(); t <= now.getTime(); t += HALF_DAY) {
+        slots.push(new Date(t));
+      }
+
+      const snaps: Snapshot[] = slots.map(slotTime => {
+        const ms = slotTime.getTime();
+        const totalUsers       = profiles.filter(p => new Date(p.created_at).getTime() <= ms).length;
+        const usersWithSurvey  = profiles.filter(p => p.survey_completed_at && new Date(p.survey_completed_at).getTime() <= ms).length;
+        const predsAtSlot      = predictions.filter(p => new Date(p.updated_at).getTime() <= ms);
+        const usersWithPreds   = new Set(predsAtSlot.map(p => p.user_id)).size;
+        const totalPreds       = predsAtSlot.length;
+        return { slotTime, totalUsers, usersWithSurvey, usersWithPreds, totalPreds };
+      });
+
+      setSnapshots([...snaps].reverse()); // newest first
+      setLastFetch(new Date());
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Error desconocido');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const fmtDate = (d: Date) =>
+    d.toLocaleDateString('es-MX', { timeZone: 'America/Mexico_City', weekday: 'short', month: 'short', day: 'numeric' });
+  const fmtTime = (d: Date) =>
+    d.toLocaleTimeString('es-MX', { timeZone: 'America/Mexico_City', hour: '2-digit', minute: '2-digit' });
+  const fmtUpdated = (d: Date) =>
+    d.toLocaleTimeString('es-MX', { timeZone: 'America/Mexico_City', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+  return (
+    <div>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24, gap: 16, flexWrap: 'wrap' }}>
+        <div>
+          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: c.text }}>Reportes</h2>
+          <p style={{ margin: '4px 0 0', fontSize: 13, color: c.muted }}>
+            Cortes automáticos 2× al día — 9:00 AM y 9:00 PM hora CDMX — desde el viernes 5 de junio.
+          </p>
+          {lastFetch && !loading && (
+            <p style={{ margin: '4px 0 0', fontSize: 11, color: c.dim }}>
+              Actualizado: {fmtUpdated(lastFetch)}
+            </p>
+          )}
+        </div>
+        <button
+          onClick={load}
+          disabled={loading}
+          style={{ padding: '8px 18px', borderRadius: 8, border: `1px solid ${c.border}`, background: c.card, color: loading ? c.dim : c.blue, fontSize: 13, fontWeight: 600, cursor: loading ? 'default' : 'pointer' }}
+        >
+          {loading ? 'Cargando…' : '↻ Actualizar'}
+        </button>
+      </div>
+
+      {error && (
+        <div style={{ padding: '12px 16px', borderRadius: 10, background: `${c.rose}18`, border: `1px solid ${c.rose}44`, color: c.rose, fontSize: 13, marginBottom: 20 }}>
+          {error}
+        </div>
+      )}
+
+      {loading && !snapshots.length && (
+        <div style={{ color: c.muted, padding: '32px 0', textAlign: 'center', fontSize: 14 }}>Cargando datos…</div>
+      )}
+
+      {!loading && snapshots.length === 0 && !error && (
+        <div style={{ color: c.dim, padding: '32px 0', textAlign: 'center', fontSize: 14 }}>Sin datos aún.</div>
+      )}
+
+      {snapshots.length > 0 && (
+        <TableWrap>
+          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 580 }}>
+            <thead>
+              <tr style={{ background: c.sidebar }}>
+                {['Fecha', 'Hora', 'Usuarios', 'Encuestas', 'Con predicciones', 'Total predicciones'].map(h => (
+                  <th key={h} style={{
+                    padding: '10px 14px', textAlign: 'left',
+                    fontSize: 10, fontWeight: 700, color: c.muted,
+                    textTransform: 'uppercase', letterSpacing: 0.8,
+                    borderBottom: `1px solid ${c.border}`, whiteSpace: 'nowrap',
+                  }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {snapshots.map((s, i) => {
+                // Delta vs next row (which is the previous slot)
+                const prev = snapshots[i + 1];
+                const dUsers = prev ? s.totalUsers - prev.totalUsers : null;
+                const dSurvey = prev ? s.usersWithSurvey - prev.usersWithSurvey : null;
+                const dPreds = prev ? s.totalPreds - prev.totalPreds : null;
+                const isLatest = i === 0;
+                return (
+                  <tr key={i} style={{ borderBottom: `1px solid ${c.border}`, background: isLatest ? `${c.lime}10` : 'transparent' }}>
+                    <td style={{ padding: '11px 14px', fontSize: 13, fontWeight: isLatest ? 700 : 400, color: isLatest ? c.text : c.muted, whiteSpace: 'nowrap' }}>
+                      {isLatest && <span style={{ fontSize: 9, fontWeight: 700, color: c.lime, background: `${c.lime}22`, padding: '2px 6px', borderRadius: 4, marginRight: 6, letterSpacing: 0.5, textTransform: 'uppercase' }}>último</span>}
+                      {fmtDate(s.slotTime)}
+                    </td>
+                    <td style={{ padding: '11px 14px', fontSize: 13, color: c.dim, whiteSpace: 'nowrap' }}>{fmtTime(s.slotTime)}</td>
+                    <td style={{ padding: '11px 14px' }}>
+                      <span style={{ fontSize: 15, fontWeight: 700, color: c.text }}>{s.totalUsers}</span>
+                      {dUsers !== null && dUsers > 0 && <span style={{ fontSize: 11, color: c.green, marginLeft: 5 }}>+{dUsers}</span>}
+                    </td>
+                    <td style={{ padding: '11px 14px' }}>
+                      <span style={{ fontSize: 15, fontWeight: 700, color: c.text }}>{s.usersWithSurvey}</span>
+                      {dSurvey !== null && dSurvey > 0 && <span style={{ fontSize: 11, color: c.green, marginLeft: 5 }}>+{dSurvey}</span>}
+                    </td>
+                    <td style={{ padding: '11px 14px' }}>
+                      <span style={{ fontSize: 15, fontWeight: 700, color: c.text }}>{s.usersWithPreds}</span>
+                    </td>
+                    <td style={{ padding: '11px 14px' }}>
+                      <span style={{ fontSize: 15, fontWeight: 700, color: c.text }}>{s.totalPreds}</span>
+                      {dPreds !== null && dPreds > 0 && <span style={{ fontSize: 11, color: c.green, marginLeft: 5 }}>+{dPreds}</span>}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </TableWrap>
+      )}
+    </div>
+  );
+}
+
 // ─── Celulares autorizados ────────────────────────────────────────────────────
 type AllowedPhone = { phone: string; name: string | null; group_name: string | null; city: string | null; premium: boolean; phone_type: string | null };
 
@@ -4618,6 +4779,7 @@ export default function AdminPage() {
       {/* ── Main content ── */}
       <div style={{ flex: 1, overflow: isMobile ? 'visible' : 'auto', padding: isMobile ? 16 : 32 }}>
         {view === 'dashboard'     && <ViewDashboard liveUsers={liveUsers} setView={setView}/>}
+        {view === 'reportes'      && <ViewReportes/>}
         {view === 'encuesta'      && <ViewEncuesta/>}
         {view === 'celulares'     && <ViewCelulares/>}
         {view === 'grupos-config' && <ViewGruposConfig onBack={() => navigate('grupos')} onSelectGroup={g => { setSelectedGroup(g); navigate('grupo-detalle'); }}/>}
