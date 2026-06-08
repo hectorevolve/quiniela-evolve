@@ -3995,6 +3995,37 @@ function ViewReportes() {
   const pct        = (n: number, total: number) => total ? Math.round(n / total * 100) : 0;
   const gCol       = (g: string) => GROUP_COLORS[g] ?? c.blue;
 
+  const downloadExcel = () => {
+    const wb = XLSX.utils.book_new();
+
+    // Sheet 1 — Cortes históricos
+    const snapshotRows = [...snapshots].reverse().map(s => ({
+      'Fecha':             fmtDate(s.slotTime),
+      'Hora':              fmtTime(s.slotTime),
+      'Usuarios':          s.totalUsers,
+      'Encuestas':         s.usersWithSurvey,
+      '% Encuesta':        latest.totalUsers ? `${pct(s.usersWithSurvey, s.totalUsers)}%` : '0%',
+      'Con predicciones':  s.usersWithPreds,
+      'Total predicciones':s.totalPreds,
+    }));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(snapshotRows), 'Cortes');
+
+    // Sheet 2 — Por grupo (only meaningful in "Todos" view, but always include all groups)
+    const groupRowsData = groupRows.map(row => ({
+      'Grupo':             row.name,
+      'Usuarios':          row.users,
+      'Encuestas':         row.surveys,
+      '% Encuesta':        row.users ? `${pct(row.surveys, row.users)}%` : '0%',
+      'Con predicciones':  row.withPreds,
+      'Total predicciones':row.totalPreds,
+    }));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(groupRowsData), 'Por grupo');
+
+    const dateStr  = new Date().toISOString().slice(0, 10);
+    const groupStr = groupFilter === 'Todos' ? 'todos' : groupFilter.replace(/\s+/g, '_').toLowerCase();
+    XLSX.writeFile(wb, `reporte_quiniela_${groupStr}_${dateStr}.xlsx`);
+  };
+
   const KpiCard = ({ label, value, sub, color }: { label: string; value: number; sub?: string; color?: string }) => (
     <div style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 14, padding: '18px 22px', flex: '1 1 140px' }}>
       <div style={{ fontSize: 11, fontWeight: 600, color: c.muted, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>{label}</div>
@@ -4012,10 +4043,16 @@ function ViewReportes() {
           <p style={{ margin: '4px 0 0', fontSize: 13, color: c.muted }}>Cortes automáticos 2× al día · 9:00 AM y 9:00 PM hora CDMX · desde el viernes 5 de junio</p>
           {lastFetch && !loading && <p style={{ margin: '4px 0 0', fontSize: 11, color: c.dim }}>Actualizado: {fmtUpdated(lastFetch)}</p>}
         </div>
-        <button onClick={load} disabled={loading}
-          style={{ padding: '8px 18px', borderRadius: 8, border: `1px solid ${c.border}`, background: c.card, color: loading ? c.dim : c.blue, fontSize: 13, fontWeight: 600, cursor: loading ? 'default' : 'pointer', flexShrink: 0 }}>
-          {loading ? 'Cargando…' : '↻ Actualizar'}
-        </button>
+        <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+          <button onClick={load} disabled={loading}
+            style={{ padding: '8px 18px', borderRadius: 8, border: `1px solid ${c.border}`, background: c.card, color: loading ? c.dim : c.blue, fontSize: 13, fontWeight: 600, cursor: loading ? 'default' : 'pointer' }}>
+            {loading ? 'Cargando…' : '↻ Actualizar'}
+          </button>
+          <button onClick={downloadExcel} disabled={loading || snapshots.length === 0}
+            style={{ padding: '8px 18px', borderRadius: 8, border: `1px solid ${c.green}66`, background: `${c.green}18`, color: loading || snapshots.length === 0 ? c.dim : c.green, fontSize: 13, fontWeight: 600, cursor: loading || snapshots.length === 0 ? 'default' : 'pointer' }}>
+            ↓ Excel
+          </button>
+        </div>
       </div>
 
       {/* ── Group filter tabs ── */}
