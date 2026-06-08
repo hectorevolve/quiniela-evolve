@@ -3904,7 +3904,7 @@ function ViewEncuesta() {
 
 // ─── Reportes automáticos ─────────────────────────────────────────────────────
 function ViewReportes() {
-  type RawProfile = { id: string; created_at: string; survey_completed_at: string | null; group_name: string | null };
+  type RawProfile = { id: string; name: string | null; created_at: string; survey_completed_at: string | null; group_name: string | null };
   type RawPred    = { user_id: string; updated_at: string };
   type Snapshot   = { slotTime: Date; totalUsers: number; usersWithSurvey: number; usersWithPreds: number; totalPreds: number };
   type GroupRow   = { name: string; users: number; surveys: number; withPreds: number; totalPreds: number };
@@ -3915,6 +3915,7 @@ function ViewReportes() {
   const [preds,       setPreds]       = useState<RawPred[]>([]);
   const [lastFetch,   setLastFetch]   = useState<Date | null>(null);
   const [groupFilter, setGroupFilter] = useState<string>('Todos');
+  const [personSearch, setPersonSearch] = useState('');
 
   const load = async () => {
     setLoading(true); setError(null);
@@ -3995,31 +3996,62 @@ function ViewReportes() {
   const pct        = (n: number, total: number) => total ? Math.round(n / total * 100) : 0;
   const gCol       = (g: string) => GROUP_COLORS[g] ?? c.blue;
 
+  // Per-person prediction counts (filtered by active group)
+  const personRows = useMemo(() => {
+    const predCount = new Map<string, number>();
+    filtPreds.forEach(p => predCount.set(p.user_id, (predCount.get(p.user_id) ?? 0) + 1));
+
+    return filtProfiles
+      .map(p => ({
+        id:          p.id,
+        name:        p.name ?? '(sin nombre)',
+        group:       p.group_name ?? '—',
+        survey:      !!p.survey_completed_at,
+        predictions: predCount.get(p.id) ?? 0,
+      }))
+      .sort((a, b) => b.predictions - a.predictions);
+  }, [filtProfiles, filtPreds]);
+
+  const filteredPersonRows = useMemo(() => {
+    if (!personSearch.trim()) return personRows;
+    const q = personSearch.trim().toLowerCase();
+    return personRows.filter(r => r.name.toLowerCase().includes(q) || r.group.toLowerCase().includes(q));
+  }, [personRows, personSearch]);
+
   const downloadExcel = () => {
     const wb = XLSX.utils.book_new();
 
     // Sheet 1 — Cortes históricos
     const snapshotRows = [...snapshots].reverse().map(s => ({
-      'Fecha':             fmtDate(s.slotTime),
-      'Hora':              fmtTime(s.slotTime),
-      'Usuarios':          s.totalUsers,
-      'Encuestas':         s.usersWithSurvey,
-      '% Encuesta':        latest.totalUsers ? `${pct(s.usersWithSurvey, s.totalUsers)}%` : '0%',
-      'Con predicciones':  s.usersWithPreds,
-      'Total predicciones':s.totalPreds,
+      'Fecha':              fmtDate(s.slotTime),
+      'Hora':               fmtTime(s.slotTime),
+      'Usuarios':           s.totalUsers,
+      'Encuestas':          s.usersWithSurvey,
+      '% Encuesta':         `${pct(s.usersWithSurvey, s.totalUsers)}%`,
+      'Con predicciones':   s.usersWithPreds,
+      'Total predicciones': s.totalPreds,
     }));
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(snapshotRows), 'Cortes');
 
-    // Sheet 2 — Por grupo (only meaningful in "Todos" view, but always include all groups)
+    // Sheet 2 — Por grupo
     const groupRowsData = groupRows.map(row => ({
-      'Grupo':             row.name,
-      'Usuarios':          row.users,
-      'Encuestas':         row.surveys,
-      '% Encuesta':        row.users ? `${pct(row.surveys, row.users)}%` : '0%',
-      'Con predicciones':  row.withPreds,
-      'Total predicciones':row.totalPreds,
+      'Grupo':              row.name,
+      'Usuarios':           row.users,
+      'Encuestas':          row.surveys,
+      '% Encuesta':         `${pct(row.surveys, row.users)}%`,
+      'Con predicciones':   row.withPreds,
+      'Total predicciones': row.totalPreds,
     }));
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(groupRowsData), 'Por grupo');
+
+    // Sheet 3 — Por persona
+    const personData = personRows.map(r => ({
+      'Nombre':             r.name,
+      'Grupo':              r.group,
+      'Encuesta':           r.survey ? 'Sí' : 'No',
+      'Predicciones':       r.predictions,
+    }));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(personData), 'Por persona');
 
     const dateStr  = new Date().toISOString().slice(0, 10);
     const groupStr = groupFilter === 'Todos' ? 'todos' : groupFilter.replace(/\s+/g, '_').toLowerCase();
@@ -4122,6 +4154,57 @@ function ViewReportes() {
                   );
                 })}
               </div>
+            </div>
+          )}
+
+          {/* ── Predicciones por persona ── */}
+          {personRows.length > 0 && (
+            <div style={{ marginBottom: 24 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, gap: 12, flexWrap: 'wrap' }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: c.text }}>
+                  Predicciones por persona
+                  <span style={{ fontSize: 11, fontWeight: 400, color: c.dim, marginLeft: 8 }}>
+                    {filteredPersonRows.length} {filteredPersonRows.length !== personRows.length ? `de ${personRows.length}` : ''} personas
+                  </span>
+                </div>
+                <input
+                  value={personSearch}
+                  onChange={e => setPersonSearch(e.target.value)}
+                  placeholder="Buscar nombre o grupo…"
+                  style={{ padding: '7px 12px', borderRadius: 8, border: `1px solid ${c.border}`, background: c.card, color: c.text, fontSize: 12, outline: 'none', width: 220 }}
+                />
+              </div>
+              <TableWrap>
+                <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 480 }}>
+                  <thead>
+                    <tr style={{ background: c.sidebar }}>
+                      {['#', 'Nombre', 'Grupo', 'Encuesta', 'Predicciones'].map(h => (
+                        <th key={h} style={{ padding: '10px 14px', textAlign: h === 'Predicciones' ? 'right' : 'left', fontSize: 10, fontWeight: 700, color: c.muted, textTransform: 'uppercase', letterSpacing: 0.8, borderBottom: `1px solid ${c.border}`, whiteSpace: 'nowrap' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredPersonRows.map((r, i) => (
+                      <tr key={r.id} style={{ borderBottom: `1px solid ${c.border}` }}>
+                        <td style={{ padding: '9px 14px', fontSize: 11, color: c.dim, width: 36 }}>{i + 1}</td>
+                        <td style={{ padding: '9px 14px', fontSize: 13, fontWeight: 500, color: c.text }}>{r.name}</td>
+                        <td style={{ padding: '9px 14px', fontSize: 12, color: c.muted }}>
+                          <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 6, background: `${gCol(r.group)}22`, color: gCol(r.group), fontSize: 11, fontWeight: 600 }}>{r.group}</span>
+                        </td>
+                        <td style={{ padding: '9px 14px' }}>
+                          <span style={{ fontSize: 11, fontWeight: 600, color: r.survey ? c.green : c.dim }}>
+                            {r.survey ? '✓ Sí' : '— No'}
+                          </span>
+                        </td>
+                        <td style={{ padding: '9px 14px', textAlign: 'right' }}>
+                          <span style={{ fontSize: 14, fontWeight: 700, color: r.predictions > 0 ? c.text : c.dim }}>{r.predictions}</span>
+                          {r.predictions === 0 && <span style={{ fontSize: 10, color: c.dim, marginLeft: 4 }}>—</span>}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </TableWrap>
             </div>
           )}
 

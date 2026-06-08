@@ -18,11 +18,11 @@ export async function GET(req: NextRequest) {
   const PAGE = 1000;
 
   // ── Profiles ──────────────────────────────────────────────────────────────
-  const allProfiles: { id: string; created_at: string; survey_completed_at: string | null; group_name: string | null }[] = [];
+  const allProfiles: { id: string; name: string | null; created_at: string; survey_completed_at: string | null; group_name: string | null }[] = [];
   for (let from = 0; ; from += PAGE) {
     const { data, error } = await admin
       .from('profiles')
-      .select('id, created_at, survey_completed_at, group_name')
+      .select('id, name, created_at, survey_completed_at, group_name')
       .order('created_at')
       .range(from, from + PAGE - 1);
     if (error) {
@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
     if (!data || data.length === 0) break;
-    allProfiles.push(...(data as { id: string; created_at: string; survey_completed_at: string | null; group_name: string | null }[]));
+    allProfiles.push(...(data as { id: string; name: string | null; created_at: string; survey_completed_at: string | null; group_name: string | null }[]));
     if (data.length < PAGE) break;
   }
 
