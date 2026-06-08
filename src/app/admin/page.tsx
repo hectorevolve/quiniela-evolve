@@ -3908,7 +3908,7 @@ function ViewEncuesta() {
  * Data is calculated client-side from raw timestamps returned by /api/admin/report-data.
  */
 function ViewReportes() {
-  type RawProfile = { created_at: string; survey_completed_at: string | null };
+  type RawProfile = { id: string; created_at: string; survey_completed_at: string | null; group_name: string | null };
   type RawPred    = { user_id: string; updated_at: string };
   type Snapshot   = {
     slotTime: Date;
@@ -3918,10 +3918,12 @@ function ViewReportes() {
     totalPreds: number;
   };
 
-  const [loading,   setLoading]   = useState(true);
-  const [error,     setError]     = useState<string | null>(null);
-  const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
-  const [lastFetch, setLastFetch] = useState<Date | null>(null);
+  const [loading,    setLoading]    = useState(true);
+  const [error,      setError]      = useState<string | null>(null);
+  const [profiles,   setProfiles]   = useState<RawProfile[]>([]);
+  const [preds,      setPreds]      = useState<RawPred[]>([]);
+  const [lastFetch,  setLastFetch]  = useState<Date | null>(null);
+  const [groupFilter, setGroupFilter] = useState<string>('Todos');
 
   const load = async () => {
     setLoading(true);
@@ -3929,28 +3931,9 @@ function ViewReportes() {
     try {
       const res = await adminFetch('/api/admin/report-data');
       if (!res.ok) throw new Error(`Error ${res.status} cargando datos`);
-      const { profiles, predictions } = (await res.json()) as { profiles: RawProfile[]; predictions: RawPred[] };
-
-      // Slot times: every 12 h starting June 5 2026 9:00 AM Mexico City (UTC-6 = 15:00 UTC)
-      const START_UTC = new Date('2026-06-05T15:00:00.000Z');
-      const HALF_DAY  = 12 * 60 * 60 * 1000;
-      const now       = new Date();
-      const slots: Date[] = [];
-      for (let t = START_UTC.getTime(); t <= now.getTime(); t += HALF_DAY) {
-        slots.push(new Date(t));
-      }
-
-      const snaps: Snapshot[] = slots.map(slotTime => {
-        const ms = slotTime.getTime();
-        const totalUsers       = profiles.filter(p => new Date(p.created_at).getTime() <= ms).length;
-        const usersWithSurvey  = profiles.filter(p => p.survey_completed_at && new Date(p.survey_completed_at).getTime() <= ms).length;
-        const predsAtSlot      = predictions.filter(p => new Date(p.updated_at).getTime() <= ms);
-        const usersWithPreds   = new Set(predsAtSlot.map(p => p.user_id)).size;
-        const totalPreds       = predsAtSlot.length;
-        return { slotTime, totalUsers, usersWithSurvey, usersWithPreds, totalPreds };
-      });
-
-      setSnapshots([...snaps].reverse()); // newest first
+      const { profiles: p, predictions: pr } = (await res.json()) as { profiles: RawProfile[]; predictions: RawPred[] };
+      setProfiles(p);
+      setPreds(pr);
       setLastFetch(new Date());
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Error desconocido');
@@ -3961,6 +3944,44 @@ function ViewReportes() {
 
   useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Groups that actually have at least one registered user
+  const availableGroups = useMemo(() => {
+    const gs = new Set(profiles.map(p => p.group_name).filter(Boolean) as string[]);
+    return [...gs].sort();
+  }, [profiles]);
+
+  // Build snapshots for the current group filter
+  const snapshots = useMemo(() => {
+    const filteredProfiles = groupFilter === 'Todos'
+      ? profiles
+      : profiles.filter(p => p.group_name === groupFilter);
+
+    // user_id → group_name lookup (for filtering predictions)
+    const userGroup = new Map<string, string | null>(profiles.map(p => [p.id, p.group_name]));
+    const filteredPreds = groupFilter === 'Todos'
+      ? preds
+      : preds.filter(p => userGroup.get(p.user_id) === groupFilter);
+
+    // Slot times: every 12 h starting June 5 2026 9:00 AM Mexico City (UTC-6 = 15:00 UTC)
+    const START_UTC = new Date('2026-06-05T15:00:00.000Z');
+    const HALF_DAY  = 12 * 60 * 60 * 1000;
+    const now       = new Date();
+    const slots: Date[] = [];
+    for (let t = START_UTC.getTime(); t <= now.getTime(); t += HALF_DAY) {
+      slots.push(new Date(t));
+    }
+
+    return [...slots.map(slotTime => {
+      const ms              = slotTime.getTime();
+      const totalUsers      = filteredProfiles.filter(p => new Date(p.created_at).getTime() <= ms).length;
+      const usersWithSurvey = filteredProfiles.filter(p => p.survey_completed_at && new Date(p.survey_completed_at).getTime() <= ms).length;
+      const predsAtSlot     = filteredPreds.filter(p => new Date(p.updated_at).getTime() <= ms);
+      const usersWithPreds  = new Set(predsAtSlot.map(p => p.user_id)).size;
+      const totalPreds      = predsAtSlot.length;
+      return { slotTime, totalUsers, usersWithSurvey, usersWithPreds, totalPreds };
+    })].reverse(); // newest first
+  }, [profiles, preds, groupFilter]);
+
   const fmtDate = (d: Date) =>
     d.toLocaleDateString('es-MX', { timeZone: 'America/Mexico_City', weekday: 'short', month: 'short', day: 'numeric' });
   const fmtTime = (d: Date) =>
@@ -3968,10 +3989,12 @@ function ViewReportes() {
   const fmtUpdated = (d: Date) =>
     d.toLocaleTimeString('es-MX', { timeZone: 'America/Mexico_City', hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
+  const groupColor = (g: string) => GROUP_COLORS[g] ?? c.blue;
+
   return (
     <div>
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24, gap: 16, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20, gap: 16, flexWrap: 'wrap' }}>
         <div>
           <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: c.text }}>Reportes</h2>
           <p style={{ margin: '4px 0 0', fontSize: 13, color: c.muted }}>
@@ -3986,11 +4009,36 @@ function ViewReportes() {
         <button
           onClick={load}
           disabled={loading}
-          style={{ padding: '8px 18px', borderRadius: 8, border: `1px solid ${c.border}`, background: c.card, color: loading ? c.dim : c.blue, fontSize: 13, fontWeight: 600, cursor: loading ? 'default' : 'pointer' }}
+          style={{ padding: '8px 18px', borderRadius: 8, border: `1px solid ${c.border}`, background: c.card, color: loading ? c.dim : c.blue, fontSize: 13, fontWeight: 600, cursor: loading ? 'default' : 'pointer', flexShrink: 0 }}
         >
           {loading ? 'Cargando…' : '↻ Actualizar'}
         </button>
       </div>
+
+      {/* Group filter tabs */}
+      {!loading && availableGroups.length > 0 && (
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 20 }}>
+          <button
+            onClick={() => setGroupFilter('Todos')}
+            style={{ padding: '7px 14px', borderRadius: 8, border: `1px solid ${groupFilter === 'Todos' ? c.blue : c.border}`, background: groupFilter === 'Todos' ? `${c.blue}22` : c.card, color: groupFilter === 'Todos' ? c.blue : c.muted, fontWeight: 700, fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap' }}
+          >
+            Todos
+          </button>
+          {availableGroups.map(g => {
+            const col = groupColor(g);
+            const active = groupFilter === g;
+            return (
+              <button
+                key={g}
+                onClick={() => setGroupFilter(g)}
+                style={{ padding: '7px 14px', borderRadius: 8, border: `1px solid ${active ? col : c.border}`, background: active ? `${col}22` : c.card, color: active ? col : c.muted, fontWeight: 700, fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap' }}
+              >
+                {g}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {error && (
         <div style={{ padding: '12px 16px', borderRadius: 10, background: `${c.rose}18`, border: `1px solid ${c.rose}44`, color: c.rose, fontSize: 13, marginBottom: 20 }}>
@@ -3998,7 +4046,7 @@ function ViewReportes() {
         </div>
       )}
 
-      {loading && !snapshots.length && (
+      {loading && (
         <div style={{ color: c.muted, padding: '32px 0', textAlign: 'center', fontSize: 14 }}>Cargando datos…</div>
       )}
 
@@ -4006,7 +4054,7 @@ function ViewReportes() {
         <div style={{ color: c.dim, padding: '32px 0', textAlign: 'center', fontSize: 14 }}>Sin datos aún.</div>
       )}
 
-      {snapshots.length > 0 && (
+      {!loading && snapshots.length > 0 && (
         <TableWrap>
           <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 580 }}>
             <thead>
@@ -4023,11 +4071,10 @@ function ViewReportes() {
             </thead>
             <tbody>
               {snapshots.map((s, i) => {
-                // Delta vs next row (which is the previous slot)
-                const prev = snapshots[i + 1];
-                const dUsers = prev ? s.totalUsers - prev.totalUsers : null;
+                const prev    = snapshots[i + 1];
+                const dUsers  = prev ? s.totalUsers      - prev.totalUsers      : null;
                 const dSurvey = prev ? s.usersWithSurvey - prev.usersWithSurvey : null;
-                const dPreds = prev ? s.totalPreds - prev.totalPreds : null;
+                const dPreds  = prev ? s.totalPreds      - prev.totalPreds      : null;
                 const isLatest = i === 0;
                 return (
                   <tr key={i} style={{ borderBottom: `1px solid ${c.border}`, background: isLatest ? `${c.lime}10` : 'transparent' }}>
