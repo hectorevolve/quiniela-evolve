@@ -3903,136 +3903,130 @@ function ViewEncuesta() {
 }
 
 // ─── Reportes automáticos ─────────────────────────────────────────────────────
-/**
- * Snapshot computed every 12 h (9 AM and 9 PM Mexico City = UTC-6) from June 5 2026.
- * Data is calculated client-side from raw timestamps returned by /api/admin/report-data.
- */
 function ViewReportes() {
   type RawProfile = { id: string; created_at: string; survey_completed_at: string | null; group_name: string | null };
   type RawPred    = { user_id: string; updated_at: string };
-  type Snapshot   = {
-    slotTime: Date;
-    totalUsers: number;
-    usersWithSurvey: number;
-    usersWithPreds: number;
-    totalPreds: number;
-  };
+  type Snapshot   = { slotTime: Date; totalUsers: number; usersWithSurvey: number; usersWithPreds: number; totalPreds: number };
+  type GroupRow   = { name: string; users: number; surveys: number; withPreds: number; totalPreds: number };
 
-  const [loading,    setLoading]    = useState(true);
-  const [error,      setError]      = useState<string | null>(null);
-  const [profiles,   setProfiles]   = useState<RawProfile[]>([]);
-  const [preds,      setPreds]      = useState<RawPred[]>([]);
-  const [lastFetch,  setLastFetch]  = useState<Date | null>(null);
+  const [loading,     setLoading]     = useState(true);
+  const [error,       setError]       = useState<string | null>(null);
+  const [profiles,    setProfiles]    = useState<RawProfile[]>([]);
+  const [preds,       setPreds]       = useState<RawPred[]>([]);
+  const [lastFetch,   setLastFetch]   = useState<Date | null>(null);
   const [groupFilter, setGroupFilter] = useState<string>('Todos');
 
   const load = async () => {
-    setLoading(true);
-    setError(null);
+    setLoading(true); setError(null);
     try {
       const res = await adminFetch('/api/admin/report-data');
-      if (!res.ok) throw new Error(`Error ${res.status} cargando datos`);
+      if (!res.ok) throw new Error(`Error ${res.status}`);
       const { profiles: p, predictions: pr } = (await res.json()) as { profiles: RawProfile[]; predictions: RawPred[] };
-      setProfiles(p);
-      setPreds(pr);
-      setLastFetch(new Date());
+      setProfiles(p); setPreds(pr); setLastFetch(new Date());
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Error desconocido');
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   };
-
   useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Groups that actually have at least one registered user
   const availableGroups = useMemo(() => {
     const gs = new Set(profiles.map(p => p.group_name).filter(Boolean) as string[]);
     return [...gs].sort();
   }, [profiles]);
 
-  // Build snapshots for the current group filter
-  const snapshots = useMemo(() => {
-    const filteredProfiles = groupFilter === 'Todos'
-      ? profiles
-      : profiles.filter(p => p.group_name === groupFilter);
-
-    // user_id → group_name lookup (for filtering predictions)
-    const userGroup = new Map<string, string | null>(profiles.map(p => [p.id, p.group_name]));
-    const filteredPreds = groupFilter === 'Todos'
-      ? preds
-      : preds.filter(p => userGroup.get(p.user_id) === groupFilter);
-
-    // Slot times: every 12 h starting June 5 2026 9:00 AM Mexico City (UTC-6 = 15:00 UTC)
-    const START_UTC = new Date('2026-06-05T15:00:00.000Z');
-    const HALF_DAY  = 12 * 60 * 60 * 1000;
-    const now       = new Date();
-    const slots: Date[] = [];
-    for (let t = START_UTC.getTime(); t <= now.getTime(); t += HALF_DAY) {
-      slots.push(new Date(t));
+  // Slot list (every 12 h from Jun 5 9am CDMX = 15:00 UTC)
+  const slots = useMemo(() => {
+    const out: Date[] = [];
+    const now = Date.now();
+    for (let t = new Date('2026-06-05T15:00:00.000Z').getTime(); t <= now; t += 12 * 3600 * 1000) {
+      out.push(new Date(t));
     }
+    return out;
+  }, []);
 
-    return [...slots.map(slotTime => {
-      const ms              = slotTime.getTime();
-      const totalUsers      = filteredProfiles.filter(p => new Date(p.created_at).getTime() <= ms).length;
-      const usersWithSurvey = filteredProfiles.filter(p => p.survey_completed_at && new Date(p.survey_completed_at).getTime() <= ms).length;
-      const predsAtSlot     = filteredPreds.filter(p => new Date(p.updated_at).getTime() <= ms);
-      const usersWithPreds  = new Set(predsAtSlot.map(p => p.user_id)).size;
-      const totalPreds      = predsAtSlot.length;
-      return { slotTime, totalUsers, usersWithSurvey, usersWithPreds, totalPreds };
-    })].reverse(); // newest first
-  }, [profiles, preds, groupFilter]);
+  // user_id → group_name map
+  const userGroup = useMemo(() => new Map(profiles.map(p => [p.id, p.group_name])), [profiles]);
 
-  const fmtDate = (d: Date) =>
-    d.toLocaleDateString('es-MX', { timeZone: 'America/Mexico_City', weekday: 'short', month: 'short', day: 'numeric' });
-  const fmtTime = (d: Date) =>
-    d.toLocaleTimeString('es-MX', { timeZone: 'America/Mexico_City', hour: '2-digit', minute: '2-digit' });
-  const fmtUpdated = (d: Date) =>
-    d.toLocaleTimeString('es-MX', { timeZone: 'America/Mexico_City', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  // Filtered data for active tab
+  const filtProfiles = useMemo(() =>
+    groupFilter === 'Todos' ? profiles : profiles.filter(p => p.group_name === groupFilter),
+    [profiles, groupFilter]);
+  const filtPreds = useMemo(() =>
+    groupFilter === 'Todos' ? preds : preds.filter(p => userGroup.get(p.user_id) === groupFilter),
+    [preds, userGroup, groupFilter]);
 
-  const groupColor = (g: string) => GROUP_COLORS[g] ?? c.blue;
+  // Snapshots for timeline table (newest first)
+  const snapshots = useMemo((): Snapshot[] =>
+    [...slots].reverse().map(slotTime => {
+      const ms = slotTime.getTime();
+      const fp = filtProfiles.filter(p => new Date(p.created_at).getTime() <= ms);
+      const pp = filtPreds.filter(p => new Date(p.updated_at).getTime() <= ms);
+      return {
+        slotTime,
+        totalUsers:      fp.length,
+        usersWithSurvey: fp.filter(p => p.survey_completed_at && new Date(p.survey_completed_at).getTime() <= ms).length,
+        usersWithPreds:  new Set(pp.map(p => p.user_id)).size,
+        totalPreds:      pp.length,
+      };
+    }), [slots, filtProfiles, filtPreds]);
+
+  // Latest snapshot (for KPI cards)
+  const latest = snapshots[0] ?? { totalUsers: 0, usersWithSurvey: 0, usersWithPreds: 0, totalPreds: 0 };
+
+  // Per-group breakdown (always based on ALL data, not filtered)
+  const groupRows = useMemo((): GroupRow[] => {
+    const now = Date.now();
+    return availableGroups.map(g => {
+      const gp = profiles.filter(p => p.group_name === g);
+      const gpr = preds.filter(p => userGroup.get(p.user_id) === g && new Date(p.updated_at).getTime() <= now);
+      return {
+        name:       g,
+        users:      gp.length,
+        surveys:    gp.filter(p => !!p.survey_completed_at).length,
+        withPreds:  new Set(gpr.map(p => p.user_id)).size,
+        totalPreds: gpr.length,
+      };
+    }).sort((a, b) => b.users - a.users);
+  }, [profiles, preds, userGroup, availableGroups]);
+
+  const fmtDate    = (d: Date) => d.toLocaleDateString('es-MX',  { timeZone: 'America/Mexico_City', weekday: 'short', month: 'short', day: 'numeric' });
+  const fmtTime    = (d: Date) => d.toLocaleTimeString('es-MX',  { timeZone: 'America/Mexico_City', hour: '2-digit', minute: '2-digit' });
+  const fmtUpdated = (d: Date) => d.toLocaleTimeString('es-MX',  { timeZone: 'America/Mexico_City', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const pct        = (n: number, total: number) => total ? Math.round(n / total * 100) : 0;
+  const gCol       = (g: string) => GROUP_COLORS[g] ?? c.blue;
+
+  const KpiCard = ({ label, value, sub, color }: { label: string; value: number; sub?: string; color?: string }) => (
+    <div style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 14, padding: '18px 22px', flex: '1 1 140px' }}>
+      <div style={{ fontSize: 11, fontWeight: 600, color: c.muted, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>{label}</div>
+      <div style={{ fontSize: 32, fontWeight: 800, color: color ?? c.text, lineHeight: 1 }}>{value.toLocaleString('es-MX')}</div>
+      {sub && <div style={{ fontSize: 11, color: c.dim, marginTop: 6 }}>{sub}</div>}
+    </div>
+  );
 
   return (
     <div>
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20, gap: 16, flexWrap: 'wrap' }}>
+      {/* ── Header ── */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24, gap: 16, flexWrap: 'wrap' }}>
         <div>
           <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: c.text }}>Reportes</h2>
-          <p style={{ margin: '4px 0 0', fontSize: 13, color: c.muted }}>
-            Cortes automáticos 2× al día — 9:00 AM y 9:00 PM hora CDMX — desde el viernes 5 de junio.
-          </p>
-          {lastFetch && !loading && (
-            <p style={{ margin: '4px 0 0', fontSize: 11, color: c.dim }}>
-              Actualizado: {fmtUpdated(lastFetch)}
-            </p>
-          )}
+          <p style={{ margin: '4px 0 0', fontSize: 13, color: c.muted }}>Cortes automáticos 2× al día · 9:00 AM y 9:00 PM hora CDMX · desde el viernes 5 de junio</p>
+          {lastFetch && !loading && <p style={{ margin: '4px 0 0', fontSize: 11, color: c.dim }}>Actualizado: {fmtUpdated(lastFetch)}</p>}
         </div>
-        <button
-          onClick={load}
-          disabled={loading}
-          style={{ padding: '8px 18px', borderRadius: 8, border: `1px solid ${c.border}`, background: c.card, color: loading ? c.dim : c.blue, fontSize: 13, fontWeight: 600, cursor: loading ? 'default' : 'pointer', flexShrink: 0 }}
-        >
+        <button onClick={load} disabled={loading}
+          style={{ padding: '8px 18px', borderRadius: 8, border: `1px solid ${c.border}`, background: c.card, color: loading ? c.dim : c.blue, fontSize: 13, fontWeight: 600, cursor: loading ? 'default' : 'pointer', flexShrink: 0 }}>
           {loading ? 'Cargando…' : '↻ Actualizar'}
         </button>
       </div>
 
-      {/* Group filter tabs */}
+      {/* ── Group filter tabs ── */}
       {!loading && availableGroups.length > 0 && (
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 20 }}>
-          <button
-            onClick={() => setGroupFilter('Todos')}
-            style={{ padding: '7px 14px', borderRadius: 8, border: `1px solid ${groupFilter === 'Todos' ? c.blue : c.border}`, background: groupFilter === 'Todos' ? `${c.blue}22` : c.card, color: groupFilter === 'Todos' ? c.blue : c.muted, fontWeight: 700, fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap' }}
-          >
-            Todos
-          </button>
-          {availableGroups.map(g => {
-            const col = groupColor(g);
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 24 }}>
+          {(['Todos', ...availableGroups] as string[]).map(g => {
             const active = groupFilter === g;
+            const col = g === 'Todos' ? c.blue : gCol(g);
             return (
-              <button
-                key={g}
-                onClick={() => setGroupFilter(g)}
-                style={{ padding: '7px 14px', borderRadius: 8, border: `1px solid ${active ? col : c.border}`, background: active ? `${col}22` : c.card, color: active ? col : c.muted, fontWeight: 700, fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap' }}
-              >
+              <button key={g} onClick={() => setGroupFilter(g)}
+                style={{ padding: '7px 14px', borderRadius: 8, border: `1px solid ${active ? col : c.border}`, background: active ? `${col}22` : c.card, color: active ? col : c.muted, fontWeight: 700, fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap' }}>
                 {g}
               </button>
             );
@@ -4040,70 +4034,111 @@ function ViewReportes() {
         </div>
       )}
 
-      {error && (
-        <div style={{ padding: '12px 16px', borderRadius: 10, background: `${c.rose}18`, border: `1px solid ${c.rose}44`, color: c.rose, fontSize: 13, marginBottom: 20 }}>
-          {error}
-        </div>
-      )}
+      {error && <div style={{ padding: '12px 16px', borderRadius: 10, background: `${c.rose}18`, border: `1px solid ${c.rose}44`, color: c.rose, fontSize: 13, marginBottom: 20 }}>{error}</div>}
 
-      {loading && (
-        <div style={{ color: c.muted, padding: '32px 0', textAlign: 'center', fontSize: 14 }}>Cargando datos…</div>
-      )}
+      {loading && <div style={{ color: c.muted, padding: '48px 0', textAlign: 'center', fontSize: 14 }}>Cargando datos…</div>}
 
-      {!loading && snapshots.length === 0 && !error && (
-        <div style={{ color: c.dim, padding: '32px 0', textAlign: 'center', fontSize: 14 }}>Sin datos aún.</div>
-      )}
+      {!loading && !error && (
+        <>
+          {/* ── KPI Cards ── */}
+          <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginBottom: 24 }}>
+            <KpiCard label="Usuarios" value={latest.totalUsers} sub={groupFilter !== 'Todos' ? groupFilter : 'Total registrados'} color={c.blue} />
+            <KpiCard label="Encuestas" value={latest.usersWithSurvey} sub={`${pct(latest.usersWithSurvey, latest.totalUsers)}% de participación`} color={c.amber} />
+            <KpiCard label="Con predicciones" value={latest.usersWithPreds} sub={`${pct(latest.usersWithPreds, latest.totalUsers)}% de usuarios`} color={c.green} />
+            <KpiCard label="Total predicciones" value={latest.totalPreds} color={c.lime} />
+          </div>
 
-      {!loading && snapshots.length > 0 && (
-        <TableWrap>
-          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 580 }}>
-            <thead>
-              <tr style={{ background: c.sidebar }}>
-                {['Fecha', 'Hora', 'Usuarios', 'Encuestas', 'Con predicciones', 'Total predicciones'].map(h => (
-                  <th key={h} style={{
-                    padding: '10px 14px', textAlign: 'left',
-                    fontSize: 10, fontWeight: 700, color: c.muted,
-                    textTransform: 'uppercase', letterSpacing: 0.8,
-                    borderBottom: `1px solid ${c.border}`, whiteSpace: 'nowrap',
-                  }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {snapshots.map((s, i) => {
-                const prev    = snapshots[i + 1];
-                const dUsers  = prev ? s.totalUsers      - prev.totalUsers      : null;
-                const dSurvey = prev ? s.usersWithSurvey - prev.usersWithSurvey : null;
-                const dPreds  = prev ? s.totalPreds      - prev.totalPreds      : null;
-                const isLatest = i === 0;
-                return (
-                  <tr key={i} style={{ borderBottom: `1px solid ${c.border}`, background: isLatest ? `${c.lime}10` : 'transparent' }}>
-                    <td style={{ padding: '11px 14px', fontSize: 13, fontWeight: isLatest ? 700 : 400, color: isLatest ? c.text : c.muted, whiteSpace: 'nowrap' }}>
-                      {isLatest && <span style={{ fontSize: 9, fontWeight: 700, color: c.lime, background: `${c.lime}22`, padding: '2px 6px', borderRadius: 4, marginRight: 6, letterSpacing: 0.5, textTransform: 'uppercase' }}>último</span>}
-                      {fmtDate(s.slotTime)}
-                    </td>
-                    <td style={{ padding: '11px 14px', fontSize: 13, color: c.dim, whiteSpace: 'nowrap' }}>{fmtTime(s.slotTime)}</td>
-                    <td style={{ padding: '11px 14px' }}>
-                      <span style={{ fontSize: 15, fontWeight: 700, color: c.text }}>{s.totalUsers}</span>
-                      {dUsers !== null && dUsers > 0 && <span style={{ fontSize: 11, color: c.green, marginLeft: 5 }}>+{dUsers}</span>}
-                    </td>
-                    <td style={{ padding: '11px 14px' }}>
-                      <span style={{ fontSize: 15, fontWeight: 700, color: c.text }}>{s.usersWithSurvey}</span>
-                      {dSurvey !== null && dSurvey > 0 && <span style={{ fontSize: 11, color: c.green, marginLeft: 5 }}>+{dSurvey}</span>}
-                    </td>
-                    <td style={{ padding: '11px 14px' }}>
-                      <span style={{ fontSize: 15, fontWeight: 700, color: c.text }}>{s.usersWithPreds}</span>
-                    </td>
-                    <td style={{ padding: '11px 14px' }}>
-                      <span style={{ fontSize: 15, fontWeight: 700, color: c.text }}>{s.totalPreds}</span>
-                      {dPreds !== null && dPreds > 0 && <span style={{ fontSize: 11, color: c.green, marginLeft: 5 }}>+{dPreds}</span>}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </TableWrap>
+          {/* ── Cobertura de encuesta ── */}
+          {latest.totalUsers > 0 && (
+            <div style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 14, padding: '18px 22px', marginBottom: 24 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: c.text }}>Cobertura de encuesta</span>
+                <span style={{ fontSize: 14, fontWeight: 700, color: c.amber }}>{pct(latest.usersWithSurvey, latest.totalUsers)}%</span>
+              </div>
+              <div style={{ height: 8, borderRadius: 4, background: `${c.border}`, overflow: 'hidden' }}>
+                <div style={{ height: '100%', borderRadius: 4, background: c.amber, width: `${pct(latest.usersWithSurvey, latest.totalUsers)}%`, transition: 'width 0.5s ease' }} />
+              </div>
+              <div style={{ marginTop: 8, fontSize: 11, color: c.dim }}>
+                {latest.usersWithSurvey.toLocaleString('es-MX')} encuestas completadas de {latest.totalUsers.toLocaleString('es-MX')} usuarios registrados
+              </div>
+            </div>
+          )}
+
+          {/* ── Por grupo (only in "Todos" view) ── */}
+          {groupFilter === 'Todos' && groupRows.length > 0 && (
+            <div style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 14, padding: '18px 22px', marginBottom: 24 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: c.text, marginBottom: 14 }}>Usuarios por grupo</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+                {groupRows.map((row, i) => {
+                  const col  = gCol(row.name);
+                  const barW = latest.totalUsers ? Math.max(2, Math.round(row.users / latest.totalUsers * 100)) : 0;
+                  return (
+                    <div key={row.name} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '9px 0', borderBottom: i < groupRows.length - 1 ? `1px solid ${c.border}` : 'none' }}>
+                      <div style={{ width: 8, height: 8, borderRadius: '50%', background: col, flexShrink: 0 }} />
+                      <div style={{ flex: '0 0 180px', fontSize: 12, fontWeight: 600, color: c.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.name}</div>
+                      <div style={{ flex: 1, height: 6, borderRadius: 3, background: `${c.border}`, overflow: 'hidden' }}>
+                        <div style={{ height: '100%', borderRadius: 3, background: col, width: `${barW}%` }} />
+                      </div>
+                      <div style={{ fontSize: 13, fontWeight: 800, color: c.text, textAlign: 'right', flex: '0 0 44px' }}>{row.users}</div>
+                      <div style={{ fontSize: 11, color: c.dim, flex: '0 0 80px', textAlign: 'right' }}>{row.surveys} enc. · {row.totalPreds} preds</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* ── Timeline table ── */}
+          {snapshots.length > 0 && (
+            <>
+              <div style={{ fontSize: 13, fontWeight: 700, color: c.text, marginBottom: 12 }}>Cortes históricos</div>
+              <TableWrap>
+                <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 560 }}>
+                  <thead>
+                    <tr style={{ background: c.sidebar }}>
+                      {['Fecha', 'Hora', 'Usuarios', 'Encuestas', 'Con preds.', 'Total preds.'].map(h => (
+                        <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: c.muted, textTransform: 'uppercase', letterSpacing: 0.8, borderBottom: `1px solid ${c.border}`, whiteSpace: 'nowrap' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {snapshots.map((s, i) => {
+                      const prev    = snapshots[i + 1];
+                      const dU  = prev ? s.totalUsers      - prev.totalUsers      : null;
+                      const dS  = prev ? s.usersWithSurvey - prev.usersWithSurvey : null;
+                      const dP  = prev ? s.totalPreds      - prev.totalPreds      : null;
+                      const isLatest = i === 0;
+                      return (
+                        <tr key={i} style={{ borderBottom: `1px solid ${c.border}`, background: isLatest ? `${c.lime}0D` : 'transparent' }}>
+                          <td style={{ padding: '10px 14px', fontSize: 13, fontWeight: isLatest ? 700 : 400, color: isLatest ? c.text : c.muted, whiteSpace: 'nowrap' }}>
+                            {isLatest && <span style={{ fontSize: 9, fontWeight: 700, color: c.lime, background: `${c.lime}22`, padding: '2px 6px', borderRadius: 4, marginRight: 6, letterSpacing: 0.5, textTransform: 'uppercase' }}>último</span>}
+                            {fmtDate(s.slotTime)}
+                          </td>
+                          <td style={{ padding: '10px 14px', fontSize: 12, color: c.dim, whiteSpace: 'nowrap' }}>{fmtTime(s.slotTime)}</td>
+                          <td style={{ padding: '10px 14px' }}>
+                            <span style={{ fontSize: 14, fontWeight: 700, color: c.text }}>{s.totalUsers}</span>
+                            {dU !== null && dU > 0 && <span style={{ fontSize: 10, color: c.green, marginLeft: 5 }}>+{dU}</span>}
+                          </td>
+                          <td style={{ padding: '10px 14px' }}>
+                            <span style={{ fontSize: 14, fontWeight: 700, color: c.text }}>{s.usersWithSurvey}</span>
+                            {dS !== null && dS > 0 && <span style={{ fontSize: 10, color: c.green, marginLeft: 5 }}>+{dS}</span>}
+                          </td>
+                          <td style={{ padding: '10px 14px' }}>
+                            <span style={{ fontSize: 14, fontWeight: 700, color: c.text }}>{s.usersWithPreds}</span>
+                          </td>
+                          <td style={{ padding: '10px 14px' }}>
+                            <span style={{ fontSize: 14, fontWeight: 700, color: c.text }}>{s.totalPreds}</span>
+                            {dP !== null && dP > 0 && <span style={{ fontSize: 10, color: c.green, marginLeft: 5 }}>+{dP}</span>}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </TableWrap>
+            </>
+          )}
+        </>
       )}
     </div>
   );
