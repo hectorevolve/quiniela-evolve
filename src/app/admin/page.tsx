@@ -3983,7 +3983,7 @@ function ViewReportes() {
       return {
         name:       g,
         users:      gp.length,
-        surveys:    gp.filter(p => p.survey_completed === true || !!p.survey_completed_at).length,
+        surveys:    gp.filter(p => !!p.survey_completed_at).length,
         withPreds:  new Set(gpr.map(p => p.user_id)).size,
         totalPreds: gpr.length,
       };
@@ -4006,7 +4006,7 @@ function ViewReportes() {
         id:          p.id,
         name:        p.name ?? '(sin nombre)',
         group:       p.group_name ?? '—',
-        survey:      p.survey_completed === true || !!p.survey_completed_at,
+        survey:      !!p.survey_completed_at,
         predictions: predCount.get(p.id) ?? 0,
       }))
       .sort((a, b) => b.predictions - a.predictions);

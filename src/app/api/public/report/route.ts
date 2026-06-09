@@ -52,8 +52,9 @@ export async function GET() {
     if (!groups.has(g)) groups.set(g, { registered: 0, withPreds: 0 });
     const row = groups.get(g)!;
 
-    const surveyDone = p.survey_completed === true || !!p.survey_completed_at;
-    if (surveyDone) row.registered++;
+    // Only count users who actually submitted the survey form
+    // (survey_completed_at is set exclusively by the survey submit endpoint)
+    if (p.survey_completed_at) row.registered++;
     if (predUserIds.has(p.id)) row.withPreds++;
   }
 
@@ -65,9 +66,9 @@ export async function GET() {
   const groupRows = [...groups.entries()]
     .sort((a, b) => b[1].registered - a[1].registered)
     .map(([name, { registered, withPreds }]) => ({
-      'Grupo':                        name,
-      'Registrados (encuesta)':       registered,
-      'Con al menos 1 predicción':    withPreds,
+      'Grupo':                             name,
+      'Encuesta contestada':               registered,
+      'Con al menos 1 predicción':         withPreds,
     }));
 
   const ws1 = XLSX.utils.json_to_sheet(groupRows);
@@ -85,9 +86,9 @@ export async function GET() {
     ['Reporte Quiniela Torneo 2026'],
     ['Generado:', dateStr],
     [],
-    ['Total registrados (encuesta completada):', totalRegistered],
-    ['Total con al menos 1 predicción:',        totalWithPreds],
-    ['Total grupos activos:',                   groups.size],
+    ['Total encuestas contestadas:',           totalRegistered],
+    ['Total con al menos 1 predicción:',       totalWithPreds],
+    ['Total grupos activos:',                  groups.size],
   ]);
   ws2['!cols'] = [{ wch: 42 }, { wch: 20 }];
   XLSX.utils.book_append_sheet(wb, ws2, 'Resumen');
