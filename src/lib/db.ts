@@ -251,6 +251,22 @@ export function resolvePrizeTiers(settings: GroupSettings | null): PrizeTier[] {
   return legacy;
 }
 
+/**
+ * Returns the survey welcome prize string for a group.
+ * Uses the 1st-place reward from prize_tiers (or prize_1st legacy field).
+ * Strips leading "$" and spaces. Fallback: "15,000".
+ */
+export async function getGroupSurveyPrize(groupName: string): Promise<string> {
+  const FALLBACK = '15,000';
+  if (!groupName) return FALLBACK;
+  const settings = await getGroupSettings(groupName);
+  if (!settings) return FALLBACK;
+  const tiers = resolvePrizeTiers(settings);
+  const raw = tiers[0]?.reward ?? settings.prize_1st ?? '';
+  const clean = raw.replace(/^\$/, '').trim();
+  return clean || FALLBACK;
+}
+
 /** Etiqueta amigable para un tramo: "1er Lugar" o "Del 4° al 10° lugar". */
 export function prizeTierLabel(t: PrizeTier): string {
   const ord = (n: number) => (n === 1 ? '1er' : n === 2 ? '2do' : n === 3 ? '3er' : `${n}°`);
