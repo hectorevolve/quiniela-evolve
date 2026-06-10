@@ -12,7 +12,6 @@ const GROUP_COLORS: Record<string, string> = {
   'BEPENSA Spirits':    '#1AAFFF',
   'ADM':                '#F59E0B',
   'Spin Master':        '#1AAFFF',
-  'SPIN MASTER':        '#1AAFFF',
   'Disney':             '#0063E5',
   'Ruz':                '#EC4899',
   'RUZ FIJOS':          '#EC4899',
@@ -54,9 +53,16 @@ async function getData(): Promise<GroupRow[]> {
     if (data.length < PAGE) break;
   }
 
+  // Normalize group names so variants merge into one
+  const normalizeGroup = (raw: string | null): string => {
+    const g = (raw ?? '(sin grupo)').trim();
+    if (g.toUpperCase() === 'SPIN MASTER') return 'Spin Master';
+    return g;
+  };
+
   const map = new Map<string, { registered: number; survey: number; predictions: number }>();
   for (const p of allProfiles) {
-    const g = (p.group_name ?? '(sin grupo)').trim();
+    const g = normalizeGroup(p.group_name);
     if (!map.has(g)) map.set(g, { registered: 0, survey: 0, predictions: 0 });
     const row = map.get(g)!;
     row.registered++;
