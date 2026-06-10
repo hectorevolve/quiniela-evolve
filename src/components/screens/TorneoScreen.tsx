@@ -340,7 +340,7 @@ export function TorneoScreen({ goto, tweaks, fireToast, powersEnabled = true, us
       {/* Content */}
       <div style={{ flex: 1, overflowY: 'auto' }}>
         {tab === 'predicciones' && <TabPredicciones goto={goto} tweaks={tweaks} fireToast={fireToast} powersEnabled={powersEnabled} usedPowers={usedPowers} setUsedPowers={setUsedPowers} lateActiveMatchId={lateActiveMatchId} setLateActiveMatchId={setLateActiveMatchId} spyMatchId={spyMatchId} setSpyMatchId={setSpyMatchId} matchDates={matchDates}/>}
-        {tab === 'ranking'      && <TabRanking rankings={liveRankings} loading={rankingsLoading} userId={currentUser?.id ?? ''} userName={displayName} userGroup={displayGroup} groupAccent={getGroupColor(displayGroup)}/>}
+        {tab === 'ranking'      && <TabRanking rankings={liveRankings} loading={rankingsLoading} userId={currentUser?.id ?? ''} userName={displayName} userGroup={displayGroup} groupAccent={getGroupColor(displayGroup)} isNacional={isNacionalGroup(displayGroup)}/>}
         {tab === 'bonus'        && (
           <TabBonus
             fireToast={fireToast}
@@ -351,7 +351,7 @@ export function TorneoScreen({ goto, tweaks, fireToast, powersEnabled = true, us
             userGroup={displayGroup}
           />
         )}
-        {tab === 'detalles'     && <TabDetalles goto={goto} openSub={openSub} userGroup={displayGroup} rankings={liveRankings} groupAccent={getGroupColor(displayGroup)} groupLogoUrl={getGroupLogo(displayGroup)} powersEnabled={powersEnabled}/>}
+        {tab === 'detalles'     && <TabDetalles goto={goto} openSub={openSub} userGroup={displayGroup} rankings={liveRankings} groupAccent={getGroupColor(displayGroup)} groupLogoUrl={getGroupLogo(displayGroup)} powersEnabled={powersEnabled} isNacional={isNacionalGroup(displayGroup)}/>}
       </div>
 
     </div>
@@ -1115,6 +1115,12 @@ function PowerModal({ kind, matchName, onConfirm, onCancel }: {
 }
 
 
+// ──────── Quiniela pools ────────
+// Groups with their own separate ranking (Por Marca).
+// Everything else belongs to the shared "Nacional" pool.
+const MARCA_GROUPS = new Set(['ADM', 'Disney', 'AJEMEX']);
+function isNacionalGroup(g: string) { return !MARCA_GROUPS.has(g); }
+
 // ──────── Tab: Ranking ────────
 // Group accent colors
 const GROUP_COLORS: Record<string, string> = {
@@ -1192,9 +1198,9 @@ function GroupLogo({ group, size, colorOverride, logoUrlOverride }: { group: str
   );
 }
 
-function TabRanking({ rankings, loading, userId, userName, userGroup, groupAccent = T.lime }: {
+function TabRanking({ rankings, loading, userId, userName, userGroup, groupAccent = T.lime, isNacional = true }: {
   rankings: RankingEntry[]; loading: boolean;
-  userId: string; userName: string; userGroup: string; groupAccent?: string;
+  userId: string; userName: string; userGroup: string; groupAccent?: string; isNacional?: boolean;
 }) {
   const [subTab, setSubTab] = useState<'grupo' | 'nacional'>('grupo');
   const [podiumVisible, setPodiumVisible] = useState(false);
@@ -1208,8 +1214,14 @@ function TabRanking({ rankings, loading, userId, userName, userGroup, groupAccen
     return filtered.map((p, i) => ({ ...p, pos: i + 1 }));
   }, [rankings, userGroup]);
 
-  // Nacional: everyone
-  const nacionalList = useMemo(() => rankings, [rankings]);
+  // Nacional: for Marca groups → only their own group (same as grupoList)
+  //           for Nacional groups → all non-Marca groups combined
+  const nacionalList = useMemo(() => {
+    const pool = isNacional
+      ? rankings.filter(p => isNacionalGroup(p.group_name ?? ''))
+      : rankings.filter(p => p.group_name === userGroup);
+    return pool.map((p, i) => ({ ...p, pos: i + 1 }));
+  }, [rankings, userGroup, isNacional]);
 
   const activeList = subTab === 'grupo' ? grupoList : nacionalList;
   const total = activeList.length;
@@ -1268,14 +1280,16 @@ function TabRanking({ rankings, loading, userId, userName, userGroup, groupAccen
         <span style={{ fontSize: 11.5, fontWeight: 600, color: subTab === 'grupo' ? groupAccent : T.blueDeep }}>
           {subTab === 'grupo'
             ? `Premios de ${userGroup} — compites con tu grupo`
-            : 'Premios nacionales — compites con todos'}
+            : isNacional
+              ? 'Quiniela Nacional Evolve — compites con todas las marcas'
+              : `Ranking de ${userGroup}`}
         </span>
       </div>
 
       <RankingPodium top3={top3} visible={podiumVisible} userRank={userRank} userName={userName} userPoints={userPoints} userId={userId} showGroup={subTab === 'nacional'} groupAccent={groupAccent}/>
 
       <div style={{ fontSize: 11, color: T.muted, marginBottom: 12, paddingLeft: 2 }}>
-        {total.toLocaleString('es-MX')} {subTab === 'grupo' ? `en ${userGroup}` : 'jugadores en total'}
+        {total.toLocaleString('es-MX')} {subTab === 'grupo' ? `en ${userGroup}` : isNacional ? 'en Quiniela Nacional' : `en ${userGroup}`}
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -1573,7 +1587,7 @@ function GroupAvatar({ group, size = 80, colorOverride, logoUrlOverride }: { gro
 }
 
 // ──────── Tab: Detalles ────────
-function TabDetalles({ goto, openSub, userGroup, rankings, groupAccent = T.lime, groupLogoUrl, powersEnabled = true }: { goto: (s: string) => void; openSub: (name: SubScreenName) => void; userGroup: string; rankings: RankingEntry[]; groupAccent?: string; groupLogoUrl?: string | null; powersEnabled?: boolean }) {
+function TabDetalles({ goto, openSub, userGroup, rankings, groupAccent = T.lime, groupLogoUrl, powersEnabled = true, isNacional = false }: { goto: (s: string) => void; openSub: (name: SubScreenName) => void; userGroup: string; rankings: RankingEntry[]; groupAccent?: string; groupLogoUrl?: string | null; powersEnabled?: boolean; isNacional?: boolean }) {
   const [settings, setSettings] = useState<GroupSettings | null>(null);
   useEffect(() => {
     if (userGroup) getGroupSettings(userGroup).then(setSettings).catch(console.error);
@@ -1587,21 +1601,33 @@ function TabDetalles({ goto, openSub, userGroup, rankings, groupAccent = T.lime,
 
   const grp = getGroupInfo(userGroup);
   const memberCount = rankings.filter(p => p.group_name === userGroup).length;
+  const nacionalCount = rankings.filter(p => isNacionalGroup(p.group_name ?? '')).length;
+
+  // Nacional groups show Evolve branding in the hero
+  const heroGroup  = isNacional ? 'Evolve' : userGroup;
+  const heroLogo   = isNacional ? null : groupLogoUrl;
+  const heroAccent = isNacional ? T.lime : groupAccent;
+  const heroLabel  = isNacional ? 'Quiniela Nacional Evolve' : grp.label;
+  const heroDesc   = isNacional
+    ? `Tu grupo es ${grp.label}, pero en el ranking nacional compites junto con todas las demás marcas participantes.`
+    : grp.description;
 
   return (
     <div style={{ padding: '14px 14px 80px', display: 'flex', flexDirection: 'column', gap: 12 }}>
       {/* Group hero */}
       <div style={{ borderRadius: 18, padding: '24px 20px', background: T.bgInk, border: `1px solid ${T.borderInk}`, textAlign: 'center' }}>
-        <GroupAvatar group={userGroup} size={80} colorOverride={groupAccent} logoUrlOverride={groupLogoUrl}/>
-        <div style={{ fontSize: 18, fontWeight: 700, color: '#fff', marginBottom: 8 }}>{grp.label}</div>
-        <Pill color={`${groupAccent}25`} textColor={groupAccent}>Miembros: {memberCount}</Pill>
+        <GroupAvatar group={heroGroup} size={80} colorOverride={heroAccent} logoUrlOverride={heroLogo}/>
+        <div style={{ fontSize: 18, fontWeight: 700, color: '#fff', marginBottom: 8 }}>{heroLabel}</div>
+        <Pill color={`${heroAccent}25`} textColor={heroAccent}>
+          {isNacional ? `${memberCount} en tu grupo · ${nacionalCount} en Nacional` : `Miembros: ${memberCount}`}
+        </Pill>
       </div>
 
       {/* Description */}
       <Card accent={groupAccent}>
         <div style={{ paddingLeft: 10 }}>
           <div className="font-display" style={{ fontSize: 14, fontWeight: 700, color: T.ink, marginBottom: 6 }}>Descripción del grupo</div>
-          <div style={{ fontSize: 13, color: T.slate, lineHeight: 1.6 }}>{grp.description}</div>
+          <div style={{ fontSize: 13, color: T.slate, lineHeight: 1.6 }}>{heroDesc}</div>
         </div>
       </Card>
 
