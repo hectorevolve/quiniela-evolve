@@ -4333,6 +4333,23 @@ function ViewCelulares() {
   const [err, setErr]             = useState<string | null>(null);
   const [ok, setOk]               = useState<string | null>(null);
   const [search, setSearch]       = useState('');
+  // Password reveal
+  const [pwdLoading, setPwdLoading] = useState<string | null>(null);
+  const [pwdMap, setPwdMap]         = useState<Record<string, { password: string; registered: boolean }>>({});
+  const [pwdVisible, setPwdVisible] = useState<string | null>(null);
+
+  const handleShowPassword = async (phone: string) => {
+    if (pwdVisible === phone) { setPwdVisible(null); return; }
+    if (pwdMap[phone]) { setPwdVisible(phone); return; }
+    setPwdLoading(phone);
+    const res  = await adminFetch(`/api/admin/user-password?phone=${phone.replace(/\D/g, '')}`);
+    const json = await res.json() as { password?: string; registered?: boolean };
+    if (json.password) {
+      setPwdMap(prev => ({ ...prev, [phone]: { password: json.password!, registered: !!json.registered } }));
+      setPwdVisible(phone);
+    }
+    setPwdLoading(null);
+  };
 
   const load = async () => {
     setLoadingList(true);
@@ -4447,25 +4464,50 @@ function ViewCelulares() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           {search && <div style={{ fontSize: 12, color: c.muted, marginBottom: 4 }}>{filtered.length} resultado{filtered.length !== 1 ? 's' : ''} de {phones.length}</div>}
           {filtered.map(p => (
-            <div key={p.phone} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', background: c.card, border: `1px solid ${c.border}`, borderRadius: 10 }}>
-              <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'rgba(26,175,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>📱</div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 600, color: c.text, fontFamily: 'monospace' }}>{p.phone}</div>
-                <div style={{ fontSize: 11, color: c.muted, marginTop: 2 }}>
-                  {p.name ? (
-                    <>
-                      {p.name}
-                      {p.city && <span style={{ marginLeft: 4 }}>· <strong>{p.city}</strong></span>}
-                    </>
-                  ) : (
-                    <span style={{ fontStyle: 'italic' }}>Sin nombre{p.city && ` · ${p.city}`}</span>
-                  )}
-                  {p.group_name && <span style={{ marginLeft: 8, padding: '1px 6px', borderRadius: 4, background: `${c.blue}22`, color: c.blue, fontSize: 10, fontWeight: 700 }}>{p.group_name}</span>}
-                  {p.phone_type === 'personal' && <span style={{ marginLeft: 4, padding: '1px 6px', borderRadius: 4, background: 'rgba(245,158,11,0.15)', color: '#F59E0B', fontSize: 10, fontWeight: 700 }}>Personal</span>}
-                  {p.premium && <span style={{ marginLeft: 4, padding: '1px 6px', borderRadius: 4, background: `${c.amber}22`, color: c.amber, fontSize: 10, fontWeight: 700 }}>PRO</span>}
+            <div key={p.phone} style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 10, overflow: 'hidden' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px' }}>
+                <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'rgba(26,175,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>📱</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: c.text, fontFamily: 'monospace' }}>{p.phone}</div>
+                  <div style={{ fontSize: 11, color: c.muted, marginTop: 2 }}>
+                    {p.name ? (
+                      <>
+                        {p.name}
+                        {p.city && <span style={{ marginLeft: 4 }}>· <strong>{p.city}</strong></span>}
+                      </>
+                    ) : (
+                      <span style={{ fontStyle: 'italic' }}>Sin nombre{p.city && ` · ${p.city}`}</span>
+                    )}
+                    {p.group_name && <span style={{ marginLeft: 8, padding: '1px 6px', borderRadius: 4, background: `${c.blue}22`, color: c.blue, fontSize: 10, fontWeight: 700 }}>{p.group_name}</span>}
+                    {p.phone_type === 'personal' && <span style={{ marginLeft: 4, padding: '1px 6px', borderRadius: 4, background: 'rgba(245,158,11,0.15)', color: '#F59E0B', fontSize: 10, fontWeight: 700 }}>Personal</span>}
+                    {p.premium && <span style={{ marginLeft: 4, padding: '1px 6px', borderRadius: 4, background: `${c.amber}22`, color: c.amber, fontSize: 10, fontWeight: 700 }}>PRO</span>}
+                  </div>
                 </div>
+                <button
+                  onClick={() => handleShowPassword(p.phone)}
+                  disabled={pwdLoading === p.phone}
+                  title="Ver contraseña"
+                  style={{ padding: '5px 10px', borderRadius: 7, border: `1px solid rgba(163,230,53,0.35)`, background: pwdVisible === p.phone ? 'rgba(163,230,53,0.15)' : 'transparent', color: '#84cc16', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', opacity: pwdLoading === p.phone ? 0.5 : 1 }}
+                >
+                  {pwdLoading === p.phone ? '…' : '🔑 Contraseña'}
+                </button>
+                <button onClick={() => handleDelete(p.phone)} disabled={deleting === p.phone} style={{ background: 'none', border: 'none', cursor: 'pointer', color: c.rose, fontSize: 16, opacity: deleting === p.phone ? 0.4 : 1, flexShrink: 0 }}>🗑</button>
               </div>
-              <button onClick={() => handleDelete(p.phone)} disabled={deleting === p.phone} style={{ background: 'none', border: 'none', cursor: 'pointer', color: c.rose, fontSize: 16, opacity: deleting === p.phone ? 0.4 : 1 }}>🗑</button>
+              {pwdVisible === p.phone && pwdMap[p.phone] && (
+                <div style={{ padding: '10px 14px', borderTop: `1px solid ${c.border}`, background: 'rgba(163,230,53,0.05)', display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <span style={{ fontSize: 11, color: c.muted, flexShrink: 0 }}>Contraseña:</span>
+                  <span style={{ fontFamily: 'monospace', fontSize: 18, fontWeight: 800, letterSpacing: 3, color: '#a3e635' }}>{pwdMap[p.phone].password}</span>
+                  {!pwdMap[p.phone].registered && (
+                    <span style={{ fontSize: 10, color: c.muted, fontStyle: 'italic' }}>· aún no registrado</span>
+                  )}
+                  <button
+                    onClick={() => navigator.clipboard.writeText(pwdMap[p.phone].password)}
+                    style={{ marginLeft: 'auto', padding: '4px 10px', borderRadius: 6, border: `1px solid ${c.border}`, background: 'transparent', color: c.muted, fontSize: 11, cursor: 'pointer' }}
+                  >
+                    Copiar
+                  </button>
+                </div>
+              )}
             </div>
           ))}
           {filtered.length === 0 && (
