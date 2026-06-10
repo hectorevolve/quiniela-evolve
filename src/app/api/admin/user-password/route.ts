@@ -27,7 +27,9 @@ export async function GET(req: NextRequest) {
   const authErr = await requireAdmin(req);
   if (authErr) return authErr;
 
-  const phone = req.nextUrl.searchParams.get('phone')?.replace(/\D/g, '') ?? '';
+  const raw = req.nextUrl.searchParams.get('phone')?.replace(/\D/g, '') ?? '';
+  // Normalize: strip leading country code 52 if present (12 digits → 10 digits)
+  const phone = raw.length === 12 && raw.startsWith('52') ? raw.slice(2) : raw;
   if (phone.length < 10) {
     return NextResponse.json({ error: 'invalid phone' }, { status: 400 });
   }
@@ -51,27 +53,15 @@ export async function GET(req: NextRequest) {
   }
 
   // Not registered — get their info from allowed_phones and create account
-  const { data: allowed } = await admin
+  const { data: info } = await admin
     .from('allowed_phones')
     .select('name, group_name, city, premium')
-    .eq('phone', fullPhone)
+    .or(`phone.eq.${phone},phone.eq.${fullPhone}`)
     .maybeSingle();
 
-  if (!allowed) {
-    // Try without +52 prefix
-    const { data: allowed2 } = await admin
-      .from('allowed_phones')
-      .select('name, group_name, city, premium')
-      .or(`phone.eq.${phone},phone.eq.+52${phone}`)
-      .maybeSingle();
-
-    if (!allowed2) {
-      return NextResponse.json({ error: 'not_in_whitelist' }, { status: 404 });
-    }
-    Object.assign(allowed ?? {}, allowed2);
+  if (!info) {
+    return NextResponse.json({ error: 'not_in_whitelist' }, { status: 404 });
   }
-
-  const info = allowed!;
 
   // Create Supabase auth user
   const { data: newUser, error: createErr } = await admin.auth.admin.createUser({
