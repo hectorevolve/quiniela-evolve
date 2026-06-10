@@ -21,7 +21,7 @@ const GROUP_COLORS: Record<string, string> = {
   'Hanes':              '#14B8A6',
   'NICKELODEON':        '#F97316',
   'BEPESA-LAMADRILEÑA': '#06B6D4',
-  'MULTIMARCA':         '#84CC16',
+  'Multimarca':         '#84CC16',
   'Juguetimax':         '#F43F5E',
 };
 const defaultColor = '#94A3B8';
