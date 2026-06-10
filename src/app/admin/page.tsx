@@ -3232,6 +3232,25 @@ function ViewUsuariosAdmin({ liveUsers, onUserCreated, onUserDeleted, onUserUpda
   const [deletingUser, setDeletingUser] = useState(false);
   const [deleteErr, setDeleteErr]   = useState<string | null>(null);
   const [linkMsg, setLinkMsg]       = useState<string | null>(null);
+  const [pwdTarget, setPwdTarget]   = useState<LiveUser | null>(null);
+  const [pwdValue, setPwdValue]     = useState('');
+  const [pwdLoading, setPwdLoading] = useState(false);
+  const [pwdMsg, setPwdMsg]         = useState<string | null>(null);
+
+  const handleSetPassword = async () => {
+    if (!pwdTarget || !pwdValue.trim()) return;
+    if (pwdValue.length < 6) { setPwdMsg('Mínimo 6 caracteres'); return; }
+    setPwdLoading(true); setPwdMsg(null);
+    const res = await adminFetch('/api/admin/set-user-password', {
+      method: 'POST',
+      body: JSON.stringify({ userId: pwdTarget.id, password: pwdValue }),
+    });
+    const json = await res.json();
+    if (!res.ok) { setPwdMsg(json.error ?? 'Error'); setPwdLoading(false); return; }
+    setPwdMsg('✓ Contraseña guardada');
+    setTimeout(() => { setPwdTarget(null); setPwdMsg(null); setPwdValue(''); }, 1500);
+    setPwdLoading(false);
+  };
 
   const handleMagicLink = async (u: LiveUser) => {
     if (!u.phone) { setLinkMsg('❌ Sin teléfono'); setTimeout(() => setLinkMsg(null), 3000); return; }
@@ -3347,6 +3366,7 @@ function ViewUsuariosAdmin({ liveUsers, onUserCreated, onUserDeleted, onUserUpda
             <PowerPills usedPowers={u.used_powers ?? []}/>
             <button onClick={() => setPredsEntry(liveUserToEntry(u))} style={{ padding: '5px 10px', borderRadius: 7, background: 'rgba(201,243,29,0.1)', border: `1px solid ${c.lime}40`, color: c.lime, fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>📋 Predicciones</button>
             <button onClick={() => handleMagicLink(u)} style={{ padding: '5px 10px', borderRadius: 7, background: 'rgba(26,175,255,0.1)', border: `1px solid rgba(26,175,255,0.4)`, color: c.blue, fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }} title="Copiar link de acceso directo">🔗 Link</button>
+            <button onClick={() => { setPwdTarget(u); setPwdValue(''); setPwdMsg(null); }} style={{ padding: '5px 10px', borderRadius: 7, background: 'rgba(163,230,53,0.1)', border: '1px solid rgba(163,230,53,0.4)', color: '#84cc16', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }} title="Establecer contraseña">🔑 Contraseña</button>
             <button onClick={() => setEditEntry(liveUserToEntry(u))} style={{ padding: '5px 10px', borderRadius: 7, background: `${c.blue}20`, border: `1px solid ${c.blue}50`, color: c.blue, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>✏️ Editar</button>
             <button onClick={() => { setDeleteEntry(u); setDeleteErr(null); }} style={{ padding: '5px 8px', borderRadius: 7, background: `${c.rose}15`, border: `1px solid ${c.rose}40`, color: c.rose, fontSize: 13, cursor: 'pointer' }} title="Eliminar usuario">🗑</button>
           </div>
@@ -3428,6 +3448,38 @@ function ViewUsuariosAdmin({ liveUsers, onUserCreated, onUserDeleted, onUserUpda
               <button onClick={handleCreate} disabled={loading} style={{ flex: 2, padding: '12px', background: loading ? `${c.blue}66` : c.blue, border: 'none', borderRadius: 10, color: '#fff', fontSize: 13, fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer' }}>
                 {loading ? 'Creando…' : 'Crear usuario'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Password modal */}
+      {pwdTarget && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 16 }} onClick={() => setPwdTarget(null)}>
+          <div style={{ background: '#0D1829', border: `1px solid ${c.border}`, borderRadius: 18, padding: 28, width: '100%', maxWidth: 380 }} onClick={e => e.stopPropagation()}>
+            <div style={{ fontSize: 18, fontWeight: 700, color: c.text, marginBottom: 4 }}>🔑 Establecer contraseña</div>
+            <div style={{ fontSize: 13, color: c.muted, marginBottom: 20 }}>{pwdTarget.name}</div>
+            <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: c.muted, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 6 }}>Nueva contraseña</label>
+            <input
+              type="text"
+              placeholder="mínimo 6 caracteres"
+              value={pwdValue}
+              onChange={e => { setPwdValue(e.target.value); setPwdMsg(null); }}
+              onKeyDown={e => e.key === 'Enter' && handleSetPassword()}
+              style={{ width: '100%', padding: '11px 14px', borderRadius: 8, border: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.06)', color: c.text, fontSize: 15, fontFamily: 'monospace', outline: 'none', boxSizing: 'border-box', marginBottom: 14 }}
+            />
+            {pwdMsg && (
+              <div style={{ marginBottom: 14, padding: '9px 12px', borderRadius: 8, fontSize: 13, fontWeight: 600,
+                background: pwdMsg.startsWith('✓') ? 'rgba(34,197,94,0.1)' : 'rgba(244,63,94,0.1)',
+                border: `1px solid ${pwdMsg.startsWith('✓') ? 'rgba(34,197,94,0.3)' : 'rgba(244,63,94,0.3)'}`,
+                color: pwdMsg.startsWith('✓') ? '#22c55e' : c.rose,
+              }}>{pwdMsg}</div>
+            )}
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={handleSetPassword} disabled={pwdLoading} style={{ flex: 2, padding: '12px', background: pwdLoading ? 'rgba(163,230,53,0.4)' : '#84cc16', border: 'none', borderRadius: 10, color: '#000', fontWeight: 700, fontSize: 14, cursor: pwdLoading ? 'not-allowed' : 'pointer' }}>
+                {pwdLoading ? 'Guardando…' : 'Guardar contraseña'}
+              </button>
+              <button onClick={() => setPwdTarget(null)} style={{ flex: 1, padding: '12px', border: `1px solid ${c.border}`, background: 'none', borderRadius: 10, color: c.muted, fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>Cancelar</button>
             </div>
           </div>
         </div>

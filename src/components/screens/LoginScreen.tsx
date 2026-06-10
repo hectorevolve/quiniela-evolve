@@ -31,8 +31,9 @@ function fmtPhone(raw: string): string {
 // 'phone'        → enter phone number (check whitelist)
 // 'survey-promo' → new users: show $15K prize screen + send OTP
 // 'otp'          → enter SMS verification code
+// 'password'     → alternative login with password (for users who don't get SMS)
 // 'admin-login'  → hidden admin: email + password
-type Step = 'phone' | 'survey-promo' | 'otp' | 'admin-login';
+type Step = 'phone' | 'survey-promo' | 'otp' | 'password' | 'admin-login';
 
 export function LoginScreen({ onLogin, blocked = false }: Props) {
   const [step, setStep]       = useState<Step>('phone');
@@ -48,6 +49,10 @@ export function LoginScreen({ onLogin, blocked = false }: Props) {
   const [adminEmail, setAdminEmail]   = useState('');
   const [adminPass, setAdminPass]     = useState('');
   const [showAdminPass, setShowAdminPass] = useState(false);
+
+  // Password login
+  const [userPass, setUserPass]       = useState('');
+  const [showUserPass, setShowUserPass] = useState(false);
 
   const otpInputRef = useRef<HTMLInputElement>(null);
 
@@ -225,6 +230,29 @@ export function LoginScreen({ onLogin, blocked = false }: Props) {
         return;
       }
       setError('Respuesta inesperada. Inténtalo de nuevo.');
+    } catch {
+      setError('Error de conexión. Inténtalo de nuevo.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ─── Login con contraseña ────────────────────────────────────────────────────
+  const handlePasswordLogin = async () => {
+    if (!userPass.trim()) { setError('Ingresa tu contraseña.'); return; }
+    const digits = phone.replace(/\D/g, '');
+    const email  = `${digits}@auth.quinielaevolve.mx`;
+
+    setLoading(true); setError(null);
+    try {
+      const { data, error: authErr } = await supabase.auth.signInWithPassword({ email, password: userPass });
+      if (authErr || !data.user) {
+        setError('Contraseña incorrecta. Pide al administrador que te asigne una.'); return;
+      }
+      const profile = await getProfile(data.user.id);
+      if (!profile) { setError('No se encontró tu perfil. Contacta al administrador.'); return; }
+      await Promise.all([syncPredictionsFromDB(data.user.id), syncBonusFromDB(data.user.id)]);
+      onLogin(profile);
     } catch {
       setError('Error de conexión. Inténtalo de nuevo.');
     } finally {
@@ -498,6 +526,57 @@ export function LoginScreen({ onLogin, blocked = false }: Props) {
             <div style={{ fontSize: 11, color: T.muted, textAlign: 'center', marginTop: 4 }}>
               Úsalo si el número era incorrecto o el SMS no llegó
             </div>
+
+            <div style={{ marginTop: 16, paddingTop: 16, borderTop: `1px solid ${T.border}`, textAlign: 'center' }}>
+              <button
+                onClick={() => { setUserPass(''); setError(null); setStep('password'); }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: T.slate, fontSize: 12, textDecoration: 'underline', textUnderlineOffset: 3 }}
+              >
+                ¿No te llegó el código? Entrar con contraseña
+              </button>
+            </div>
+          </>
+        )}
+
+        {/* ════ PASO: Contraseña ════ */}
+        {step === 'password' && (
+          <>
+            <button onClick={() => { setStep('otp'); setError(null); }} style={{ alignSelf: 'flex-start', background: 'none', border: 'none', cursor: 'pointer', color: T.blue, fontSize: 13, padding: '0 0 14px', display: 'flex', alignItems: 'center', gap: 4 }}>
+              ← Volver al código SMS
+            </button>
+
+            <div style={{ width: 52, height: 52, borderRadius: 14, background: 'rgba(163,230,53,0.1)', border: '1.5px solid rgba(163,230,53,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
+              🔑
+            </div>
+
+            <div className="font-display" style={{ fontSize: 20, fontWeight: 700, color: T.ink, marginBottom: 4 }}>Entrar con contraseña</div>
+            <div style={{ fontSize: 13, color: T.slate, marginBottom: 22, lineHeight: 1.5 }}>
+              Número: <span style={{ fontWeight: 700, color: T.ink }}>+52 {fmtPhone(phone.replace(/\D/g, ''))}</span>
+            </div>
+
+            <div style={{ marginBottom: 20 }}>
+              <label style={labelStyle}>Contraseña</label>
+              <div style={{ position: 'relative' }}>
+                <input
+                  type={showUserPass ? 'text' : 'password'}
+                  placeholder="Tu contraseña"
+                  value={userPass}
+                  onChange={e => { setUserPass(e.target.value); setError(null); }}
+                  onKeyDown={e => e.key === 'Enter' && handlePasswordLogin()}
+                  disabled={loading}
+                  style={{ ...inputStyle, paddingRight: 46 }}
+                  onFocus={e => e.currentTarget.style.borderColor = T.blue}
+                  onBlur={e => e.currentTarget.style.borderColor = T.border}
+                />
+                <EyeBtn show={showUserPass} onToggle={() => setShowUserPass(v => !v)}/>
+              </div>
+            </div>
+
+            {error && <ErrorBox msg={error}/>}
+
+            <Button variant="ink" fullWidth onClick={handlePasswordLogin} size="lg" style={{ opacity: loading ? 0.7 : 1 }}>
+              {loading ? 'Verificando…' : 'Entrar →'}
+            </Button>
           </>
         )}
 
