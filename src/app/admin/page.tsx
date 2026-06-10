@@ -4495,16 +4495,14 @@ function ViewCelulares() {
                     {p.premium && <span style={{ marginLeft: 4, padding: '1px 6px', borderRadius: 4, background: `${c.amber}22`, color: c.amber, fontSize: 10, fontWeight: 700 }}>PRO</span>}
                   </div>
                 </div>
-                {!p.registered && (
-                  <button
-                    onClick={() => handleShowPassword(p.phone)}
-                    disabled={pwdLoading === p.phone}
-                    title="Crear cuenta con contraseña"
-                    style={{ padding: '5px 10px', borderRadius: 7, border: `1px solid rgba(163,230,53,0.35)`, background: pwdVisible === p.phone ? 'rgba(163,230,53,0.15)' : 'transparent', color: '#84cc16', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', opacity: pwdLoading === p.phone ? 0.5 : 1 }}
-                  >
-                    {pwdLoading === p.phone ? '…' : '🔑 Dar contraseña'}
-                  </button>
-                )}
+                <button
+                  onClick={() => handleShowPassword(p.phone)}
+                  disabled={pwdLoading === p.phone}
+                  title={p.registered ? 'Ver contraseña' : 'Crear cuenta con contraseña'}
+                  style={{ padding: '5px 10px', borderRadius: 7, border: `1px solid rgba(163,230,53,0.35)`, background: pwdVisible === p.phone ? 'rgba(163,230,53,0.15)' : 'transparent', color: '#84cc16', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', opacity: pwdLoading === p.phone ? 0.5 : 1 }}
+                >
+                  {pwdLoading === p.phone ? '…' : '🔑 Contraseña'}
+                </button>
                 <button onClick={() => handleDelete(p.phone)} disabled={deleting === p.phone} style={{ background: 'none', border: 'none', cursor: 'pointer', color: c.rose, fontSize: 16, opacity: deleting === p.phone ? 0.4 : 1, flexShrink: 0 }}>🗑</button>
               </div>
               {pwdVisible === p.phone && pwdMap[p.phone] && (
@@ -4513,7 +4511,9 @@ function ViewCelulares() {
                     <span style={{ fontSize: 10, color: c.muted, textTransform: 'uppercase', letterSpacing: 1 }}>Contraseña de acceso</span>
                     <span style={{ fontFamily: 'monospace', fontSize: 20, fontWeight: 800, letterSpacing: 4, color: '#a3e635' }}>{pwdMap[p.phone].password}</span>
                   </div>
-                  <span style={{ fontSize: 11, color: '#22c55e', fontWeight: 600 }}>✓ Cuenta creada — ya puede entrar con esta contraseña</span>
+                  <span style={{ fontSize: 11, color: '#22c55e', fontWeight: 600 }}>
+                    {pwdMap[p.phone].registered ? '✓ Ya registrado — contraseña activa' : '✓ Cuenta creada — ya puede entrar con esta contraseña'}
+                  </span>
                   <button
                     onClick={() => navigator.clipboard.writeText(pwdMap[p.phone].password)}
                     style={{ marginLeft: 'auto', padding: '5px 12px', borderRadius: 6, border: `1px solid ${c.border}`, background: 'transparent', color: c.muted, fontSize: 12, cursor: 'pointer', fontWeight: 600 }}
