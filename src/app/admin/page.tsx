@@ -4398,7 +4398,9 @@ function ViewCelulares() {
     });
     const json = await res.json();
     if (!res.ok) { setErr(json.error ?? 'Error'); setSaving(false); return; }
-    setOk(`✓ ${json.phone} agregado`);
+    const pwdNote = json.password ? `  🔑 Contraseña: ${json.password}` : '';
+    const createdNote = json.created ? ' (cuenta creada)' : json.created === false ? ' (ya tenía cuenta)' : '';
+    setOk(`✓ ${json.phone} agregado${createdNote}${pwdNote}`);
     setNewPhone(''); setNewName(''); setNewGroup('Evolve'); setNewPremium(false); setShowAdd(false);
     load();
     setSaving(false);
