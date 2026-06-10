@@ -26,7 +26,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'not_in_whitelist' }, { status: 403 });
   }
   if (phoneCheck.hasAccount) {
-    return NextResponse.json({ error: 'already_registered' }, { status: 409 });
+    // Ya registrado — devolver token de sesión para login automático
+    const internalEmail = `${phone10}@auth.quinielaevolve.mx`;
+    const session = await createSessionTokenForEmail(internalEmail);
+    if ('error' in session) {
+      return NextResponse.json({ error: 'already_registered' }, { status: 409 });
+    }
+    return NextResponse.json({ error: 'already_registered', token_hash: session.token_hash });
   }
 
   // Nombre y grupo vienen del whitelist; si no hay nombre usamos el teléfono como fallback

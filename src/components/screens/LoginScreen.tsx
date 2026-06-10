@@ -91,10 +91,13 @@ export function LoginScreen({ onLogin, blocked = false }: Props) {
     });
     const data = await res.json() as { token_hash?: string; error?: string };
 
+    if (data.error === 'already_registered' && data.token_hash) {
+      // Ya registrado pero OTP verificado — hacer login directo
+      return finishLogin(data.token_hash);
+    }
     if (data.error === 'already_registered') {
-      // Edge case: registered while in survey flow — try normal login
-      setError('Este número ya tiene una cuenta. Intenta de nuevo desde el inicio.');
-      setStep('phone');
+      // Sin token_hash — pedir que intenten entrar con contraseña
+      setStep('password');
       return false;
     }
     if (data.error || !data.token_hash) {
