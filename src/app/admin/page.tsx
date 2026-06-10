@@ -4317,7 +4317,7 @@ function ViewReportes() {
 }
 
 // ─── Celulares autorizados ────────────────────────────────────────────────────
-type AllowedPhone = { phone: string; name: string | null; group_name: string | null; city: string | null; premium: boolean; phone_type: string | null };
+type AllowedPhone = { phone: string; name: string | null; group_name: string | null; city: string | null; premium: boolean; phone_type: string | null; registered?: boolean };
 
 function ViewCelulares() {
   const [phones, setPhones]       = useState<AllowedPhone[]>([]);
@@ -4364,6 +4364,18 @@ function ViewCelulares() {
       all.push(...(data as AllowedPhone[]));
       if (data.length < PAGE) break;
     }
+    // Cross-reference with profiles to mark registered users
+    const registeredEmails = new Set<string>();
+    for (let from = 0; ; from += PAGE) {
+      const { data } = await supabase.from('profiles').select('email').range(from, from + PAGE - 1);
+      if (!data || data.length === 0) break;
+      (data as { email: string }[]).forEach(p => { if (p.email) registeredEmails.add(p.email); });
+      if (data.length < PAGE) break;
+    }
+    all.forEach(p => {
+      const digits = p.phone.replace(/\D/g, '');
+      p.registered = registeredEmails.has(`${digits}@auth.quinielaevolve.mx`);
+    });
     setPhones(all);
     setLoadingList(false);
   };
@@ -4483,28 +4495,30 @@ function ViewCelulares() {
                     {p.premium && <span style={{ marginLeft: 4, padding: '1px 6px', borderRadius: 4, background: `${c.amber}22`, color: c.amber, fontSize: 10, fontWeight: 700 }}>PRO</span>}
                   </div>
                 </div>
-                <button
-                  onClick={() => handleShowPassword(p.phone)}
-                  disabled={pwdLoading === p.phone}
-                  title="Ver contraseña"
-                  style={{ padding: '5px 10px', borderRadius: 7, border: `1px solid rgba(163,230,53,0.35)`, background: pwdVisible === p.phone ? 'rgba(163,230,53,0.15)' : 'transparent', color: '#84cc16', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', opacity: pwdLoading === p.phone ? 0.5 : 1 }}
-                >
-                  {pwdLoading === p.phone ? '…' : '🔑 Contraseña'}
-                </button>
+                {!p.registered && (
+                  <button
+                    onClick={() => handleShowPassword(p.phone)}
+                    disabled={pwdLoading === p.phone}
+                    title="Crear cuenta con contraseña"
+                    style={{ padding: '5px 10px', borderRadius: 7, border: `1px solid rgba(163,230,53,0.35)`, background: pwdVisible === p.phone ? 'rgba(163,230,53,0.15)' : 'transparent', color: '#84cc16', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', opacity: pwdLoading === p.phone ? 0.5 : 1 }}
+                  >
+                    {pwdLoading === p.phone ? '…' : '🔑 Dar contraseña'}
+                  </button>
+                )}
                 <button onClick={() => handleDelete(p.phone)} disabled={deleting === p.phone} style={{ background: 'none', border: 'none', cursor: 'pointer', color: c.rose, fontSize: 16, opacity: deleting === p.phone ? 0.4 : 1, flexShrink: 0 }}>🗑</button>
               </div>
               {pwdVisible === p.phone && pwdMap[p.phone] && (
-                <div style={{ padding: '10px 14px', borderTop: `1px solid ${c.border}`, background: 'rgba(163,230,53,0.05)', display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <span style={{ fontSize: 11, color: c.muted, flexShrink: 0 }}>Contraseña:</span>
-                  <span style={{ fontFamily: 'monospace', fontSize: 18, fontWeight: 800, letterSpacing: 3, color: '#a3e635' }}>{pwdMap[p.phone].password}</span>
-                  {!pwdMap[p.phone].registered && (
-                    <span style={{ fontSize: 10, color: c.muted, fontStyle: 'italic' }}>· aún no registrado</span>
-                  )}
+                <div style={{ padding: '10px 14px', borderTop: `1px solid ${c.border}`, background: 'rgba(163,230,53,0.06)', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    <span style={{ fontSize: 10, color: c.muted, textTransform: 'uppercase', letterSpacing: 1 }}>Contraseña de acceso</span>
+                    <span style={{ fontFamily: 'monospace', fontSize: 20, fontWeight: 800, letterSpacing: 4, color: '#a3e635' }}>{pwdMap[p.phone].password}</span>
+                  </div>
+                  <span style={{ fontSize: 11, color: '#22c55e', fontWeight: 600 }}>✓ Cuenta creada — ya puede entrar con esta contraseña</span>
                   <button
                     onClick={() => navigator.clipboard.writeText(pwdMap[p.phone].password)}
-                    style={{ marginLeft: 'auto', padding: '4px 10px', borderRadius: 6, border: `1px solid ${c.border}`, background: 'transparent', color: c.muted, fontSize: 11, cursor: 'pointer' }}
+                    style={{ marginLeft: 'auto', padding: '5px 12px', borderRadius: 6, border: `1px solid ${c.border}`, background: 'transparent', color: c.muted, fontSize: 12, cursor: 'pointer', fontWeight: 600 }}
                   >
-                    Copiar
+                    📋 Copiar
                   </button>
                 </div>
               )}
