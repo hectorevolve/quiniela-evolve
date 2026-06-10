@@ -1664,10 +1664,6 @@ function TabDetalles({ goto, openSub, userGroup, rankings, groupAccent = T.lime,
         </div>
       </Card>
 
-      <button style={{ padding: '12px', background: 'transparent', border: `1.5px solid ${T.rose}`, borderRadius: 12, color: T.rose, fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>
-        Salir del grupo
-      </button>
-
     </div>
   );
 }
