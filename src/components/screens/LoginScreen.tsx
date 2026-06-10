@@ -559,6 +559,8 @@ export function LoginScreen({ onLogin, blocked = false }: Props) {
               <div style={{ position: 'relative' }}>
                 <input
                   type={showUserPass ? 'text' : 'password'}
+                  inputMode="text"
+                  autoComplete="current-password"
                   placeholder="Tu contraseña"
                   value={userPass}
                   onChange={e => { setUserPass(e.target.value); setError(null); }}
