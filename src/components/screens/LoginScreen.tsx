@@ -96,8 +96,8 @@ export function LoginScreen({ onLogin, blocked = false }: Props) {
       return finishLogin(data.token_hash);
     }
     if (data.error === 'already_registered') {
-      // Sin token_hash — pedir que intenten entrar con contraseña
-      setStep('password');
+      // Sin token_hash — no mandar a contraseña, mostrar error y dejar reintentar
+      setError('Hubo un problema al iniciar sesión. Intenta de nuevo o usa "Entrar con contraseña".');
       return false;
     }
     if (data.error || !data.token_hash) {

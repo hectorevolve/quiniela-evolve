@@ -55,7 +55,12 @@ export async function POST(req: NextRequest) {
 
   if (createErr || !newUser.user) {
     if (createErr?.message?.toLowerCase().includes('already')) {
-      return NextResponse.json({ error: 'already_registered' }, { status: 409 });
+      // Auth user already exists — try to generate a session token anyway
+      const session = await createSessionTokenForEmail(internalEmail);
+      if ('error' in session) {
+        return NextResponse.json({ error: 'already_registered' }, { status: 409 });
+      }
+      return NextResponse.json({ error: 'already_registered', token_hash: session.token_hash });
     }
     console.error('[register]', createErr?.message);
     return NextResponse.json({ error: createErr?.message ?? 'create_failed' }, { status: 400 });
