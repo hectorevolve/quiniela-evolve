@@ -23,9 +23,8 @@ export async function GET(req: NextRequest) {
   const _authErr = await requireAdmin(req); if (_authErr) return _authErr;
   const admin = getAdminClient();
 
-  const [profilesRes, predsRes, resultsRes, bonusRes] = await Promise.all([
+  const [profilesRes, resultsRes, bonusRes] = await Promise.all([
     admin.from('profiles').select('id, name, group_name, city, used_powers').neq('role', 'superadmin'),
-    admin.from('predictions').select('user_id, match_id, home_score, away_score'),
     admin.from('matches').select('id, result_home, result_away, group_name').not('result_home', 'is', null),
     admin.from('bonus_awards').select('user_id, points'),
   ]);
@@ -50,8 +49,19 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // Only fetch predictions for matches that have results (avoids Supabase 1000-row default limit)
+  const matchIdsWithResults = Object.keys(resultMap);
+  let predsData: { user_id: string; match_id: string; home_score: number; away_score: number }[] = [];
+  if (matchIdsWithResults.length > 0) {
+    const { data } = await admin
+      .from('predictions')
+      .select('user_id, match_id, home_score, away_score')
+      .in('match_id', matchIdsWithResults);
+    predsData = data ?? [];
+  }
+
   const matchPtsMap: Record<string, number> = {};
-  for (const p of predsRes.data ?? []) {
+  for (const p of predsData) {
     const result = resultMap[p.match_id];
     if (!result) continue;
     let pts = calcPoints([p.home_score, p.away_score], result, phaseMap[p.match_id]);
