@@ -487,7 +487,7 @@ function TabPredicciones({ goto, tweaks, fireToast, powersEnabled = true, usedPo
       } else if (filter === 'Final') {
         matchesGroup = m.group === 'FINAL';
       } else {
-        matchesGroup = m.group.toLowerCase().includes(filter.toLowerCase().replace('grupo ', ''));
+        matchesGroup = m.group === (CHIP_GROUP[filter] ?? '');
       }
       const stadiumKey = m.stadium.split(' · ')[0];
       const matchesSearch = !q ||
