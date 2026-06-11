@@ -128,6 +128,9 @@ function shortName(full: string): string {
 }
 
 function parseMatchDate(dateStr: string): Date | null {
+  if (!dateStr) return null;
+  // ISO date from DB — timezone-correct, no local parsing needed
+  if (/^\d{4}-\d{2}-\d{2}T/.test(dateStr)) return new Date(dateStr);
   // Format: 'jue. 22 may. 2026 12:45 pm'
   const p = dateStr.split(' ');
   if (p.length < 6) return null;
@@ -376,6 +379,13 @@ function TabPredicciones({ goto, tweaks, fireToast, powersEnabled = true, usedPo
   const spyMatchId = spyMatchIdFromParent !== undefined ? spyMatchIdFromParent : localSpyMatchId;
   const setSpyMatchId = setSpyMatchIdFromParent ?? setLocalSpyMatchId;
 
+  // Tick every 60s so isMatchStartedEx is re-evaluated and cards lock automatically at kickoff
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTick(t => t + 1), 60_000);
+    return () => clearInterval(id);
+  }, []);
+
   const liveMatch = useLiveMatch(tweaks.liveMatch ? {
     ...DEMO_LIVE_MATCH,
     minute: tweaks.liveMinute ?? DEMO_LIVE_MATCH.minute,
@@ -418,9 +428,12 @@ function TabPredicciones({ goto, tweaks, fireToast, powersEnabled = true, usedPo
   }, [displayedLive]);
 
   // Client-side match timer — used when the API doesn't return the minute
+  // Prefer ISO date from DB (matchDates) so the timer is timezone-correct
   const liveMatchForTimer = MATCHES.find(m => m.id === displayedLive?.matchId);
+  const liveTimerDate = (displayedLive?.matchId && matchDates?.[displayedLive.matchId])
+    ?? liveMatchForTimer?.date ?? '';
   const matchTimer = useMatchTimer(
-    liveMatchForTimer?.date ?? '',
+    liveTimerDate,
     displayedLive?.status   ?? 'IN_PLAY',
     displayedLive?.duration ?? 'REGULAR',
     displayedLive !== null && displayedLive.minute === null,
