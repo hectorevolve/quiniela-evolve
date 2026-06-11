@@ -151,21 +151,29 @@ export async function GET() {
     console.error('[sync-live] fetch error:', err);
   }
 
-  // ── If API didn't return a minute, compute it from the DB kickoff time ───
-  if (liveData && liveData.minute === null && liveData.status === 'IN_PLAY') {
-    const { data: matchRow } = await supabase
-      .from('matches')
-      .select('match_date')
-      .eq('id', liveData.matchId)
-      .maybeSingle();
-    if (matchRow?.match_date) {
+  // ── Auto-calibrate kickoff time and compute minute when API returns null ──
+  if (liveData && liveData.status === 'IN_PLAY') {
+    // Read current live_match to detect first-time IN_PLAY for this match
+    const [{ data: prevLive }, { data: matchRow }] = await Promise.all([
+      supabase.from('live_match').select('match_id, status').eq('id', 1).maybeSingle(),
+      supabase.from('matches').select('match_date').eq('id', liveData.matchId).maybeSingle(),
+    ]);
+
+    const isFirstKickoff = prevLive?.match_id !== liveData.matchId || prevLive?.status !== 'IN_PLAY';
+
+    if (isFirstKickoff) {
+      // First time we detect this match as live — record actual kickoff UTC time
+      const actualKickoff = new Date().toISOString();
+      await supabase.from('matches').update({ match_date: actualKickoff }).eq('id', liveData.matchId);
+      // Use elapsed = 0 (just kicked off)
+      liveData.minute = liveData.minute ?? 0;
+    } else if (liveData.minute === null && matchRow?.match_date) {
+      // Compute minute from actual kickoff stored in DB
       const elapsed = Math.floor((Date.now() - new Date(matchRow.match_date).getTime()) / 60_000);
-      // First half: 0–48 min (45 + up to 3 stoppage), halftime ~45-60, second half 60+
       if (elapsed <= 48) {
         liveData.minute = Math.min(elapsed, 45);
       } else if (elapsed <= 63) {
-        // Halftime window — don't show a minute, leave null (banner shows "Medio tiempo")
-        liveData.minute = null;
+        liveData.minute = null; // halftime — banner shows "Medio tiempo"
       } else {
         liveData.minute = Math.min(45 + (elapsed - 63), 90);
       }
