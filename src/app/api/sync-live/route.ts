@@ -151,6 +151,27 @@ export async function GET() {
     console.error('[sync-live] fetch error:', err);
   }
 
+  // ── If API didn't return a minute, compute it from the DB kickoff time ───
+  if (liveData && liveData.minute === null && liveData.status === 'IN_PLAY') {
+    const { data: matchRow } = await supabase
+      .from('matches')
+      .select('match_date')
+      .eq('id', liveData.matchId)
+      .maybeSingle();
+    if (matchRow?.match_date) {
+      const elapsed = Math.floor((Date.now() - new Date(matchRow.match_date).getTime()) / 60_000);
+      // First half: 0–48 min (45 + up to 3 stoppage), halftime ~45-60, second half 60+
+      if (elapsed <= 48) {
+        liveData.minute = Math.min(elapsed, 45);
+      } else if (elapsed <= 63) {
+        // Halftime window — don't show a minute, leave null (banner shows "Medio tiempo")
+        liveData.minute = null;
+      } else {
+        liveData.minute = Math.min(45 + (elapsed - 63), 90);
+      }
+    }
+  }
+
   // ── Write to Supabase (always upsert id=1) ───────────────────────────────
   const { error } = await supabase
     .from('live_match')
