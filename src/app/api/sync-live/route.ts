@@ -151,9 +151,8 @@ export async function GET() {
     console.error('[sync-live] fetch error:', err);
   }
 
-  // ── Auto-calibrate kickoff time and compute minute when API returns null ──
+  // ── Auto-calibrate kickoff time; always compute minute from stored kickoff ──
   if (liveData && liveData.status === 'IN_PLAY') {
-    // Read current live_match to detect first-time IN_PLAY for this match
     const [{ data: prevLive }, { data: matchRow }] = await Promise.all([
       supabase.from('live_match').select('match_id, status').eq('id', 1).maybeSingle(),
       supabase.from('matches').select('match_date').eq('id', liveData.matchId).maybeSingle(),
@@ -162,18 +161,20 @@ export async function GET() {
     const isFirstKickoff = prevLive?.match_id !== liveData.matchId || prevLive?.status !== 'IN_PLAY';
 
     if (isFirstKickoff) {
-      // First time we detect this match as live — record actual kickoff UTC time
-      const actualKickoff = new Date().toISOString();
-      await supabase.from('matches').update({ match_date: actualKickoff }).eq('id', liveData.matchId);
-      // Use elapsed = 0 (just kicked off)
-      liveData.minute = liveData.minute ?? 0;
-    } else if (liveData.minute === null && matchRow?.match_date) {
-      // Compute minute from actual kickoff stored in DB
+      // Correct kickoff = now minus however many minutes the API already reports.
+      // This prevents a 2-3 min offset when the cron first detects the match mid-play.
+      const apiMin = liveData.minute ?? 0;
+      const correctedKickoff = new Date(Date.now() - apiMin * 60_000).toISOString();
+      await supabase.from('matches').update({ match_date: correctedKickoff }).eq('id', liveData.matchId);
+      liveData.minute = apiMin;
+    } else if (matchRow?.match_date) {
+      // Always compute minute from the calibrated kickoff — ignore API minute
+      // to avoid drift from football-data.org's reporting offset.
       const elapsed = Math.floor((Date.now() - new Date(matchRow.match_date).getTime()) / 60_000);
       if (elapsed <= 48) {
         liveData.minute = Math.min(elapsed, 45);
       } else if (elapsed <= 63) {
-        liveData.minute = null; // halftime — banner shows "Medio tiempo"
+        liveData.minute = null; // halftime
       } else {
         liveData.minute = Math.min(45 + (elapsed - 63), 90);
       }
