@@ -72,7 +72,8 @@ export async function GET() {
     const { data } = await admin
       .from('predictions')
       .select('user_id, match_id, home_score, away_score')
-      .in('match_id', matchIdsWithResults);
+      .in('match_id', matchIdsWithResults)
+      .limit(50000);
     predsData = data ?? [];
   }
 
