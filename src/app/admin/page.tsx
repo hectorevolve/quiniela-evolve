@@ -389,7 +389,7 @@ function ViewUsuarios({ users, updateUser, deleteUser, groupFilter, setGroupFilt
                   <div style={{ width: 32, height: 32, borderRadius: '50%', background: isTop3 ? `${c.amber}22` : 'rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: isTop3 ? 18 : 11, fontWeight: 800, color: isTop3 ? c.amber : c.dim, flexShrink: 0 }}>
                     {isTop3 ? ['🥇','🥈','🥉'][displayPos - 1] : `#${displayPos}`}
                   </div>
-                  <Avatar initials={u.name.slice(0,2).toUpperCase()} size={30}/>
+                  <Avatar initials={(u.name ?? '?').slice(0,2).toUpperCase()} size={30}/>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 13, fontWeight: 700, color: c.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.name}</div>
                     <div style={{ fontSize: 11, color: c.muted }}>{u.city}</div>
@@ -429,7 +429,7 @@ function ViewUsuarios({ users, updateUser, deleteUser, groupFilter, setGroupFilt
                     <td style={{ padding: '11px 14px', fontSize: 13, fontWeight: 700, color: isTop3 ? c.amber : c.dim }}>#{displayPos}</td>
                     <td style={{ padding: '11px 14px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <Avatar initials={u.name.slice(0,2).toUpperCase()} size={28}/>
+                        <Avatar initials={(u.name ?? '?').slice(0,2).toUpperCase()} size={28}/>
                         <span style={{ fontSize: 13, fontWeight: 600, color: c.text, whiteSpace: 'nowrap' }}>{u.name}</span>
                       </div>
                     </td>
@@ -1028,7 +1028,7 @@ function ViewRankings() {
     // /api/admin/rankings uses service-role client (bypasses RLS) and has NO CDN cache
     adminFetch('/api/admin/rankings', { cache: 'no-store' })
       .then(r => r.json())
-      .then(setRankings)
+      .then(data => { if (Array.isArray(data)) setRankings(data); })
       .catch(console.error)
       .finally(() => setLoading(false));
   };
@@ -1115,7 +1115,7 @@ function ViewRankings() {
                     <td style={{ padding: '11px 14px', fontSize: 13, fontWeight: 700, color: u.pos <= 3 ? c.amber : c.dim }}>#{u.pos}</td>
                     <td style={{ padding: '11px 14px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <Avatar initials={u.name.slice(0,2).toUpperCase()} size={28}/>
+                        <Avatar initials={(u.name ?? '?').slice(0,2).toUpperCase()} size={28}/>
                         <span style={{ fontSize: 13, fontWeight: 600, color: c.text, whiteSpace: 'nowrap' }}>{u.name}</span>
                       </div>
                     </td>
@@ -1152,7 +1152,7 @@ function ViewRankings() {
               <div style={{ width: 34, height: 34, borderRadius: '50%', background: u.pos === 1 ? '#F59E0B33' : u.pos === 2 ? '#94A3B833' : u.pos === 3 ? '#CD7C2F33' : 'rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 12, color: u.pos <= 3 ? c.amber : c.muted, flexShrink: 0 }}>
                 {u.pos <= 3 ? ['🥇','🥈','🥉'][u.pos - 1] : `#${u.pos}`}
               </div>
-              <Avatar initials={u.name.slice(0,2).toUpperCase()} size={30} style={{ flexShrink: 0 }}/>
+              <Avatar initials={(u.name ?? '?').slice(0,2).toUpperCase()} size={30} style={{ flexShrink: 0 }}/>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 600, color: c.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.name}</div>
                 <div style={{ fontSize: 11, color: c.muted }}>{u.group_name ?? '—'}</div>
@@ -1394,7 +1394,7 @@ function ViewPredicciones({ users }: { users: AdminUser[] }) {
                   onMouseEnter={e => (e.currentTarget.style.background = c.rowHov)}
                   onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
                   <td style={{ padding: '10px 14px', fontSize: 12, fontWeight: 700, color: c.dim }}>#{u.pos}</td>
-                  <td style={{ padding: '10px 14px' }}><div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Avatar initials={u.name.slice(0,2).toUpperCase()} size={26}/><span style={{ fontSize: 12, fontWeight: 600, color: c.text, whiteSpace: 'nowrap' }}>{u.name}</span></div></td>
+                  <td style={{ padding: '10px 14px' }}><div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Avatar initials={(u.name ?? '?').slice(0,2).toUpperCase()} size={26}/><span style={{ fontSize: 12, fontWeight: 600, color: c.text, whiteSpace: 'nowrap' }}>{u.name}</span></div></td>
                   <td style={{ padding: '10px 14px' }}><GroupBadge group={u.group}/></td>
                   <td style={{ padding: '10px 14px', fontSize: 12, color: c.muted, whiteSpace: 'nowrap' }}>{u.city}</td>
                   <td style={{ padding: '10px 14px' }}>
