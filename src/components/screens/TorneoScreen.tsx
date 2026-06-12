@@ -570,6 +570,7 @@ function TabPredicciones({ goto, tweaks, fireToast, powersEnabled = true, usedPo
   };
   const nextMatch = (() => {
     const now = new Date();
+    let best: { match: typeof MATCHES[0]; d: Date; p: string[] } | null = null;
     for (const m of MATCHES) {
       const p = m.date.split(' ');
       let h = parseInt(p[4].split(':')[0]);
@@ -577,8 +578,9 @@ function TabPredicciones({ goto, tweaks, fireToast, powersEnabled = true, usedPo
       if (p[5] === 'pm' && h !== 12) h += 12;
       if (p[5] === 'am' && h === 12) h = 0;
       const d = new Date(parseInt(p[3]), MONTH_IDX[p[2]] ?? 5, parseInt(p[1]), h, min);
-      if (d > now) return { match: m, day: p[1], month: p[2].replace('.',''), time: p[4] };
+      if (d > now && (!best || d < best.d)) best = { match: m, d, p };
     }
+    if (best) return { match: best.match, day: best.p[1], month: best.p[2].replace('.',''), time: best.p[4] };
     const p = MATCHES[0].date.split(' ');
     return { match: MATCHES[0], day: p[1], month: p[2].replace('.',''), time: p[4] };
   })();
