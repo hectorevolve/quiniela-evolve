@@ -151,26 +151,28 @@ export async function GET() {
     console.error('[sync-live] fetch error:', err);
   }
 
-  // ── Auto-calibrate kickoff time; always compute minute from stored kickoff ──
-  if (liveData && liveData.status === 'IN_PLAY') {
-    const [{ data: prevLive }, { data: matchRow }] = await Promise.all([
-      supabase.from('live_match').select('match_id, status').eq('id', 1).maybeSingle(),
-      supabase.from('matches').select('match_date').eq('id', liveData.matchId).maybeSingle(),
-    ]);
+  // ── Kickoff calibration + minute computation ────────────────────────────
+  if (liveData && (liveData.status === 'IN_PLAY' || liveData.status === 'PAUSED')) {
+    const { data: matchRow } = await supabase
+      .from('matches').select('match_date').eq('id', liveData.matchId).maybeSingle();
 
-    const isFirstKickoff = prevLive?.match_id !== liveData.matchId || prevLive?.status !== 'IN_PLAY';
+    let kickoffMs = matchRow?.match_date ? new Date(matchRow.match_date).getTime() : null;
 
-    if (isFirstKickoff) {
-      // Correct kickoff = now minus however many minutes the API already reports.
-      // This prevents a 2-3 min offset when the cron first detects the match mid-play.
-      const apiMin = liveData.minute ?? 0;
-      const correctedKickoff = new Date(Date.now() - apiMin * 60_000).toISOString();
-      await supabase.from('matches').update({ match_date: correctedKickoff }).eq('id', liveData.matchId);
-      liveData.minute = apiMin;
-    } else if (matchRow?.match_date) {
-      // Always compute minute from the calibrated kickoff — ignore API minute
-      // to avoid drift from football-data.org's reporting offset.
-      const elapsed = Math.floor((Date.now() - new Date(matchRow.match_date).getTime()) / 60_000);
+    // Recalibrate stored kickoff when API provides a minute and the stored time is off by > 5 min.
+    // This is self-healing: wrong kickoff (e.g., set to "now" after a blip) gets corrected automatically.
+    if (liveData.status === 'IN_PLAY' && liveData.minute !== null) {
+      const expectedKickoff = Date.now() - liveData.minute * 60_000;
+      if (kickoffMs === null || Math.abs(expectedKickoff - kickoffMs) > 5 * 60_000) {
+        await supabase.from('matches')
+          .update({ match_date: new Date(expectedKickoff).toISOString() })
+          .eq('id', liveData.matchId);
+        kickoffMs = expectedKickoff;
+      }
+    }
+
+    // Always compute minute from the calibrated kickoff — ignore raw API minute to avoid drift.
+    if (kickoffMs !== null) {
+      const elapsed = Math.floor((Date.now() - kickoffMs) / 60_000);
       if (elapsed <= 48) {
         liveData.minute = Math.min(elapsed, 45);
       } else if (elapsed <= 63) {
@@ -181,21 +183,34 @@ export async function GET() {
     }
   }
 
-  // ── Write to Supabase (always upsert id=1) ───────────────────────────────
-  const { error } = await supabase
-    .from('live_match')
-    .upsert({
+  // ── Write to Supabase ────────────────────────────────────────────────────
+  if (liveData !== null) {
+    // Live data found — always write it
+    const { error } = await supabase.from('live_match').upsert({
       id:         1,
-      match_id:   liveData?.matchId   ?? null,
-      home_score: liveData?.homeScore ?? null,
-      away_score: liveData?.awayScore ?? null,
-      minute:     liveData?.minute    ?? null,
-      status:     liveData?.status    ?? null,
-      duration:   liveData?.duration  ?? null,
+      match_id:   liveData.matchId,
+      home_score: liveData.homeScore,
+      away_score: liveData.awayScore,
+      minute:     liveData.minute ?? null,
+      status:     liveData.status,
+      duration:   liveData.duration,
       updated_at: new Date().toISOString(),
     });
+    if (error) console.error('[sync-live] upsert error:', error.message);
+  } else {
+    // No live match from API — only clear if data is stale (> 15 min).
+    // This prevents the banner from disappearing during brief API blips mid-match.
+    const { data: cur } = await supabase
+      .from('live_match').select('updated_at, match_id').eq('id', 1).maybeSingle();
+    const ageMs = cur?.updated_at ? Date.now() - new Date(cur.updated_at).getTime() : Infinity;
+    if (!cur?.match_id || ageMs > 15 * 60_000) {
+      await supabase.from('live_match').upsert({
+        id: 1, match_id: null, home_score: null, away_score: null,
+        minute: null, status: null, duration: null,
+        updated_at: new Date().toISOString(),
+      });
+    }
+  }
 
-  if (error) console.error('[sync-live] upsert error:', error.message);
-
-  return NextResponse.json({ live: liveData, ok: !error });
+  return NextResponse.json({ live: liveData, ok: true });
 }
