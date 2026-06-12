@@ -147,7 +147,7 @@ type MatchPeriod = 'first' | 'halftime' | 'second' | 'extra_first' | 'extra_seco
 interface TimerState { display: string; minute: number; period: MatchPeriod }
 
 // Standard football time constants (minutes)
-const T1 = 45; const HT = 15; const T2 = 45; const ST1 = 3; const ST2 = 5;
+const T1 = 45; const HT = 15; const T2 = 45; const ST1 = 7; const ST2 = 7;
 const ET1 = 15; const ET_HT = 5; const ET2 = 15;
 
 function calcMatchTime(startDate: Date, apiStatus: string, apiDuration: string): TimerState {

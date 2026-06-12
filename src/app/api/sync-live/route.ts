@@ -187,14 +187,17 @@ export async function GET() {
     }
 
     // Compute minute from calibrated kickoff — ignore raw API minute to avoid drift.
+    // null means "client timer should render" (stoppage time or halftime).
     if (kickoffMs !== null) {
       const elapsed = Math.floor((Date.now() - kickoffMs) / 60_000);
-      if (elapsed <= 48) {
-        liveData.minute = Math.min(elapsed, 45);
-      } else if (elapsed <= 63) {
-        liveData.minute = null; // halftime
+      if (elapsed <= 45) {
+        liveData.minute = elapsed;                      // 1'–45'
+      } else if (elapsed <= 67) {
+        liveData.minute = null;                         // 45+N' or halftime (client timer)
+      } else if (elapsed <= 112) {
+        liveData.minute = 45 + (elapsed - 67);         // 46'–90'
       } else {
-        liveData.minute = Math.min(45 + (elapsed - 63), 90);
+        liveData.minute = null;                         // 90+N' (client timer)
       }
     }
   }
