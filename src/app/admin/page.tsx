@@ -972,7 +972,7 @@ function UserPredictionsModal({ entry, onClose }: { entry: RankingEntry; onClose
                           {result ? (
                             <span style={{ fontSize: 11, color: c.muted }}>
                               {result[0]}:{result[1]}
-                              {pred?.home !== '' && pred?.away !== '' && (() => {
+                              {pred && pred.home !== '' && pred.away !== '' && (() => {
                                 const ph = Number(pred.home), pa = Number(pred.away);
                                 if (ph === result[0] && pa === result[1]) return <span style={{ color: c.green, fontWeight: 700, marginLeft: 4 }}>+3</span>;
                                 if (Math.sign(ph - pa) === Math.sign(result[0] - result[1])) return <span style={{ color: c.amber, fontWeight: 700, marginLeft: 4 }}>+1</span>;
