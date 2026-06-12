@@ -93,6 +93,7 @@ export async function GET() {
   let liveData: {
     matchId: string; homeScore: number; awayScore: number;
     minute: number | null; status: string; duration: string;
+    scheduledDate: string | null;
   } | null = null;
 
   try {
@@ -108,6 +109,7 @@ export async function GET() {
           homeTeam?: { name?: string; tla?: string };
           awayTeam?: { name?: string; tla?: string };
           status?: string;
+          utcDate?: string;
           score?: { fullTime?: { home?: number | null; away?: number | null }; duration?: string };
           minute?: number | null;
         }>;
@@ -137,12 +139,13 @@ export async function GET() {
         const a = m.score?.fullTime?.away ?? 0;
 
         liveData = {
-          matchId:   match.id,
-          homeScore: flipped ? a : h,
-          awayScore: flipped ? h : a,
-          minute:    m.minute ?? null,
-          status:    m.status ?? 'IN_PLAY',
-          duration:  m.score?.duration ?? 'REGULAR',
+          matchId:       match.id,
+          homeScore:     flipped ? a : h,
+          awayScore:     flipped ? h : a,
+          minute:        m.minute ?? null,
+          status:        m.status ?? 'IN_PLAY',
+          duration:      m.score?.duration ?? 'REGULAR',
+          scheduledDate: m.utcDate ?? null,
         };
         break; // one live match at a time
       }
@@ -156,11 +159,12 @@ export async function GET() {
     const { data: matchRow } = await supabase
       .from('matches').select('match_date').eq('id', liveData.matchId).maybeSingle();
 
-    let kickoffMs = matchRow?.match_date ? new Date(matchRow.match_date).getTime() : null;
+    const storedMs    = matchRow?.match_date    ? new Date(matchRow.match_date).getTime()    : null;
+    const scheduledMs = liveData.scheduledDate  ? new Date(liveData.scheduledDate).getTime() : null;
+    let kickoffMs = storedMs;
 
-    // Recalibrate stored kickoff when API provides a minute and the stored time is off by > 5 min.
-    // This is self-healing: wrong kickoff (e.g., set to "now" after a blip) gets corrected automatically.
-    if (liveData.status === 'IN_PLAY' && liveData.minute !== null) {
+    if (liveData.minute !== null && liveData.status === 'IN_PLAY') {
+      // API provided a minute — use it for precise calibration if stored kickoff is off by > 5 min.
       const expectedKickoff = Date.now() - liveData.minute * 60_000;
       if (kickoffMs === null || Math.abs(expectedKickoff - kickoffMs) > 5 * 60_000) {
         await supabase.from('matches')
@@ -168,9 +172,21 @@ export async function GET() {
           .eq('id', liveData.matchId);
         kickoffMs = expectedKickoff;
       }
+    } else if (
+      kickoffMs !== null && scheduledMs !== null &&
+      kickoffMs - scheduledMs > 10 * 60_000
+    ) {
+      // Stored kickoff is > 10 min AFTER the scheduled one → it was wrongly set to "now"
+      // mid-match (e.g., after a live_match blip). Restore to the scheduled kickoff.
+      await supabase.from('matches')
+        .update({ match_date: new Date(scheduledMs).toISOString() })
+        .eq('id', liveData.matchId);
+      kickoffMs = scheduledMs;
+    } else if (kickoffMs === null) {
+      kickoffMs = scheduledMs;
     }
 
-    // Always compute minute from the calibrated kickoff — ignore raw API minute to avoid drift.
+    // Compute minute from calibrated kickoff — ignore raw API minute to avoid drift.
     if (kickoffMs !== null) {
       const elapsed = Math.floor((Date.now() - kickoffMs) / 60_000);
       if (elapsed <= 48) {
