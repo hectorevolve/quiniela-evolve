@@ -53,12 +53,20 @@ export async function GET(req: NextRequest) {
   const matchIdsWithResults = Object.keys(resultMap);
   let predsData: { user_id: string; match_id: string; home_score: number; away_score: number }[] = [];
   if (matchIdsWithResults.length > 0) {
-    const { data } = await admin
-      .from('predictions')
-      .select('user_id, match_id, home_score, away_score')
-      .in('match_id', matchIdsWithResults)
-      .limit(50000);
-    predsData = data ?? [];
+    // Supabase max_rows is 1000 — paginate until all predictions are fetched
+    const PAGE = 1000;
+    let from = 0;
+    while (true) {
+      const { data } = await admin
+        .from('predictions')
+        .select('user_id, match_id, home_score, away_score')
+        .in('match_id', matchIdsWithResults)
+        .range(from, from + PAGE - 1);
+      if (!data || data.length === 0) break;
+      predsData.push(...data);
+      if (data.length < PAGE) break;
+      from += PAGE;
+    }
   }
 
   const matchPtsMap: Record<string, number> = {};
