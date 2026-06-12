@@ -23,14 +23,30 @@ export async function GET(req: NextRequest) {
   const _authErr = await requireAdmin(req); if (_authErr) return _authErr;
   const admin = getAdminClient();
 
-  const [profilesRes, resultsRes, bonusRes] = await Promise.all([
-    admin.from('profiles').select('id, name, group_name, city, used_powers').neq('role', 'superadmin'),
+  const PAGE = 1000;
+
+  const [resultsRes, bonusRes] = await Promise.all([
     admin.from('matches').select('id, result_home, result_away, group_name').not('result_home', 'is', null),
     admin.from('bonus_awards').select('user_id, points'),
   ]);
 
-  if (profilesRes.error) {
-    return NextResponse.json({ error: profilesRes.error.message }, { status: 500 });
+  // Paginate profiles to bypass Supabase project max_rows (1000)
+  type ProfileRow = { id: string; name: string; group_name: string | null; city: string | null; used_powers: string[] | null };
+  const profilesData: ProfileRow[] = [];
+  {
+    let from = 0;
+    while (true) {
+      const { data, error } = await admin
+        .from('profiles')
+        .select('id, name, group_name, city, used_powers')
+        .neq('role', 'superadmin')
+        .range(from, from + PAGE - 1);
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      if (!data || data.length === 0) break;
+      profilesData.push(...(data as ProfileRow[]));
+      if (data.length < PAGE) break;
+      from += PAGE;
+    }
   }
 
   const resultMap: Record<string, [number, number]> = {};
@@ -40,12 +56,18 @@ export async function GET(req: NextRequest) {
     phaseMap[m.id]  = m.group_name ?? null;
   }
 
-  // ×2 Puntos Dobles: userId → partido donde se usó (query resiliente)
+  // ×2 Puntos Dobles: userId → partido donde se usó (paginated)
   const doubleMatchMap: Record<string, string | null> = {};
-  const dblRes = await admin.from('profiles').select('id, double_match_id');
-  if (!dblRes.error) {
-    for (const r of (dblRes.data ?? []) as { id: string; double_match_id: string | null }[]) {
-      doubleMatchMap[r.id] = r.double_match_id ?? null;
+  {
+    let from = 0;
+    while (true) {
+      const { data } = await admin.from('profiles').select('id, double_match_id').range(from, from + PAGE - 1);
+      if (!data || data.length === 0) break;
+      for (const r of data as { id: string; double_match_id: string | null }[]) {
+        doubleMatchMap[r.id] = r.double_match_id ?? null;
+      }
+      if (data.length < PAGE) break;
+      from += PAGE;
     }
   }
 
@@ -53,8 +75,6 @@ export async function GET(req: NextRequest) {
   const matchIdsWithResults = Object.keys(resultMap);
   let predsData: { user_id: string; match_id: string; home_score: number; away_score: number }[] = [];
   if (matchIdsWithResults.length > 0) {
-    // Supabase max_rows is 1000 — paginate until all predictions are fetched
-    const PAGE = 1000;
     let from = 0;
     while (true) {
       const { data } = await admin
@@ -83,7 +103,7 @@ export async function GET(req: NextRequest) {
     bonusPtsMap[b.user_id] = (bonusPtsMap[b.user_id] ?? 0) + b.points;
   }
 
-  const entries: AdminRankingEntry[] = (profilesRes.data ?? []).map((p: { id: string; name: string; group_name: string | null; city: string | null; used_powers: string[] | null }) => {
+  const entries: AdminRankingEntry[] = profilesData.map((p) => {
     const matchPoints = matchPtsMap[p.id] ?? 0;
     const bonusPoints = bonusPtsMap[p.id] ?? 0;
     return {

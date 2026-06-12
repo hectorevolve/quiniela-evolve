@@ -24,12 +24,10 @@ export const revalidate = 60;
 export async function GET() {
   const admin = getAdminClient();
 
-  // ── 1. Fetch profiles + match results + bonus in parallel ─────────────────
-  const [profilesRes, resultsRes, bonusRes] = await Promise.all([
-    admin
-      .from('profiles')
-      .select('id, name, group_name, city, used_powers')
-      .neq('role', 'superadmin'),
+  const PAGE = 1000;
+
+  // ── 1. Fetch profiles (paginated) + match results + bonus in parallel ──────
+  const [resultsRes, bonusRes] = await Promise.all([
     admin
       .from('matches')
       .select('id, result_home, result_away, group_name')
@@ -39,8 +37,23 @@ export async function GET() {
       .select('user_id, points'),
   ]);
 
-  if (profilesRes.error) {
-    return NextResponse.json({ error: profilesRes.error.message }, { status: 500 });
+  // Paginate profiles to bypass Supabase project max_rows (1000)
+  type ProfileRow = { id: string; name: string; group_name: string | null; city: string | null; used_powers: string[] | null };
+  const profilesData: ProfileRow[] = [];
+  {
+    let from = 0;
+    while (true) {
+      const { data, error } = await admin
+        .from('profiles')
+        .select('id, name, group_name, city, used_powers')
+        .neq('role', 'superadmin')
+        .range(from, from + PAGE - 1);
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      if (!data || data.length === 0) break;
+      profilesData.push(...(data as ProfileRow[]));
+      if (data.length < PAGE) break;
+      from += PAGE;
+    }
   }
 
   // Build result + phase maps; collect only the match IDs that have results
@@ -51,14 +64,18 @@ export async function GET() {
     phaseMap[m.id]  = m.group_name ?? null;
   }
 
-  // ×2 Puntos Dobles: map userId → match where the power was used.
-  // Separate (resilient) query so the route keeps working if the column
-  // does not exist yet (run the migration to enable doubling).
+  // ×2 Puntos Dobles: map userId → match where the power was used (paginated).
   const doubleMatchMap: Record<string, string | null> = {};
-  const dblRes = await admin.from('profiles').select('id, double_match_id');
-  if (!dblRes.error) {
-    for (const r of (dblRes.data ?? []) as { id: string; double_match_id: string | null }[]) {
-      doubleMatchMap[r.id] = r.double_match_id ?? null;
+  {
+    let from = 0;
+    while (true) {
+      const { data } = await admin.from('profiles').select('id, double_match_id').range(from, from + PAGE - 1);
+      if (!data || data.length === 0) break;
+      for (const r of data as { id: string; double_match_id: string | null }[]) {
+        doubleMatchMap[r.id] = r.double_match_id ?? null;
+      }
+      if (data.length < PAGE) break;
+      from += PAGE;
     }
   }
 
@@ -107,9 +124,7 @@ export async function GET() {
   }
 
   // ── 4. Build + sort entries ───────────────────────────────────────────────
-  const entries = (profilesRes.data ?? []).map((p: {
-    id: string; name: string; group_name: string | null; city: string | null; used_powers: string[] | null
-  }) => {
+  const entries = profilesData.map((p) => {
     const matchPoints = matchPtsMap[p.id] ?? 0;
     const bonusPoints = bonusPtsMap[p.id] ?? 0;
     return {
