@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import type { LiveMatch } from '@/lib/data';
 
-const POLL_LIVE_MS = 60_000;
+const POLL_LIVE_MS = 15_000;
 const POLL_IDLE_MS = 300_000;
 
 const MOCK: LiveMatch | null = null;

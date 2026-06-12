@@ -11,9 +11,9 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import type { LiveMatch } from '@/lib/data';
 
-// Cache at CDN edge for 30s — cron updates every 60s anyway,
-// so max staleness is 90s. Saves Supabase reads under heavy load.
-export const revalidate = 30;
+// Cache at CDN edge for 15s — cron updates every 60s,
+// so max staleness is ~30s (15s cache + 15s client poll).
+export const revalidate = 15;
 
 function getAdminClient() {
   return createClient(
